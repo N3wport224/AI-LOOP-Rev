@@ -192,13 +192,15 @@ class InboundSyndicator(Strategy):
         key = indexnow_key(cfg, tools.state) if cfg.indexnow_enabled and live else ""
         builder = SiteBuilder(cfg, tools.files, tools.github)
         out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key)
-        changed = builder.publish(out)
-        submitted = self.submit_index(tools, out, key) if key and changed else 0
+        changed = builder.publish(out, tools.state)
+        # Tell search engines only once everything is live, so they never fetch a half-published site.
+        submitted = self.submit_index(tools, out, key) if key and not builder.pending else 0
         return TaskResult(
             True, f"site: {len(pages)} product pages, {len(matrix)} matrix pages, {len(items)} feed items, "
-                  f"{changed} files committed, {submitted} URLs sent to IndexNow",
+                  f"{changed} files committed" + (f" ({builder.pending} left for next cycle)" if builder.pending else "")
+                  + f", {submitted} URLs sent to IndexNow",
             {"pages": len(pages), "matrix_pages": len(matrix), "feed_items": len(items), "committed": changed,
-             "indexnow": submitted},
+             "pending": builder.pending, "indexnow": submitted},
         )
 
     @staticmethod

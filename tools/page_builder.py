@@ -398,7 +398,7 @@ def compile_matrix_pages(datasets: dict[str, list[dict[str, Any]]], offers: dict
     pages = pages[:max_pages]
     for p in pages:  # internal links: the same technology's other page, then the biggest neighbours
         same = [(q.title, q.path) for q in pages if q.tech == p.tech and q.path != p.path]
-        others = [(q.title, q.path) for q in pages if q.tech != p.tech and q.kind == p.kind][:5]
+        others = [(q.title, q.path) for q in pages if q.tech != p.tech][:5]
         p.related = (same + others)[:6]
     return pages
 
@@ -439,8 +439,8 @@ def render_matrix_page(page: MatrixPage, base_url: str = "", brand: str = "Tech 
     kpi_html = "".join(f'<div class="kpi"><b>{html.escape(str(v))}</b>{html.escape(k)}</div>' for k, v in kpis if v is not None)
     facts = []
     if page.kind == "hiring":
-        velocity = (f"{st['companies_7d']} of the {st['companies']} companies posted a {page.tech} role in the last 7 days"
-                    f" and {st['companies_30d']} in the last 30.")
+        velocity = (f"{st.get('companies_7d', 0)} of the {st.get('companies', 0)} companies posted a {page.tech} role in "
+                    f"the last 7 days and {st.get('companies_30d', 0)} in the last 30.")
         facts.append(velocity)
         if st.get("co_stack"):
             facts.append(f"Most common alongside {page.tech}: " + ", ".join(f"{t} ({n})" for t, n in st["co_stack"]) + ".")
@@ -654,17 +654,43 @@ class SiteBuilder:
                 self.files.write_text(f"site/{rel}", content)
         return out
 
-    def publish(self, out: dict[str, str | bytes]) -> int:
-        """Commit changed files to the Pages branch/dir. Returns how many files changed."""
+    pending: int = 0  # files left for the next cycle when the API budget ran out
+
+    def publish(self, out: dict[str, str | bytes], state: Any = None) -> int:
+        """Commit changed files to the Pages branch/dir. Returns how many files changed.
+
+        With ``state``, a manifest of published content hashes (``site_manifest``) skips files
+        that haven't changed since the last successful publish, so a site with dozens of matrix
+        pages costs API calls only for what changed. If the per-cycle API budget runs out
+        part-way, the rest is published next cycle (``self.pending``) instead of failing the task."""
+        from tools.errors import CircuitOpenError
+
         cfg = self.config
+        self.pending = 0
         if not (self.github and self.github.configured() and cfg.github_pages_repo):
             return 0
         branch = cfg.github_pages_branch or cfg.github_branch
         prefix = f"{cfg.github_pages_dir.strip('/')}/" if cfg.github_pages_dir.strip("/") else ""
-        changed = 0
+        key = f"site_manifest:{cfg.github_pages_repo}:{branch}:{prefix}"
+        manifest: dict[str, str] = dict((state.get(key) if state is not None else None) or {})
+        todo = []
         for rel, content in sorted(out.items()):
-            res = self.github.put_file(cfg.github_pages_repo, prefix + rel, content, f"site: update {rel}", branch)
-            changed += bool(res.get("changed"))
+            digest = hashlib.sha256(content if isinstance(content, bytes) else content.encode()).hexdigest()[:20]
+            if manifest.get(rel) != digest:
+                todo.append((rel, content, digest))
+        changed = 0
+        try:
+            for i, (rel, content, digest) in enumerate(todo):
+                try:
+                    res = self.github.put_file(cfg.github_pages_repo, prefix + rel, content, f"site: update {rel}", branch)
+                except CircuitOpenError:
+                    self.pending = len(todo) - i
+                    break
+                changed += bool(res.get("changed"))
+                manifest[rel] = digest
+        finally:
+            if state is not None:
+                state.set(key, manifest)
         return changed
 
 

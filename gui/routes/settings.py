@@ -234,6 +234,7 @@ async def run_checks(gctx) -> list[dict[str, Any]]:
 
 async def get_settings(request: web.Request) -> web.Response:
     gctx = ctx(request)
+    gctx.reload_config()  # reflect edits made to .env outside the panel
     return web.json_response({"groups": [{"id": g, "title": t, "help": h} for g, t, h in GROUPS],
                               "fields": current_values(gctx), "env_file": str(gctx.env_file)})
 

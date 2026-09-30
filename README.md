@@ -4,28 +4,35 @@ An autonomous, goal-directed agent loop that works toward **$10.00/day of verifi
 revenue** with zero startup capital. Every cycle it:
 
 1. collects hiring data from public job-board APIs;
-2. turns it into **company-level tech-stack intelligence** (stack fingerprints, hiring-intent
-   signals, urgency scores, verified careers URLs) packaged as a paid dataset;
+2. turns it into **company-level tech-stack intelligence** (stack fingerprints, urgency scores,
+   verified careers URLs, and **commercial buying intent**: migrations, compliance deadlines,
+   founding/first hires, each tagged like `Urgency: High (Cloud Migration)`) packaged as a paid dataset;
 3. **publishes** it: a live checkout (Stripe Payment Link or Lemon Squeezy), an SEO lander
-   with `schema.org/Product` markup on GitHub Pages, and a sanitized free preview;
-4. **distributes** it inbound, with no approval needed: value-first "State of…" breakdowns
+   with `schema.org/Product` markup on GitHub Pages, a sanitized free preview, and a cluster of
+   **search-intent pages** ("companies hiring Kubernetes engineers", "PostgreSQL migrations");
+4. **captures leads**: visitors who aren't ready to buy get a free 10-record sample by email,
+   then (once they confirm) a Monday "Weekly Tech Pulse" with 3 fresh buying signals and
+   1-click upgrade buttons;
+5. **distributes** it inbound, with no approval needed: value-first "State of…" breakdowns
    syndicated to Dev.to, Hashnode, GitHub Discussions and RSS (at most one post per platform
    every 5 days), plus a free monthly Hacker News "Who is hiring?" stack gist. Every link carries
    UTM tags. (Cold outreach still exists, but only sends drafts a human approved.)
-5. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
+6. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
    emails the buyer their zip plus a receipt seconds after payment; polling reconciles anything missed;
-6. **sells recurring**: a $10/month subscription next to the one-off $9/$14/$19 price; Monday
+7. **sells recurring**: a $10/month subscription next to the one-off $9/$14/$19 price; Monday
    morning delta packages go to every active subscriber, and each paid invoice is verified revenue;
-7. **optimizes price**: experiments across the one-off tiers per dataset, steps down or bundles
+8. **optimizes price**: experiments across the one-off tiers per dataset, steps down or bundles
    2-for-1 when traffic doesn't convert, steps up and converges when it does, and on strong
    demand scrapes deeper and ships a $19 premium deep-dive add-on;
-8. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
+9. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
    MRR, churn and net revenue per day against the $10 goal (`automonetize analytics`);
-9. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
+10. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
    cluster when it isn't converting.
 
 It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
 survives crashes, reboots, sleep and network drops, and shuts down cleanly on SIGTERM.
+Everything day-to-day (keys, start/pause/kill, revenue, logs) is also available in a local
+web control panel: `automonetize gui` (see [Control panel](#control-panel-automonetize-gui)).
 
 > **Reality check.** None of this guarantees income. Once configured, the sales path
 > (checkout → payment → delivery → revenue) and inbound publishing run without anyone
@@ -102,10 +109,81 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 308 tests, ~15 s, no network
+pytest                     # 455 tests, ~21 s, no network
+automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
 Existing databases from earlier versions are migrated automatically on open.
+
+## Control panel (`automonetize gui`)
+
+A local web interface for everything you'd otherwise do in a terminal: entering keys,
+starting and stopping the agent, and watching revenue and logs.
+
+```bash
+automonetize gui                 # serves http://127.0.0.1:8080 and opens it in your browser, signed in
+automonetize gui --port 8090     # another port (or gui_port in automonetize.toml)
+automonetize gui --no-browser    # then sign in with the token in data/.gui_token
+```
+
+On macOS, run it from the checkout (`cd AutoMonetize && .venv/bin/automonetize gui`). It's
+independent of the agent: it can start, pause and stop the launchd-managed agent, and closing
+it (Ctrl-C) leaves the agent running. For a dock-launchable shortcut, save
+`cd ~/AutoMonetize && .venv/bin/automonetize gui` as an Automator "Run Shell Script" app.
+
+**First-time setup, visually:**
+
+1. `automonetize gui`, then open **Settings**.
+2. **Stripe**: pick *Test* or *Live* and paste the secret key. A live key in Test mode (or the
+   reverse) is refused, so you can't go live by accident. Leave the webhook secret empty:
+   `setup-autonomous` creates the endpoint and fills it in.
+3. **Delivery mailer**: choose SMTP, SendGrid or Postmark and fill in its fields, plus the
+   sender name and email.
+4. **Syndication**: Dev.to, Hashnode, a GitHub token, the Pages repo and the site URL.
+5. **Cloudflare Tunnel**: the hostname you'll run `deploy/tunnel/setup_tunnel.sh` with
+   (e.g. `hooks.yourdomain.com`); this also sets `PUBLIC_WEBHOOK_URL`.
+6. **Compliance**: your CAN-SPAM postal address and an unsubscribe mailbox.
+7. **Save & verify**. Values are validated, `.env` is updated in place (comments, order and
+   other keys kept, mode 600), and the preflight runs: Stripe API, a real mailer login,
+   database, disk. Results show per check. If the agent is running, a banner offers
+   **Restart** to load the new settings.
+8. **Control → Start engine**. Once the tunnel exists, finish with
+   `automonetize setup-autonomous` for the Stripe endpoint and the end-to-end handshake.
+
+**Control tab**: live badges (supervisor, webhook health, engine state, dry run vs live email),
+today's net revenue against the $10 target, MRR and paying subscribers, the active niche,
+uptime, and free leads (confirmed / pending), refreshed every few seconds. Actions:
+
+| Button | Effect |
+|---|---|
+| Start engine | Clears a pause, a kill-switch stop or a quarantine, then starts the supervisor (via launchd when installed, otherwise as a background process logging to `data/supervisor.log`) |
+| Pause / sleep | The engine skips cycles and holds no power assertion, so the Mac can sleep. The webhook and lead capture keep running. Also `automonetize pause` / `resume` |
+| Restart (apply settings) | Restarts the supervisor so it reloads `.env`; pause and stop flags stay as they are |
+| Emergency kill switch | Engages the emergency stop and stops the supervisor. Under launchd the job is booted out, so KeepAlive doesn't restart it. Nothing runs until you press Start |
+
+**Logs tab**: the SQLite action log and the tail of `~/Library/Logs/automonetize/agent.*.log`
+(or `data/agent.log`), with API keys, webhook secrets, tokens and passwords redacted before
+they reach the browser.
+
+**Security.** The panel holds your secrets, so it's locked down even though it's local:
+
+* **Loopback only.** It binds to `127.0.0.1` and refuses any other host (`--host 0.0.0.0`
+  exits with an error). It's never reachable through the tunnel: the tunnel forwards only
+  `/webhook`, `/healthz` and `/lead-magnet/*` to the listener on port 8443, and the panel is
+  on 8080.
+* **Signed in.** A 256-bit token in `data/.gui_token` (mode 600). `automonetize gui` signs your
+  browser in with a one-time link valid for 2 minutes. Login attempts are rate-limited.
+* **CSRF / DNS rebinding.** `SameSite=Strict` HttpOnly session cookie; every change needs an
+  `X-CSRF-Token` header and a same-origin `Origin`; requests whose `Host` isn't
+  `127.0.0.1:<port>`/`localhost:<port>` are refused; strict Content-Security-Policy with no
+  inline script.
+* **Secrets are write-only.** The page learns whether a key is set and its last 4 characters,
+  never the value. An empty secret field keeps the stored one; *Clear* removes it. Line breaks
+  and control characters are rejected, so a pasted value can't add lines to `.env`.
+* The panel writes the names shown next to each field (`STRIPE_SECRET_KEY`, `SMTP_HOST`,
+  `SMTP_USER`, `CAN_SPAM_POSTAL_ADDRESS`, ...). Hand-edited `.env` files may also use
+  `STRIPE_API_KEY`, `SMTP_USERNAME` and `CAN_SPAM_UNSUBSCRIBE_EMAIL`. If `automonetize.toml`
+  or an `AUTOMONETIZE_*` variable overrides a field, the save result says so.
 
 ## Storefront setup
 
@@ -227,6 +305,21 @@ is unreachable for a while, Stripe retries for up to 3 days and polling covers t
   `data/site/` and committed to `github_pages_repo`, on `github_pages_branch` (e.g.
   `gh-pages`) under `github_pages_dir` (`docs` by default, `""` for the root). Unchanged
   files make no commit. Rebuild by hand with `automonetize site`.
+* **Search-intent matrix pages** (`intel/`): for every technology with at least
+  `seo_min_companies` (5) companies behind it, `intel/companies-hiring-<tech>-engineers.html`.
+  Where at least `seo_min_migrations` (3) companies are migrating to or from a technology, also
+  `intel/<tech>-infrastructure-migrations.html`. Each page has hiring velocity (companies
+  posting in the last 7 and 30 days), co-occurring stack, the intent mix (or migration paths
+  such as `Oracle → PostgreSQL`), a sanitized 5-company preview ranked by intent,
+  `schema.org/Dataset` JSON-LD with an `Offer`, the Payment Link of the niche with the most
+  matching companies, the free-sample form, and internal links. An `intel/` hub links them all.
+  Thin technologies get no page: templated pages with little behind them hurt a site in search.
+* **Indexing**: every lander and matrix page is in `sitemap.xml`, which `robots.txt` points to
+  (that's how Google finds sitemaps now; its ping endpoint was retired in 2023). Pages whose
+  content changed are also submitted to **IndexNow** (Bing, Yandex, Seznam, Naver) once the
+  site is live on Pages, with the key file published alongside. Publishing to Pages keeps a
+  manifest of what's live, so only changed files cost API calls. If the per-cycle API budget
+  runs out mid-publish, the rest goes out next cycle, and IndexNow waits until everything is up.
 * **Meta assets** (`tools/seo_assets.py`): per dataset a `radar-badge.svg` (e.g. "python
   radar | 142 hiring signals", where hiring signals = open roles tracked) plus a site-wide
   badge, a 1200×630 OpenGraph card as `og.svg`, and `og.png` when Pillow is installed (most
@@ -256,6 +349,60 @@ you configure), each article once, and only when at least `syndication_min_compa
 back it. The cadence is checked against **the platform's own record** of your last post
 (Dev.to articles, Hashnode publication, Discussions), so a wiped or fresh database can't
 reset it. If that history can't be read, nothing is posted (fail closed). Contact details are never included. `automonetize syndicate [--drafts]` runs it on demand.
+
+### Commercial buying intent (`strategies/tech_stack_intel.py`)
+
+Beyond "who's hiring", each company record says **who's about to spend**:
+
+| Family | Detected from postings like | Example tag |
+|---|---|---|
+| Migration & modernization | "moving from Snowflake to BigQuery", "legacy Oracle to Postgres", "Kubernetes migration", "migrating off our data center" | `Urgency: High (Database Migration)` with `migration_path` `Snowflake → BigQuery` |
+| Compliance & security | SOC 2, HIPAA, FedRAMP, PCI DSS, ISO 27001, HITRUST, CMMC, zero trust, hardening; stronger when they're *pursuing* it | `Urgency: Medium (SOC 2 Compliance)` |
+| Leadership & scaling | founding engineer, first DevOps/SRE/data/security hire, head of infrastructure/platform | `Urgency: Medium (First DevOps Hire)` |
+
+A migration only counts when at least one end resolves to a real technology, so "moving from
+junior to senior" or "switching to a new team" score 0. **Intent score (0-100)**: the strongest
+signal (explicit from → to migrations score highest), plus half of any others, plus breadth,
+open roles and freshness (posted in the last 7 days). High is 60+, Medium 35-59, Low 1-34.
+Records carry `intent_score`, `intent_tag`, `intent_level`, `intent_category`,
+`commercial_signals`, `migration_path` and short `intent_evidence` phrases (paid dataset only;
+never on public pages). The tag leads the CSV columns and previews. The Executive Tech Radar
+gets a *Commercial buying intent* section (top 15 with paths) and an Intent column.
+
+## Free lead magnet (`strategies/lead_magnet.py`)
+
+For visitors who aren't ready to pay: a form on every lander and matrix page, "Free: 10
+records + a hiring-intent cheatsheet".
+
+1. The form posts through the tunnel to `/lead-magnet/capture` on the local listener (the site
+   itself is static). It works without JavaScript and carries the visitor's first-touch
+   attribution. The address is stored in `subscribers` with `tier = "free"`. Free rows never
+   count toward revenue, MRR, subscriber counts or traction.
+2. Straight away they get an email with a CSV of the 10 highest-intent companies in that
+   niche and a Markdown cheatsheet (how to read the tags, this week's top technologies and
+   signals, how to use each signal family).
+3. **Double opt-in** (`lead_magnet_double_opt_in = true`): that email has a confirm link. Only
+   confirmed addresses get the weekly email. A public form lets anyone enter anyone's address;
+   without this, typos and pranks turn into weekly unsolicited mail, which gets a sending
+   domain blocklisted. Links in emails open a page with a button, and only the button acts,
+   because mail security scanners prefetch every link.
+4. **Weekly Tech Pulse**, every Monday from 09:00 (`lead_nurture_weekday`, `lead_nurture_hour`,
+   `subscription_timezone`), once per ISO week: 3 buying signals first seen that week (topped up
+   with the strongest active ones in a quiet week), then buttons for the $10/month subscription
+   and the full dataset. Each button is a Payment Link with the email prefilled and the sale
+   attributed to `leadmagnet` in analytics. Paying subscribers and suppressed addresses are
+   skipped.
+5. Every email has a one-click unsubscribe (`List-Unsubscribe` + `List-Unsubscribe-Post`, RFC
+   8058) and your postal address. The weekly email isn't sent at all until
+   `CAN_SPAM_POSTAL_ADDRESS` is set. Unsubscribing also adds the address to the suppression list.
+
+Abuse brakes on the public endpoint: a hidden honeypot field, 5 attempts per visitor IP per
+hour (`CF-Connecting-IP`, trusted only from cloudflared on loopback), 60 signups an hour
+overall, strict address validation, and suppressed addresses silently "succeed" so the form
+never reveals who's on the list. Emails go through the same dispatcher as deliveries, so
+`DRY_RUN` applies. **If you set up the tunnel before this release, re-run
+`deploy/tunnel/setup_tunnel.sh <hostname>`** to add the `/lead-magnet/*` paths to its ingress
+rules.
 
 ### Setting up Dev.to and Hashnode
 
@@ -567,6 +714,12 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `demand_sales_threshold` / `premium_price_cents` / `max_scrape_depth` | `3` / `1900` / `3` | Demand expansion |
 | `stripe_webhook_secret` / `webhook_host` / `webhook_port` / `webhook_path` | env / `127.0.0.1` / `8443` / `/webhook` | Webhook listener |
 | `network_check_hosts` | Stripe + GitHub API | Offline probe (`[]` disables) |
+| `lead_magnet_enabled` / `lead_magnet_double_opt_in` / `lead_magnet_sample_size` | `true` / `true` / `10` | Free sample and confirm-before-nurture |
+| `lead_magnet_max_per_hour` / `lead_magnet_max_per_ip_hour` | `60` / `5` | Capture abuse brakes |
+| `lead_nurture_weekday` / `lead_nurture_hour` / `lead_nurture_signals` | `0` (Mon) / `9` / `3` | Weekly Tech Pulse (in `subscription_timezone`) |
+| `seo_matrix_enabled` / `seo_min_companies` / `seo_min_migrations` / `seo_max_pages` | `true` / `5` / `3` / `60` | Search-intent pages |
+| `indexnow_enabled` / `indexnow_key` | `true` / generated | IndexNow submission of changed pages |
+| `gui_host` / `gui_port` | `127.0.0.1` / `8080` | Control panel (loopback only) |
 | `quarantine_hours` / `quarantine_max_hours` / `alert_notifications` | `2` / `24` / `true` | Self-healing cooldown after a breaker trip (`0` = stop for a human) |
 | `public_webhook_url` (`PUBLIC_WEBHOOK_URL`) | empty | Set by `setup_tunnel.sh`; used by `setup-autonomous` |
 | `power_assertions` / `schedule_wake` | `true` / `true` | Stay awake while working; `pmset` wake for the next cycle (needs the sudoers line) |
@@ -584,6 +737,8 @@ their conventional unprefixed names. Unknown keys are rejected.
 ## CLI
 
 ```
+automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
+automonetize pause [--reason R] | resume            # skip cycles; webhook and lead capture stay up
 automonetize setup-autonomous [--live] [--daemon] [--json] [--skip-register|--skip-launchd|--skip-handshake]
 automonetize supervise [--no-webhook] [--headless]   # daemon: engine + webhook listener
 automonetize webhook [--port P] [--selftest]         # listener only
@@ -629,7 +784,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 364 tests, ~16 s, no network
+pytest     # 455 tests, ~21 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -637,6 +792,22 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phase 5 adds 91 tests. `tests/test_gui.py` covers loopback-only binding, sign-in (token, one-time
+launch links, brute-force throttle), DNS-rebinding, CSRF and cross-origin refusals, the CSP,
+secrets never sent to the browser, every validation rule including `.env` injection, in-place
+`.env` updates that keep comments, secret keep/clear, override warnings, preflight results,
+control dispatch (kill needs confirmation), status and redacted logs. The service controller's
+start/pause/resume/kill/restart are tested against fake launchctl, process and signal hooks.
+`tests/test_intent.py` covers each signal family, false positives, tech resolution, score
+ordering, tag format, and the radar/CSV surfacing. `tests/test_seo_matrix.py` covers page
+thresholds, slugs, velocity stats, internal links, Dataset JSON-LD (and `</script>` breakout),
+no contact or quoted text on public pages, sitemap validity, the key file and forms,
+IndexNow's changed-only submission, and a publish that resumes across cycles when the API
+budget runs out. `tests/test_lead_magnet.py` covers validation and abuse brakes, free rows kept
+out of MRR, live and dry-run sample emails (CSV, cheatsheet, unsubscribe headers,
+attribution), confirm/unsubscribe, prefetch-safe links, the Monday pulse (confirmed-only, once
+a week, payers skipped, blocked without a postal address), and the public HTTP endpoints.
 
 Set-and-forget (`tests/test_autonomy.py`, 56 tests) adds: backoff maths and transient-error
 classification, persisted per-platform cooldowns with `Retry-After`, SQLite lock retries against

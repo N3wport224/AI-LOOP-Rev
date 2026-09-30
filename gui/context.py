@@ -38,6 +38,8 @@ class GuiContext:
 
 
 CTX: web.AppKey[GuiContext] = web.AppKey("gui_context", GuiContext)
+# Typed request storage (aiohttp >= 3.12 warns on string keys); a plain string on older versions.
+SESSION_KEY: Any = web.RequestKey("gui_session", object) if hasattr(web, "RequestKey") else "gui_session"
 
 
 def ctx(request: web.Request) -> GuiContext:

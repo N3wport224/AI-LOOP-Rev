@@ -125,11 +125,11 @@ def capture(tools, email: str | None, niche: str | None = None, source: str = ""
         return CaptureResult("disabled")
     if honeypot:
         return CaptureResult("spam")
+    if limiter is not None and not limiter.allow(ip):  # every attempt counts, valid or not
+        return CaptureResult("rate_limited")
     addr = normalize_email(email)
     if addr is None:
         return CaptureResult("invalid")
-    if limiter is not None and not limiter.allow(ip):
-        return CaptureResult("rate_limited")
     if state.free_captures_since(state.clock() - timedelta(hours=1)) >= cfg.lead_magnet_max_per_hour:
         state.log_error("lead_magnet", "hourly capture cap reached; rejecting signups", kind="security")
         return CaptureResult("rate_limited")

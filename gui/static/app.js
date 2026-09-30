@@ -71,7 +71,8 @@
     badge("#b-webhook", s.webhook.healthy ? "Webhook healthy" : (sup.running ? "Webhook down" : "Webhook offline"),
       s.webhook.healthy ? "ok" : (s.webhook.secret_set ? "bad" : "warn"));
     const engineLevel = { running: "ok", paused: "warn", offline: "warn", quarantined: "warn", stopped: "bad", tripped: "bad" }[s.engine.state] || "";
-    badge("#b-engine", "Engine " + s.engine.state, engineLevel);
+    const flagNote = s.engine.state === "not running" && s.engine.flag !== "running" ? ` (${s.engine.flag})` : "";
+    badge("#b-engine", "Engine " + s.engine.state + flagNote, engineLevel);
     badge("#b-mode", s.dry_run ? "Dry run" : "Live email", s.dry_run ? "warn" : "ok");
 
     $("#k-revenue").textContent = money(s.revenue.net_cents);
@@ -88,7 +89,7 @@
     $("#k-leads").textContent = String((leads.active || 0) + (leads.pending || 0));
     $("#k-leads-sub").textContent = `${leads.active || 0} confirmed · ${leads.pending || 0} pending · ${leads.unsubscribed || 0} left`;
     $("#engine-reason").textContent = s.engine.reason ? "Engine " + s.engine.state + ": " + s.engine.reason : "";
-    const paused = s.engine.state === "paused";
+    const paused = s.engine.flag === "paused";
     $("#btn-pause").hidden = paused;
     $("#btn-resume").hidden = !paused;
   }

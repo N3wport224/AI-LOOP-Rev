@@ -74,7 +74,7 @@ def build_status(gctx) -> dict[str, Any]:
     return {
         "supervisor": sup,
         "webhook": {**webhook, "public_url": cfg.public_webhook_url, "secret_set": bool(cfg.stripe_webhook_secret)},
-        "engine": {"state": sup["engine"], "reason": sup["reason"], "iteration": snap["iteration"],
+        "engine": {"state": sup["engine"], "flag": sup["engine_flag"], "reason": sup["reason"], "iteration": snap["iteration"],
                    "last_cycle_at": snap["last_cycle_at"], "breaker": snap["breaker"]},
         "niche": {"key": hyp.get("key"), "description": hyp.get("description"), "iterations": hyp.get("iterations"),
                   "pivot_after": hyp.get("pivot_after")},

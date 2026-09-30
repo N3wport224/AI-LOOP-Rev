@@ -14,7 +14,7 @@ from aiohttp import web
 from agent.config import Config
 from agent.state import StateStore
 from gui.auth import COOKIE, LOOPBACK_HOSTS, SESSION_TTL, Auth, allowed_hosts, allowed_origins, load_or_create_token, token_path
-from gui.context import CTX, GuiContext, ctx
+from gui.context import CTX, SESSION_KEY, GuiContext, ctx
 from gui.routes import control as control_routes
 from gui.routes import settings as settings_routes
 
@@ -61,12 +61,14 @@ async def guard(request: web.Request, handler: Callable) -> web.StreamResponse:
             raise web.HTTPFound("/login")
         if request.method not in SAFE and not gctx.auth.csrf_ok(session, request.headers.get("X-CSRF-Token")):
             return web.json_response({"error": "missing or invalid CSRF token"}, status=403)
-        request["session"] = session
+        request[SESSION_KEY] = session
     resp = await handler(request)
     resp.headers.setdefault("Content-Security-Policy", CSP)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
-    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    # same-origin, not no-referrer: with no-referrer browsers send "Origin: null" on form posts,
+    # which the origin check (rightly) refuses. Nothing leaks to other sites either way.
+    resp.headers.setdefault("Referrer-Policy", "same-origin")
     resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     if request.path.startswith("/api/") or request.path in ("/", "/login"):
         resp.headers.setdefault("Cache-Control", "no-store")
@@ -110,7 +112,7 @@ async def logout(request: web.Request) -> web.Response:
 
 async def session_info(request: web.Request) -> web.Response:
     gctx = ctx(request)
-    return web.json_response({"csrf": request["session"].csrf, "port": gctx.port, "env_file": str(gctx.env_file),
+    return web.json_response({"csrf": request[SESSION_KEY].csrf, "port": gctx.port, "env_file": str(gctx.env_file),
                               "token_file": str(token_path(gctx.config.data_dir))})
 
 
