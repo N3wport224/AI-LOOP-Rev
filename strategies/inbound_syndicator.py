@@ -6,7 +6,8 @@ Tasks:
   publishes it (RSS always; Dev.to / Hashnode / GitHub Discussions when configured and due;
   a Substack paste-ready file). Every successful post counts as an impression.
 * ``build_site``: regenerates the whole static site (one product page per packaged dataset,
-  bundle and premium add-on, plus index, sitemap and RSS feed) and commits changes to GitHub Pages.
+  bundle and premium add-on, the search-intent matrix pages under ``intel/``, plus index,
+  sitemap and RSS feed), commits changes to GitHub Pages and submits changed URLs to IndexNow.
 """
 
 from __future__ import annotations
@@ -16,7 +17,9 @@ from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
 from strategies.digital_asset_packager import ASSET_KIND, niche_title
-from tools.page_builder import FeedItem, ProductPage, SiteBuilder
+from tools.page_builder import (
+    FeedItem, MatrixPage, ProductPage, SiteBuilder, changed_urls, compile_matrix_pages, indexnow_key, submit_indexnow,
+)
 from tools.syndication import DevToPublisher, GitHubDiscussionsPublisher, HashnodePublisher, Syndicator, build_article
 
 
@@ -53,6 +56,24 @@ def social_proof(tools, niche: str, hypothesis_id: int | None) -> dict[str, Any]
         "verified_profiles": sum(1 for r in records if r.get("careers_url_verified")),
         "purchases_7d": tools.state.orders_since(hypothesis_id, now - timedelta(days=7)) if hypothesis_id else 0,
     }
+
+
+def matrix_pages(tools, pages: list[ProductPage]) -> list[MatrixPage]:
+    """Search-intent pages from every niche that has a tech radar, offering that niche's dataset."""
+    cfg = tools.config
+    datasets = {}
+    for niche in {p.niche for p in pages}:
+        path = f"exports/intel/{niche}/tech_radar.json"
+        if tools.files.exists(path):
+            datasets[niche] = tools.files.read_json(path)
+    offers = {
+        p.niche: {"niche": p.niche, "title": p.title, "price_cents": p.price_cents, "currency": p.currency,
+                  "checkout_url": p.checkout_url, "subscription_url": p.subscription_url,
+                  "subscription_price_cents": p.subscription_price_cents, "subscription_interval": p.subscription_interval}
+        for p in pages if p.kind == "dataset"
+    }
+    return compile_matrix_pages(datasets, offers, tools.state.clock(), cfg.seo_min_companies, cfg.seo_min_migrations,
+                                cfg.seo_max_pages)
 
 
 def site_pages(tools) -> list[ProductPage]:
@@ -160,15 +181,43 @@ class InboundSyndicator(Strategy):
 
     def build_site(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
+        cfg = tools.config
         pages = site_pages(tools)
         if not pages:
             return TaskResult(True, "no datasets to publish yet", {"pages": 0})
         items = [FeedItem(**{k: i[k] for k in ("title", "link", "description", "guid", "published", "body_html")})
                  for i in tools.state.get("feed_items", []) or []]
-        builder = SiteBuilder(tools.config, tools.files, tools.github)
-        out = builder.build(pages, items, tools.state.clock())
+        matrix = matrix_pages(tools, pages) if cfg.seo_matrix_enabled else []
+        live = bool(tools.github.configured() and cfg.github_pages_repo and cfg.pages_base_url)
+        key = indexnow_key(cfg, tools.state) if cfg.indexnow_enabled and live else ""
+        builder = SiteBuilder(cfg, tools.files, tools.github)
+        out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key)
         changed = builder.publish(out)
+        submitted = self.submit_index(tools, out, key) if key and changed else 0
         return TaskResult(
-            True, f"site: {len(pages)} product pages, {len(items)} feed items, {changed} files committed",
-            {"pages": len(pages), "feed_items": len(items), "committed": changed},
+            True, f"site: {len(pages)} product pages, {len(matrix)} matrix pages, {len(items)} feed items, "
+                  f"{changed} files committed, {submitted} URLs sent to IndexNow",
+            {"pages": len(pages), "matrix_pages": len(matrix), "feed_items": len(items), "committed": changed,
+             "indexnow": submitted},
         )
+
+    @staticmethod
+    def submit_index(tools, out: dict[str, Any], key: str) -> int:
+        from agent.recovery import PlatformBackoff
+
+        backoff = PlatformBackoff(tools.state)
+        if backoff.blocked_until("indexnow"):
+            return 0
+        urls, hashes = changed_urls(out, tools.config.pages_base_url, tools.state.get("indexnow_hashes", {}) or {})
+        if not urls:
+            return 0
+        try:
+            status = submit_indexnow(tools.http, tools.config.pages_base_url, key, urls)
+        except Exception as exc:  # noqa: BLE001 - indexing is best effort; retried after a cooldown
+            backoff.failure("indexnow", exc)
+            tools.state.log_error("seo:indexnow", repr(exc))
+            return 0
+        backoff.success("indexnow")
+        tools.state.set("indexnow_hashes", hashes)
+        tools.state.set("indexnow_last", {"at": tools.state.now(), "urls": len(urls), "status": status})
+        return len(urls)

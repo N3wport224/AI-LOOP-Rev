@@ -262,7 +262,7 @@ def test_inbound_tasks_end_to_end(toolkit, config, make_hypothesis, state):
     res = s.syndicate(TaskContext(toolkit, hyp, {}))
     assert res.metrics["syndicated"] and res.metrics["results"]["rss"] == "added"
     site = s.build_site(TaskContext(toolkit, hyp, {}))
-    assert site.metrics == {"pages": 1, "feed_items": 1, "committed": 0}
+    assert site.metrics == {"pages": 1, "matrix_pages": 0, "feed_items": 1, "committed": 0, "indexnow": 0}
     html_text = toolkit.files.read_text("site/python-remote/index.html")
     assert json.loads(parse(html_text).jsonld[0])["@type"] == "Product"
     feed = ET.fromstring(toolkit.files.read_text("site/feeds/radar.xml"))

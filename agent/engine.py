@@ -58,6 +58,7 @@ PLAN: list[tuple[str, int]] = [
     ("sync_subscriptions", 46),
     ("deliver_orders", 50),
     ("deliver_subscriptions", 51),
+    ("nurture_leads", 52),
     ("collect_metrics", 55),
     ("optimize_pricing", 60),
 ]
@@ -71,7 +72,7 @@ class NetworkDown(Exception):
 @dataclass
 class CycleReport:
     cycle: int
-    status: str  # ran | stopped | quarantined | offline | idle | crashed
+    status: str  # ran | stopped | paused | quarantined | offline | idle | crashed
     hypothesis_id: int | None = None
     hypothesis_key: str = ""
     actions: list[dict[str, Any]] = field(default_factory=list)
@@ -142,6 +143,9 @@ class Engine:
         stop = self.state.get("emergency_stop")
         if stop:
             return True, f"emergency stop: {stop.get('reason', '')}"
+        paused = self.state.get("paused")
+        if paused:
+            return True, f"paused: {paused.get('reason', '')} (since {paused.get('at', '?')})"
         if self.quarantine.active():
             rec = self.quarantine.record or {}
             return True, f"quarantined until {rec.get('until')}: {rec.get('reason', '')}"
@@ -185,7 +189,18 @@ class Engine:
         self._save_breaker()
         log.error("emergency stop engaged: %s", reason)
 
+    def pause(self, reason: str = "paused by operator") -> None:
+        """Skip cycles until ``unpause``/``resume``: nothing held awake, webhook and lead capture stay up."""
+        self.state.set("paused", {"reason": reason, "at": self.state.now()})
+        self.state.log_action(self.current_cycle(), None, "pause", "ok", reason)
+
+    def unpause(self) -> None:
+        if self.state.get("paused"):
+            self.state.set("paused", None)
+            self.state.log_action(self.current_cycle(), None, "pause", "ok", "resumed")
+
     def resume(self) -> None:
+        self.state.set("paused", None)
         if self.quarantine.active():
             self.quarantine.release({"manual": True})
         self.state.set("emergency_stop", None)
@@ -233,7 +248,8 @@ class Engine:
         if self.state.get("started_at") is None:
             self.state.set("started_at", self.state.now())
 
-        if self.quarantine.due() and not self.config.stop_file.exists() and not self.state.get("emergency_stop"):
+        if (self.quarantine.due() and not self.config.stop_file.exists() and not self.state.get("emergency_stop")
+                and not self.state.get("paused")):
             resumed, msg = self.try_leave_quarantine(cycle)
             if not resumed:
                 return CycleReport(cycle, "quarantined", message=msg)
@@ -241,6 +257,8 @@ class Engine:
         if stopped:
             self.state.log_action(cycle, None, "cycle", "skipped", why)
             manual = self.config.stop_file.exists() or bool(self.state.get("emergency_stop"))
+            if self.state.get("paused") and not manual:
+                return CycleReport(cycle, "paused", message=why)
             return CycleReport(cycle, "quarantined" if self.quarantine.active() and not manual else "stopped", message=why)
 
         if not self.online_check():

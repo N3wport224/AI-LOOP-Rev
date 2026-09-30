@@ -3,8 +3,9 @@
 ``deploy/tunnel/setup_tunnel.sh`` drives ``cloudflared``. The fiddly text handling lives here so it
 is tested rather than improvised in shell: ``python3 -m agent.tunnel <command>``.
 
-The tunnel only exposes the webhook and health paths. Every other request gets a 404 at Cloudflare's
-edge and never reaches the Mac::
+The tunnel only exposes the webhook, health and lead-magnet paths. Every other request (including
+the control GUI, which listens on a different port anyway) gets a 404 at Cloudflare's edge and
+never reaches the Mac::
 
     ingress:
       - hostname: hooks.example.com
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 DEFAULT_TUNNEL_NAME = "automonetize"
-EXPOSED_PATHS = ("/webhook", "/healthz")
+EXPOSED_PATHS = ("/webhook", "/healthz", "/lead-magnet/capture", "/lead-magnet/confirm", "/lead-magnet/unsubscribe")
 ENV_KEY_URL = "PUBLIC_WEBHOOK_URL"
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

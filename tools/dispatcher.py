@@ -51,9 +51,10 @@ class Email:
     to: str
     subject: str
     body: str
-    kind: str  # outreach | delivery
+    kind: str  # outreach | delivery | nurture
     headers: dict[str, str] = field(default_factory=dict)
     attachments: list[Attachment] = field(default_factory=list)
+    html: str = ""  # optional HTML alternative (the plain-text body is always sent too)
 
 
 @dataclass
@@ -95,6 +96,8 @@ class SMTPBackend:
         for k, v in msg.headers.items():
             em[k] = v
         em.set_content(msg.body)
+        if msg.html:
+            em.add_alternative(msg.html, subtype="html")
         for a in msg.attachments:
             maintype, _, subtype = a.mimetype.partition("/")
             em.add_attachment(a.content, maintype=maintype, subtype=subtype or "octet-stream", filename=a.filename)
@@ -129,7 +132,8 @@ class SendGridBackend:
             "personalizations": [{"to": [{"email": msg.to}]}],
             "from": {"email": sender_email, **({"name": sender_name} if sender_name else {})},
             "subject": msg.subject,
-            "content": [{"type": "text/plain", "value": msg.body}],
+            "content": [{"type": "text/plain", "value": msg.body}]
+            + ([{"type": "text/html", "value": msg.html}] if msg.html else []),
         }
         if msg.headers:
             body["headers"] = dict(msg.headers)
@@ -165,6 +169,7 @@ class PostmarkBackend:
             "To": msg.to,
             "Subject": msg.subject,
             "TextBody": msg.body,
+            **({"HtmlBody": msg.html} if msg.html else {}),
             # Postmark separates transactional and bulk traffic into message streams.
             "MessageStream": "outbound" if msg.kind == "delivery" else "broadcast",
         }

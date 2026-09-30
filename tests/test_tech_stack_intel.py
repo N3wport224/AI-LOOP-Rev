@@ -114,7 +114,7 @@ def test_packager_bundles_intel(toolkit, make_hypothesis):
     names = zipfile.ZipFile(io.BytesIO(toolkit.files.read_bytes(res.metrics["zip"]))).namelist()
     assert "python-remote-intel/EXECUTIVE_TECH_RADAR.md" in names and "python-remote-intel/tech_radar.csv" in names
     sample = toolkit.files.read_json("assets/python-remote/v1/sample.json")
-    assert sample["fields"][:3] == ["company", "domain", "urgency_score"]
+    assert sample["fields"][:4] == ["company", "domain", "intent_tag", "urgency_score"]
     assert all(set(r) == set(sample["fields"]) for r in sample["rows"])
     listing = toolkit.files.read_json("assets/python-remote/v1/listing.json")
     assert listing["description_markdown"].startswith("# Executive Tech Radar")

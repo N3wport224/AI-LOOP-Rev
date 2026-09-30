@@ -219,6 +219,8 @@ CREATE INDEX IF NOT EXISTS idx_assets_ref ON assets (product_ref);
 CREATE INDEX IF NOT EXISTS idx_assets_hyp_kind ON assets (hypothesis_id, kind, version);
 CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses (status);
 CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers (subscription_status, niche);
+CREATE INDEX IF NOT EXISTS idx_subscribers_tier ON subscribers (tier, subscription_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers (token) WHERE token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sessions_pi ON checkout_sessions (payment_intent);
 CREATE INDEX IF NOT EXISTS idx_sessions_ref ON checkout_sessions (product_ref, updated_at);
 CREATE INDEX IF NOT EXISTS idx_experiments_asset ON price_experiments (asset_id, status);
@@ -246,6 +248,12 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "channel": "TEXT",
         "campaign": "TEXT",
         "mode": "TEXT",
+    },
+    "subscribers": {
+        # paid = Stripe subscription; free = lead-magnet signup (provider "lead_magnet").
+        "tier": "TEXT NOT NULL DEFAULT 'paid'",
+        "token": "TEXT",          # confirm / unsubscribe links (free tier)
+        "confirmed_at": "TEXT",
     },
     "outreach_queue": {
         "sent_at": "TEXT",
@@ -966,8 +974,14 @@ class StateStore:
     def get_subscriber(self, subscription_id: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM subscribers WHERE subscription_id = ?", (subscription_id,))
 
-    def list_subscribers(self, status: str | tuple[str, ...] | None = None, niche: str | None = None) -> list[dict[str, Any]]:
+    def list_subscribers(self, status: str | tuple[str, ...] | None = None, niche: str | None = None,
+                         tier: str | None = "paid") -> list[dict[str, Any]]:
+        """Subscribers, paid ones by default: MRR, deliveries and traction must never count free
+        lead-magnet signups. ``tier="free"`` for those, ``tier=None`` for everyone."""
         sql, args = "SELECT * FROM subscribers WHERE 1=1", []
+        if tier:
+            sql += " AND tier = ?"
+            args.append(tier)
         if status:
             statuses = (status,) if isinstance(status, str) else status
             sql += f" AND subscription_status IN ({','.join('?' * len(statuses))})"
@@ -976,6 +990,48 @@ class StateStore:
             sql += " AND niche = ?"
             args.append(niche)
         return self._all(sql + " ORDER BY id", tuple(args))
+
+    # -- free tier (lead magnet) ----------------------------------------------------------
+    def capture_free_subscriber(self, email: str, niche: str | None, token: str, channel: str | None = None,
+                                campaign: str | None = None, status: str = "pending") -> tuple[int, bool]:
+        """One row per email (``subscription_id = free:<email>``). A repeat signup refreshes the
+        niche but keeps status, token and history. Returns (id, created)."""
+        email = email.lower()
+        now = self.now()
+        with self.tx() as conn:
+            row = conn.execute("SELECT id FROM subscribers WHERE subscription_id = ?", (f"free:{email}",)).fetchone()
+            if row is not None:
+                if niche:
+                    conn.execute("UPDATE subscribers SET niche = ?, updated_at = ? WHERE id = ?", (niche, now, row["id"]))
+                return int(row["id"]), False
+            cur = conn.execute(
+                "INSERT INTO subscribers (provider, subscription_id, email, niche, price_cents, interval, subscription_status, "
+                "channel, campaign, started_at, updated_at, tier, token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("lead_magnet", f"free:{email}", email, niche, 0, "week", status, channel, campaign, now, now, "free", token),
+            )
+            return int(cur.lastrowid), True
+
+    def subscriber(self, subscriber_id: int) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM subscribers WHERE id = ?", (subscriber_id,))
+
+    def subscriber_by_token(self, token: str) -> dict[str, Any] | None:
+        if not token:
+            return None
+        return self._one("SELECT * FROM subscribers WHERE token = ? AND tier = 'free'", (token,))
+
+    def set_free_status(self, subscriber_id: int, status: str) -> None:
+        now = self.now()
+        extra = ", confirmed_at = COALESCE(confirmed_at, ?)" if status == "active" else ", canceled_at = ?"
+        self._exec(f"UPDATE subscribers SET subscription_status = ?, updated_at = ?{extra} WHERE id = ? AND tier = 'free'",
+                   (status, now, now, subscriber_id))
+
+    def free_captures_since(self, since: datetime) -> int:
+        row = self._one("SELECT COUNT(*) AS n FROM subscribers WHERE tier = 'free' AND started_at >= ?", (iso(since),))
+        return int(row["n"]) if row else 0
+
+    def free_subscriber_counts(self) -> dict[str, int]:
+        rows = self._all("SELECT subscription_status AS s, COUNT(*) AS n FROM subscribers WHERE tier = 'free' GROUP BY s")
+        return {r["s"]: r["n"] for r in rows}
 
     def record_subscription_delivery(self, subscriber_id: int, period_key: str, status: str,
                                      delta_count: int = 0, detail: str = "") -> None:

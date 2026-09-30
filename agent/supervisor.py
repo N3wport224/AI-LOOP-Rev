@@ -76,7 +76,8 @@ class Supervisor:
             Worker("engine", lambda stop: self.engine.run_forever(
                 interval=interval, max_cycles=max_cycles, on_cycle=on_cycle, install_signal_handlers=False), critical=True)
         ]
-        if webhook and config.stripe_webhook_secret:
+        leads_public = config.lead_magnet_enabled and bool(config.lead_capture_base)
+        if webhook and (config.stripe_webhook_secret or leads_public):
             from tools.storefront.webhook_listener import WebhookServer
 
             self.webhook_server = WebhookServer(self.engine.tools, power=self.engine.power)

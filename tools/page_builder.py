@@ -8,21 +8,35 @@ Each dataset gets ``<niche>/index.html`` with:
 * urgency metrics from the tech radar (companies, high-urgency count, top intent signals);
 * the 5-record sanitized sample table and the Stripe Payment Link CTA.
 
-Site-wide: ``index.html``, ``sitemap.xml``, ``robots.txt`` and ``feeds/radar.xml`` (RSS 2.0).
+**Search-intent matrix pages** (``intel/``): for every technology with enough companies behind
+it, ``intel/companies-hiring-<tech>-engineers.html`` and, where companies are migrating to or
+from it, ``intel/<tech>-infrastructure-migrations.html``. Each has hiring-velocity stats, the
+intent mix, a sanitized 5-record preview, ``schema.org/Dataset`` JSON-LD, the Stripe Payment Link
+and the free-sample form. Technologies below ``seo_min_companies`` get no page: thin, templated
+pages hurt a site's standing more than they help.
+
+Site-wide: ``index.html``, ``intel/index.html``, ``sitemap.xml`` (every lander and matrix page),
+``robots.txt`` (points at the sitemap, which is how Google discovers it now that its ping
+endpoint is retired), ``feeds/radar.xml`` (RSS 2.0) and the IndexNow key file.
 Everything is written under ``data/site/`` and, when configured, committed to the GitHub Pages
 branch/dir (``github_pages_branch`` / ``github_pages_dir``) through the contents API.
 """
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
+import re
+import secrets
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 from typing import TYPE_CHECKING, Any
 
+from tools.attribution import FIRST_TOUCH_DAYS, STORAGE_KEY
 from tools.attribution import LANDER_ATTRIBUTION_JS as ATTRIBUTION_JS
 from tools.seo_assets import badge_for, render_badge_svg, render_og_png, render_og_svg
 
@@ -61,6 +75,7 @@ class ProductPage:
     profiles_added_7d: int = 0     # companies first seen in the last 7 days
     verified_profiles: int = 0     # companies with a live-verified careers page
     purchases_7d: int = 0
+    lead_capture_url: str = ""     # https://<tunnel>/lead-magnet/capture when the free sample is on
 
     @property
     def slug(self) -> str:
@@ -134,7 +149,33 @@ h1{font-size:1.9rem;margin-bottom:.3rem}.lede{color:#444;font-size:1.1rem}
 td,th{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-align:top}th{text-transform:capitalize}
 .cta{display:inline-block;background:#111;color:#fff;padding:.8rem 1.2rem;border-radius:8px;text-decoration:none;font-weight:600;margin:1rem 0}
 .muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.cta.alt{background:#2e7d32}
+.lead{border:1px solid #e3e3e3;border-radius:8px;padding:1rem;margin:1.2rem 0;max-width:34rem}.lead label{font-weight:600;display:block;margin-bottom:.4rem}
+.lead input[type=email]{padding:.6rem;border:1px solid #bbb;border-radius:6px;width:100%;max-width:20rem;font-size:1rem}.lead button{padding:.62rem 1rem;border:0;border-radius:6px;background:#2e7d32;color:#fff;font-weight:600;cursor:pointer}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.tag{display:inline-block;background:#fff3e0;color:#8a4b00;border-radius:4px;padding:0 .35rem;font-size:.85rem}
 @media (prefers-color-scheme: dark){body{background:#111;color:#eee}.lede{color:#bbb}td,th,.kpi{border-color:#333}.cta{background:#eee;color:#111}.muted{color:#999}}"""
+
+
+def lead_form_html(action: str, niche: str, source: str, size: int = 10) -> str:
+    """Plain HTML form (works without JavaScript) posting to the tunnel's capture endpoint.
+    ``website`` is a honeypot: people never see or fill it, form-spamming bots do."""
+    if not action:
+        return ""
+    return f"""<form class="lead" method="post" action="{html.escape(action)}">
+<label for="lm-email">Free: {size} records + a hiring-intent cheatsheet, by email</label>
+<input type="email" id="lm-email" name="email" required maxlength="254" autocomplete="email" placeholder="you@company.com">
+<input type="hidden" name="niche" value="{html.escape(niche)}"><input type="hidden" name="source" value="{html.escape(source)}">
+<input type="hidden" name="ref" value="" data-lm-ref>
+<span class="hp" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label></span>
+<button type="submit">Send me the free sample</button>
+<p class="muted">One email with the sample now. Confirm from it to get the Monday Tech Pulse (3 fresh buying signals a week). Unsubscribe with one click, any time.</p>
+</form>"""
+
+
+# Copies first-touch attribution (set by ATTRIBUTION_JS) into the free-sample form, so signups
+# are attributed to the channel that brought the visitor, like checkouts are.
+LEAD_REF_JS = """(function(){try{var st=JSON.parse(localStorage.getItem('%(key)s')||'null');
+document.querySelectorAll('[data-lm-ref]').forEach(function(el){if(st&&st.ref&&Date.now()-st.t<%(days)d*864e5){el.value=st.ref;}});
+}catch(e){}})();""" % {"key": STORAGE_KEY, "days": FIRST_TOUCH_DAYS}
 
 
 def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tech Stack Intel") -> str:
@@ -204,14 +245,279 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 <div class="kpis">{kpi_html}</div>
 {signals_html}
 {cta}
+{lead_form_html(page.lead_capture_url, page.niche, page.slug)}
 <h2>Free 5-record preview</h2>
 <div class="wrap"><table><thead><tr>{head_cells}</tr></thead><tbody>
 {rows}
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
-<p class="muted"><a href="../">All datasets</a> · <a href="../feeds/radar.xml">RSS</a></p>
+<p class="muted"><a href="../">All datasets</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a></p>
 <script>{ATTRIBUTION_JS}
-{RELATIVE_TIME_JS}</script>
+{RELATIVE_TIME_JS}
+{LEAD_REF_JS}</script>
+</body></html>
+"""
+
+
+# ----------------------------------------------------------------------------- matrix pages
+MATRIX_DIR = "intel"
+PREVIEW_FIELDS = ["company", "intent_tag", "stack", "openings", "latest_posted_at"]
+MIGRATION_PREVIEW_FIELDS = ["company", "migration_path", "intent_tag", "stack", "openings"]
+_SLUG_SPECIAL = {"c++": "cpp", "c#": "csharp", ".net": "dotnet", "next.js": "nextjs", "node.js": "nodejs",
+                 "vector db": "vector-databases", "llms": "llm"}
+
+
+def tech_slug(tech: str) -> str:
+    t = tech.lower()
+    return _SLUG_SPECIAL.get(t) or re.sub(r"[^a-z0-9]+", "-", t.replace("+", "plus").replace("#", "sharp")).strip("-")
+
+
+@dataclass
+class MatrixPage:
+    kind: str                      # hiring | migrations
+    tech: str
+    path: str                      # intel/companies-hiring-python-engineers.html
+    title: str
+    description: str
+    stats: dict[str, Any]
+    columns: list[str]
+    rows: list[dict[str, Any]]
+    updated_at: str
+    offer: dict[str, Any] = field(default_factory=dict)  # niche, title, price_cents, checkout_url, subscription_url...
+    related: list[tuple[str, str]] = field(default_factory=list)  # (title, path) for internal links
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+
+
+def _within(ts: str, now: datetime, days: int) -> bool:
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return now - dt <= timedelta(days=days)
+
+
+def _preview(records: list[dict[str, Any]], columns: list[str], n: int = 5) -> list[dict[str, Any]]:
+    """Derived facts only: no contact details, descriptions or text quoted from postings."""
+    ranked = sorted(records, key=lambda r: (-int(r.get("intent_score") or 0), -int(r.get("urgency_score") or 0),
+                                            r.get("company", "").lower()))
+    out = []
+    for r in ranked[:n]:
+        row = {c: r.get(c) for c in columns}
+        if "stack" in row:
+            row["stack"] = (r.get("stack") or [])[:5]
+        if row.get("latest_posted_at"):
+            row["latest_posted_at"] = str(row["latest_posted_at"])[:10]
+        out.append(row)
+    return out
+
+
+def compile_matrix_pages(datasets: dict[str, list[dict[str, Any]]], offers: dict[str, dict[str, Any]], now: datetime,
+                         min_companies: int = 5, min_migrations: int = 3, max_pages: int = 60) -> list[MatrixPage]:
+    """Build the search-intent page set from every niche's tech radar.
+
+    ``datasets``: niche -> records (``exports/intel/<niche>/tech_radar.json``).
+    ``offers``: niche -> {title, price_cents, currency, checkout_url, subscription_url, ...}."""
+    by_tech: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
+    for niche, records in datasets.items():
+        for r in records:
+            for tech in r.get("stack") or []:
+                # one row per company per technology, across niches (keep the strongest record)
+                cur = by_tech.setdefault(tech, {}).get(_norm(r.get("company", "")))
+                if cur is None or (r.get("intent_score") or 0) > (cur[1].get("intent_score") or 0):
+                    by_tech[tech][_norm(r.get("company", ""))] = (niche, r)
+    migrating: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
+    for niche, records in datasets.items():
+        for r in records:
+            path = r.get("migration_path") or ""
+            ends = [p.strip() for p in path.split("→")] if path else []
+            if r.get("intent_category") == "migration" and not ends:
+                ends = [t for t in (r.get("stack") or []) if t in ("Kubernetes", "AWS", "GCP", "Azure", "PostgreSQL", "Snowflake")]
+            for tech in ends:
+                if tech and tech not in ("Cloud", "On-prem"):
+                    migrating.setdefault(tech, {})[_norm(r.get("company", ""))] = (niche, r)
+
+    def offer_for(entries: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+        counts = Counter(n for n, _ in entries if offers.get(n, {}).get("checkout_url"))
+        return dict(offers[counts.most_common(1)[0][0]]) if counts else {}
+
+    stamp = now.isoformat(timespec="seconds")
+    month = now.strftime("%B %Y")
+    pages: list[MatrixPage] = []
+    for tech, entries_map in sorted(by_tech.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        entries = list(entries_map.values())
+        if len(entries) < min_companies:
+            continue
+        recs = [r for _, r in entries]
+        co = Counter(t for r in recs for t in (r.get("stack") or []) if t != tech)
+        intent = Counter((r.get("commercial_signals") or [None])[0] for r in recs if r.get("intent_score"))
+        stats = {
+            "companies": len(recs), "roles": sum(int(r.get("openings") or 0) for r in recs),
+            "companies_7d": sum(1 for r in recs if _within(r.get("latest_posted_at", ""), now, 7)),
+            "companies_30d": sum(1 for r in recs if _within(r.get("latest_posted_at", ""), now, 30)),
+            "high_intent": sum(1 for r in recs if r.get("intent_level") == "High"),
+            "remote": sum(1 for r in recs if r.get("remote_friendly")),
+            "co_stack": co.most_common(6), "intent_mix": [(k, v) for k, v in intent.most_common(5) if k],
+        }
+        pages.append(MatrixPage(
+            kind="hiring", tech=tech, path=f"{MATRIX_DIR}/companies-hiring-{tech_slug(tech)}-engineers.html",
+            title=f"{len(recs)} Companies Hiring {tech} Engineers ({month})",
+            description=(f"{len(recs)} companies are hiring {tech} engineers right now ({stats['roles']} open roles, "
+                         f"{stats['companies_7d']} posted in the last 7 days). See their stacks, buying-intent signals "
+                         f"and hiring velocity, with a free 5-company preview."),
+            stats=stats, columns=PREVIEW_FIELDS, rows=_preview(recs, PREVIEW_FIELDS), updated_at=stamp,
+            offer=offer_for(entries),
+        ))
+    for tech, entries_map in sorted(migrating.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        entries = list(entries_map.values())
+        if len(entries) < min_migrations:
+            continue
+        recs = [r for _, r in entries]
+        paths = Counter(r.get("migration_path") for r in recs if r.get("migration_path"))
+        stats = {
+            "companies": len(recs), "roles": sum(int(r.get("openings") or 0) for r in recs),
+            "companies_7d": sum(1 for r in recs if _within(r.get("latest_posted_at", ""), now, 7)),
+            "companies_30d": sum(1 for r in recs if _within(r.get("latest_posted_at", ""), now, 30)),
+            "high_intent": sum(1 for r in recs if r.get("intent_level") == "High"),
+            "paths": paths.most_common(6),
+            "into": sum(1 for r in recs if (r.get("migration_path") or "").endswith(tech)),
+            "away": sum(1 for r in recs if (r.get("migration_path") or "").startswith(tech + " ")),
+        }
+        pages.append(MatrixPage(
+            kind="migrations", tech=tech, path=f"{MATRIX_DIR}/{tech_slug(tech)}-infrastructure-migrations.html",
+            title=f"{tech} Infrastructure Migrations: {len(recs)} Companies Hiring for Them ({month})",
+            description=(f"{len(recs)} companies are hiring engineers for {tech} migration work ({stats['into']} moving to "
+                         f"{tech}, {stats['away']} moving away). Migration paths, stacks and intent scores, with a free preview."),
+            stats=stats, columns=MIGRATION_PREVIEW_FIELDS, rows=_preview(recs, MIGRATION_PREVIEW_FIELDS), updated_at=stamp,
+            offer=offer_for(entries),
+        ))
+    pages = pages[:max_pages]
+    for p in pages:  # internal links: the same technology's other page, then the biggest neighbours
+        same = [(q.title, q.path) for q in pages if q.tech == p.tech and q.path != p.path]
+        others = [(q.title, q.path) for q in pages if q.tech != p.tech and q.kind == p.kind][:5]
+        p.related = (same + others)[:6]
+    return pages
+
+
+def dataset_jsonld(page: MatrixPage, url: str, brand: str) -> dict[str, Any]:
+    offer = page.offer or {}
+    data: dict[str, Any] = {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": page.title,
+        "description": page.description,
+        "keywords": [page.tech, f"{page.tech} hiring", "tech stack", "buying intent", "B2B leads",
+                     *(["migration"] if page.kind == "migrations" else [])],
+        "creator": {"@type": "Organization", "name": brand},
+        "dateModified": page.updated_at,
+        "isAccessibleForFree": False,
+        "variableMeasured": ["company", "technology stack", "open roles", "intent score", "intent tag",
+                             *(["migration path"] if page.kind == "migrations" else [])],
+        "measurementTechnique": "Aggregated from public job-board APIs; stack fingerprinting and buying-intent classification",
+        "size": f"{page.stats.get('companies', 0)} companies",
+    }
+    if url.startswith("http"):
+        data["url"] = url
+    if offer.get("checkout_url"):
+        data["offers"] = {"@type": "Offer", "price": f"{int(offer.get('price_cents') or 0) / 100:.2f}",
+                          "priceCurrency": str(offer.get("currency") or "usd").upper(),
+                          "availability": "https://schema.org/InStock", "url": offer["checkout_url"]}
+    return data
+
+
+def render_matrix_page(page: MatrixPage, base_url: str = "", brand: str = "Tech Stack Intel",
+                       lead_capture_url: str = "", sample_size: int = 10) -> str:
+    url = f"{base_url.rstrip('/')}/{page.path}" if base_url else ""
+    title, desc = html.escape(page.title), html.escape(page.description[:300])
+    st = page.stats
+    kpis = [("Companies", st.get("companies")), ("Open roles", st.get("roles")), ("Posted in 7 days", st.get("companies_7d")),
+            ("Posted in 30 days", st.get("companies_30d")), ("High buying intent", st.get("high_intent"))]
+    kpi_html = "".join(f'<div class="kpi"><b>{html.escape(str(v))}</b>{html.escape(k)}</div>' for k, v in kpis if v is not None)
+    facts = []
+    if page.kind == "hiring":
+        velocity = (f"{st['companies_7d']} of the {st['companies']} companies posted a {page.tech} role in the last 7 days"
+                    f" and {st['companies_30d']} in the last 30.")
+        facts.append(velocity)
+        if st.get("co_stack"):
+            facts.append(f"Most common alongside {page.tech}: " + ", ".join(f"{t} ({n})" for t, n in st["co_stack"]) + ".")
+        if st.get("intent_mix"):
+            facts.append("Buying signals: " + ", ".join(f"{t} ({n})" for t, n in st["intent_mix"]) + ".")
+        if st.get("remote"):
+            facts.append(f"{st['remote']} hire remotely.")
+    else:
+        facts.append(f"{st.get('into', 0)} companies are moving to {page.tech}; {st.get('away', 0)} are moving away from it.")
+        if st.get("paths"):
+            facts.append("Migration paths: " + ", ".join(f"{p} ({n})" for p, n in st["paths"]) + ".")
+    facts_html = "".join(f"<li>{html.escape(f)}</li>" for f in facts)
+    head = "".join(f"<th>{html.escape(c.replace('_', ' '))}</th>" for c in page.columns)
+    rows = "\n".join("<tr>" + "".join(
+        f'<td>{("<span class=tag>" + html.escape(_cell(r.get(c))) + "</span>") if c == "intent_tag" and r.get(c) else html.escape(_cell(r.get(c)))}</td>'
+        for c in page.columns) + "</tr>" for r in page.rows)
+    offer = page.offer or {}
+    cta = ""
+    if offer.get("checkout_url"):
+        cta = (f'<a class="cta" data-checkout href="{html.escape(offer["checkout_url"])}" rel="noopener">'
+               f'Get the full dataset: ${int(offer.get("price_cents") or 0) / 100:.2f}</a>')
+        if offer.get("subscription_url") and offer.get("subscription_price_cents"):
+            cta += (f' <a class="cta alt" data-checkout href="{html.escape(offer["subscription_url"])}" rel="noopener">'
+                    f'Weekly updates: ${int(offer["subscription_price_cents"]) / 100:.2f}/{html.escape(offer.get("subscription_interval", "month"))}</a>')
+    lander = f'<a href="../{html.escape(offer["niche"])}/">{html.escape(offer.get("title", "the dataset"))}</a>' if offer.get("niche") else ""
+    related = "".join(f'<li><a href="../{html.escape(p)}">{html.escape(t)}</a></li>' for t, p in page.related)
+    canonical = f'<link rel="canonical" href="{html.escape(url)}">' if url else ""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta name="description" content="{desc}">
+{canonical}
+<meta property="og:type" content="website"><meta property="og:title" content="{title}"><meta property="og:description" content="{desc}">
+{f'<meta property="og:url" content="{html.escape(url)}">' if url else ""}
+<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{desc}">
+<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="../{FEED_PATH}">
+<script type="application/ld+json">
+{_jsonld_script(dataset_jsonld(page, url, brand))}
+</script>
+<style>{CSS}</style></head><body>
+<p class="muted"><a href="../">Home</a> › <a href="./">Hiring intel</a> › {html.escape(page.tech)}</p>
+<h1>{title}</h1>
+<p class="lede">{html.escape(page.description)}</p>
+<p class="proof">Updated <time class="ago" datetime="{html.escape(page.updated_at)}">{html.escape(page.updated_at[:16].replace("T", " "))} UTC</time></p>
+<div class="kpis">{kpi_html}</div>
+<ul>{facts_html}</ul>
+{cta}
+{lead_form_html(lead_capture_url, offer.get("niche", ""), page.path, sample_size)}
+<h2>Preview: 5 of {st.get("companies", 0)} companies</h2>
+<div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>
+{rows}
+</tbody></table></div>
+<p class="muted">Derived from public job postings: company-level stack fingerprints and buying-intent signals, no contact details. {("Full data: " + lander + ".") if lander else ""}</p>
+{f"<h2>Related</h2><ul>{related}</ul>" if related else ""}
+<script>{ATTRIBUTION_JS}
+{RELATIVE_TIME_JS}
+{LEAD_REF_JS}</script>
+</body></html>
+"""
+
+
+def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str) -> str:
+    def section(kind: str, heading: str) -> str:
+        items = "".join(f'<li><a href="{html.escape(p.path.split("/", 1)[1])}">{html.escape(p.title)}</a></li>'
+                        for p in pages if p.kind == kind)
+        return f"<h2>{heading}</h2><ul>{items}</ul>" if items else ""
+
+    canonical = f'<link rel="canonical" href="{html.escape(base_url.rstrip("/"))}/{MATRIX_DIR}/">' if base_url else ""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hiring intel by technology: {html.escape(site_title)}</title>
+<meta name="description" content="Which companies are hiring for each technology, and who is migrating: live counts, stacks and buying-intent signals.">
+{canonical}<style>{CSS}</style></head><body>
+<p class="muted"><a href="../">Home</a></p>
+<h1>Hiring intel by technology</h1>
+{section("hiring", "Companies hiring, by technology")}
+{section("migrations", "Infrastructure migrations")}
 </body></html>
 """
 
@@ -233,15 +539,23 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str) -> st
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 </body></html>
 """
 
 
-def render_sitemap(pages: list[ProductPage], base_url: str) -> str:
+def matrix_url(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path}" if base_url else path
+
+
+def render_sitemap(pages: list[ProductPage], base_url: str, matrix: list[MatrixPage] | None = None) -> str:
     ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
     urlset = ET.Element("urlset", xmlns=ns)
-    for loc, lastmod in [(page_url(base_url, ""), None)] + [(page_url(base_url, p.slug), p.updated_at) for p in pages]:
+    entries = [(page_url(base_url, ""), None)] + [(page_url(base_url, p.slug), p.updated_at) for p in pages]
+    if matrix:
+        entries.append((matrix_url(base_url, f"{MATRIX_DIR}/"), max(m.updated_at for m in matrix)))
+        entries += [(matrix_url(base_url, m.path), m.updated_at) for m in matrix]
+    for loc, lastmod in entries:
         u = ET.SubElement(urlset, "url")
         ET.SubElement(u, "loc").text = loc
         if lastmod:
@@ -298,10 +612,21 @@ class SiteBuilder:
     def base_url(self) -> str:
         return self.config.pages_base_url.rstrip("/")
 
-    def build(self, pages: list[ProductPage], feed_items: list[FeedItem], now: datetime) -> dict[str, str | bytes]:
+    @property
+    def lead_capture_url(self) -> str:
+        cfg = self.config
+        base = cfg.lead_capture_base if cfg.lead_magnet_enabled else ""
+        return f"{base}/lead-magnet/capture" if base else ""
+
+    def build(self, pages: list[ProductPage], feed_items: list[FeedItem], now: datetime,
+              matrix: list[MatrixPage] | None = None, indexnow_key: str = "") -> dict[str, str | bytes]:
         cfg = self.config
         out: dict[str, str | bytes] = {}
+        matrix = matrix or []
+        capture = self.lead_capture_url
         for p in pages:
+            if capture and not p.lead_capture_url and p.kind == "dataset":
+                p.lead_capture_url = capture
             out[f"{p.slug}/index.html"] = render_product_page(p, self.base_url, cfg.site_title)
             label = f"{p.niche.split('-')[0]} radar"
             out[f"{p.slug}/radar-badge.svg"] = badge_for(label, p.metrics or {})
@@ -313,7 +638,13 @@ class SiteBuilder:
         total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")
         out["radar-badge.svg"] = render_badge_svg("tech radar", f"{total_roles} hiring signals tracked")
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title)
-        out["sitemap.xml"] = render_sitemap(pages, self.base_url)
+        for m in matrix:
+            out[m.path] = render_matrix_page(m, self.base_url, cfg.site_title, capture, cfg.lead_magnet_sample_size)
+        if matrix:
+            out[f"{MATRIX_DIR}/index.html"] = render_matrix_index(matrix, self.base_url, cfg.site_title)
+        if indexnow_key:
+            out[f"{indexnow_key}.txt"] = indexnow_key
+        out["sitemap.xml"] = render_sitemap(pages, self.base_url, matrix)
         out["robots.txt"] = "User-agent: *\nAllow: /\n" + (f"Sitemap: {self.base_url}/sitemap.xml\n" if self.base_url else "")
         out[FEED_PATH] = render_rss(feed_items, self.base_url, cfg.site_title, now)
         for rel, content in out.items():
@@ -335,3 +666,48 @@ class SiteBuilder:
             res = self.github.put_file(cfg.github_pages_repo, prefix + rel, content, f"site: update {rel}", branch)
             changed += bool(res.get("changed"))
         return changed
+
+
+# ----------------------------------------------------------------------------- IndexNow
+INDEXNOW_ENDPOINT = "https://api.indexnow.org/indexnow"
+
+
+def indexnow_key(config: "Config", state: Any) -> str:
+    """The configured key, or one generated once and kept in state (the key file is published with the site)."""
+    if config.indexnow_key:
+        return config.indexnow_key
+    key = state.get("indexnow_key")
+    if not key:
+        key = secrets.token_hex(16)
+        state.set("indexnow_key", key)
+    return key
+
+
+def changed_urls(out: dict[str, str | bytes], base_url: str, previous: dict[str, str]) -> tuple[list[str], dict[str, str]]:
+    """HTML pages whose content changed since the last submission (by hash). Returns (urls, new hashes)."""
+    hashes: dict[str, str] = {}
+    urls = []
+    for rel, content in sorted(out.items()):
+        if not rel.endswith(".html"):
+            continue
+        body = content if isinstance(content, bytes) else content.encode()
+        # the relative-time script and timestamps change every build; hash without the timestamp lines
+        digest = hashlib.sha256(re.sub(rb"<time[^>]*>.*?</time>|\d{4}-\d\d-\d\dT[\d:]+(?:\+00:00)?", b"", body)).hexdigest()[:16]
+        hashes[rel] = digest
+        if previous.get(rel) != digest:
+            loc = rel[: -len("index.html")] if rel.endswith("index.html") else rel
+            urls.append(f"{base_url.rstrip('/')}/{loc}")
+    return urls, hashes
+
+
+def submit_indexnow(http: Any, base_url: str, key: str, urls: list[str]) -> int:
+    """POST changed URLs to IndexNow (shared by Bing, Yandex, Seznam, Naver). Returns the HTTP status."""
+    from urllib.parse import urlsplit
+
+    if not urls or not base_url.startswith("https://"):
+        return 0
+    resp = http.post(INDEXNOW_ENDPOINT, json_body={
+        "host": urlsplit(base_url).netloc, "key": key, "keyLocation": f"{base_url.rstrip('/')}/{key}.txt",
+        "urlList": urls[:10000],
+    }, headers={"Content-Type": "application/json; charset=utf-8"}, check_robots=False, attempts=2)
+    return resp.status

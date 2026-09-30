@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoMonetize control panel</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">AutoMonetize <span class="muted">control panel</span></div>
+  <div class="badges" id="badges" aria-live="polite">
+    <span class="badge" id="b-supervisor">Supervisor …</span>
+    <span class="badge" id="b-webhook">Webhook …</span>
+    <span class="badge" id="b-engine">Engine …</span>
+    <span class="badge" id="b-mode">…</span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="control" aria-selected="true">Control</button>
+    <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+    <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
+    <button id="logout" class="link">Sign out</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-control" class="tab">
+    <div class="grid kpis">
+      <div class="card kpi"><div class="label">Today's net revenue</div><div class="value" id="k-revenue">…</div>
+        <div class="bar"><div class="fill" id="k-revenue-bar"></div></div><div class="sub" id="k-target"></div></div>
+      <div class="card kpi"><div class="label">MRR</div><div class="value" id="k-mrr">…</div><div class="sub" id="k-subs"></div></div>
+      <div class="card kpi"><div class="label">Active niche</div><div class="value small" id="k-niche">…</div><div class="sub" id="k-niche-sub"></div></div>
+      <div class="card kpi"><div class="label">Uptime</div><div class="value" id="k-uptime">…</div><div class="sub" id="k-cycle"></div></div>
+      <div class="card kpi"><div class="label">Free leads</div><div class="value" id="k-leads">…</div><div class="sub" id="k-leads-sub"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>Supervision</h2>
+      <p class="muted" id="engine-reason"></p>
+      <div class="actions">
+        <button class="primary" data-action="start">Start engine</button>
+        <button data-action="pause" id="btn-pause">Pause / sleep</button>
+        <button data-action="resume" id="btn-resume" hidden>Resume</button>
+        <button data-action="restart" title="Reload settings from .env">Restart (apply settings)</button>
+        <button class="danger" data-action="kill">Emergency kill switch</button>
+      </div>
+      <p class="message" id="control-message" role="status"></p>
+      <details class="muted"><summary>What these do</summary>
+        <ul>
+          <li><b>Start</b> clears a pause, a kill-switch stop or a quarantine, and starts the supervisor (through launchd when it's installed).</li>
+          <li><b>Pause / sleep</b> skips engine cycles and holds nothing awake, so the Mac can sleep. Paid orders and free-sample signups keep being handled.</li>
+          <li><b>Restart</b> reloads the settings you saved.</li>
+          <li><b>Kill switch</b> stops everything, including the webhook listener, until you press Start.</li>
+        </ul>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>Recent actions</h2>
+      <div class="table-wrap"><table id="recent-actions"><thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-settings" class="tab" hidden>
+    <form id="settings-form" autocomplete="off" novalidate>
+      <div id="settings-groups"></div>
+      <div class="card sticky-actions">
+        <button type="submit" class="primary" id="save-settings">Save &amp; verify</button>
+        <button type="button" id="run-preflight">Run preflight only</button>
+        <span class="muted" id="env-path"></span>
+      </div>
+    </form>
+    <div class="card" id="settings-result" hidden>
+      <h2>Result</h2>
+      <div id="settings-warnings"></div>
+      <div class="table-wrap"><table id="checks"><thead><tr><th>Step</th><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-logs" class="tab" hidden>
+    <div class="card">
+      <h2>Action log <span class="muted">(SQLite)</span></h2>
+      <div class="table-wrap tall"><table id="log-actions"><thead><tr><th>Time</th><th>Cycle</th><th>Action</th><th>Status</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div id="log-files"></div>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

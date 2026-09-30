@@ -8,7 +8,20 @@ For each hiring company in a niche this produces one record with:
 * ``open_positions`` and ``openings``
 * ``intent_signals``: migration, legacy refactor, ERP integration, new team, greenfield, scaling,
   urgent hire, recent funding
-* ``urgency_score`` (0-100)
+* ``urgency_score`` (0-100): how hard the company is hiring
+* **commercial buying intent** (``commercial_intent``): transitions that come with budget, not
+  just headcount. Three families:
+
+  - *Migration & modernization*: "moving from Snowflake to BigQuery", "legacy Oracle to
+    Postgres", "Kubernetes migration", "migrating to AWS" → Cloud / Database / Kubernetes /
+    Platform Migration, with the ``migration_path`` when both ends are named.
+  - *Compliance & security*: SOC 2, HIPAA, FedRAMP, PCI DSS, ISO 27001, HITRUST, CMMC, zero trust
+    and hardening work; stronger when the posting says they're *pursuing* the certification.
+  - *Leadership & scaling*: founding engineer, first DevOps/SRE/data/security hire, head of
+    infrastructure/platform: someone about to choose a stack with a fresh budget.
+
+  Each record gets an ``intent_score`` (0-100) and an ``intent_tag`` such as
+  ``Urgency: High (Cloud Migration)``, surfaced in the radar, CSV, previews and landers.
 * ``careers_url`` and whether it was verified live with an HTTP 2xx (``careers_url_verified``)
 
 Outputs go to ``exports/intel/<niche>/``: ``tech_radar.json``, ``tech_radar.csv`` and
@@ -72,7 +85,8 @@ INTENT_TRIGGERS: dict[str, tuple[int, str]] = {
 }
 
 INTEL_FIELDS = [
-    "company", "domain", "urgency_score", "intent_signals", "openings", "open_positions", "stack",
+    "company", "domain", "intent_tag", "intent_score", "migration_path", "commercial_signals",
+    "urgency_score", "intent_signals", "openings", "open_positions", "stack",
     "cloud", "databases", "data_platform", "infrastructure", "careers_url", "careers_url_verified",
     "remote_friendly", "latest_posted_at", "sources",
 ]
@@ -95,6 +109,157 @@ def fingerprint(text: str) -> dict[str, list[str]]:
 
 def intent_signals(text: str) -> list[str]:
     return [label for label, (_, rx) in _TRIGGERS.items() if rx.search(text)]
+
+
+# ----------------------------------------------------------------------------- commercial intent
+# Legacy and platform endpoints that aren't in FINGERPRINTS but matter as migration sources/targets.
+EXTRA_TECH: dict[str, list[str]] = {
+    "Oracle": [r"oracle( db| database)?"], "SQL Server": [r"sql server", r"mssql"], "DB2": [r"db2"],
+    "Teradata": [r"teradata"], "Netezza": [r"netezza"], "Sybase": [r"sybase"], "Hadoop": [r"hadoop", r"hdfs"],
+    "Mainframe": [r"mainframes?", r"cobol"], "Heroku": [r"heroku"], "VMware": [r"vmware", r"vsphere"],
+    "On-prem": [r"on-?prem(ise|ises)?", r"(our own )?data ?cent(er|re)s?", r"bare[- ]metal", r"self-hosted"],
+    "Cloud": [r"(the )?cloud", r"public cloud"], "Microservices": [r"micro-?services"], "Monolith": [r"(a |the |our )?monolith"],
+    "ECS": [r"ecs"], "Serverless": [r"serverless", r"lambda"], "Informatica": [r"informatica"], "SAS": [r"sas"],
+}
+CLOUD_TARGETS = {"AWS", "GCP", "Azure", "Cloud", "Serverless"}
+ONPREM_SOURCES = {"On-prem", "Mainframe", "VMware"}
+DATA_TECH = set(FINGERPRINTS["databases"]) | set(FINGERPRINTS["data_platform"]) | {
+    "Oracle", "SQL Server", "DB2", "Teradata", "Netezza", "Sybase", "Hadoop", "Informatica", "SAS"}
+_EXTRA_COMPILED = {name: re.compile(r"^(" + "|".join(p) + r")$", re.I) for name, p in EXTRA_TECH.items()}
+_FULL_COMPILED = {name: re.compile(r"^(" + "|".join(p) + r")$", re.I)
+                  for names in FINGERPRINTS.values() for name, p in names.items()}
+
+_VERB = r"(?:migrat\w*|mov(?:e|es|ed|ing)|transition(?:s|ed|ing)?|switch(?:es|ed|ing)?|port(?:s|ed|ing)?|replatform\w*|shift(?:s|ed|ing)?)"
+_END = r"(?=\s*(?:[.;,:!?()\n]|$)|\s+(?:and|with|while|as|by|in|using|over|this|next|within|for)\b)"
+_ENDPOINT = r"[\w.+#/-]+(?:\s+[\w.+#/-]+){0,3}?"
+MIGRATION_PATTERNS = [
+    ("from_to", re.compile(rf"\b{_VERB}\b[^.;\n]{{0,40}}?\bfrom\s+(?P<src>{_ENDPOINT})\s+(?:to|onto|into|->|→)\s+(?P<dst>{_ENDPOINT}){_END}", re.I)),
+    ("from_to", re.compile(rf"\blegacy\s+(?P<src>{_ENDPOINT})\s+(?:to|->|→)\s+(?P<dst>{_ENDPOINT}){_END}", re.I)),
+    ("from", re.compile(rf"\b{_VERB}\s+(?:away\s+)?(?:off(?:\s+of)?|from)\s+(?P<src>{_ENDPOINT}){_END}", re.I)),
+    ("to", re.compile(rf"\b{_VERB}\s+(?:\w+\s+){{0,3}}?(?:to|onto|into)\s+(?P<dst>{_ENDPOINT}){_END}", re.I)),
+    ("named", re.compile(r"\b(?P<dst>[\w.+#-]+(?:\s+[\w.+#-]+)?)\s+(?:migrations?|re-?platforming)\b", re.I)),
+]
+MODERNIZATION = re.compile(r"\b(legacy (?:system|code|stack|platform|application)s?|moderni[sz](?:e|es|ing|ation)|"
+                           r"re-?architect\w*|strangler|break(?:ing)? (?:up|apart) (?:the |our |a )?monolith)\b", re.I)
+
+# label, weight, regex
+COMPLIANCE_PATTERNS: list[tuple[str, int, re.Pattern[str]]] = [
+    ("FedRAMP Authorization", 50, re.compile(r"\bfed-?ramp\b", re.I)),
+    ("SOC 2 Compliance", 45, re.compile(r"\bsoc[\s-]?2\b(?:\s+type\s+(?:ii|2|i|1)\b)?", re.I)),
+    ("HIPAA Compliance", 45, re.compile(r"\bhipaa\b", re.I)),
+    ("PCI DSS Compliance", 45, re.compile(r"\bpci[\s-]?dss\b|\bpci (?:compliance|certification)\b", re.I)),
+    ("HITRUST Certification", 45, re.compile(r"\bhitrust\b", re.I)),
+    ("CMMC Certification", 45, re.compile(r"\bcmmc\b", re.I)),
+    ("ISO 27001 Certification", 40, re.compile(r"\biso[\s/-]?27001\b", re.I)),
+    ("Security Hardening", 30, re.compile(r"\b(?:security|infrastructure|system|platform) hardening\b|\bzero[\s-]trust\b", re.I)),
+    ("GDPR Compliance", 20, re.compile(r"\bgdpr\b", re.I)),
+]
+PURSUING = re.compile(r"\b(?:achiev|obtain|pursu|prepar|work(?:ing)? towards?|get(?:ting)?|pass(?:ing)?|earn|attain|lead(?:ing)?|driv(?:e|ing))\w*"
+                      r"\s+(?:\w+\s+){0,3}?(?:soc|hipaa|fed-?ramp|pci|iso|hitrust|cmmc)", re.I)
+
+_ROLE = r"devops|sre|site reliability|platform|infrastructure|infra|data|security|ml|machine learning|backend|cloud|engineering"
+LEADERSHIP_PATTERNS: list[tuple[str, int, re.Pattern[str]]] = [
+    ("Founding Engineer", 50, re.compile(r"\bfounding\s+(?:\w+\s+){0,2}?(?:engineer|developer|cto|architect|team member)s?\b", re.I)),
+    ("First {role} Hire", 45, re.compile(rf"\b(?:our|the|a)?\s*first\s+(?:dedicated\s+|full[\s-]time\s+|in-house\s+)?(?P<role>{_ROLE})\s+"
+                                         r"(?:engineer|hire|person|lead|role)\b", re.I)),
+    ("Head of {role}", 40, re.compile(rf"\b(?:head|director|vp|vice president)\s+of\s+(?P<role>{_ROLE})\b", re.I)),
+    ("Team Build-out", 25, re.compile(r"\bbuild(?:ing)?\s+(?:out\s+)?(?:the|a|our)\s+(?:\w+\s+)?team\b", re.I)),
+]
+_ROLE_LABELS = {"devops": "DevOps", "sre": "SRE", "site reliability": "SRE", "ml": "ML", "machine learning": "ML",
+                "infra": "Infrastructure"}
+
+INTENT_LEVELS = ((60, "High"), (35, "Medium"), (1, "Low"))
+
+
+def resolve_tech(fragment: str) -> str | None:
+    """Map a phrase like "legacy Oracle" or "the cloud" to a canonical technology, trying
+    shorter suffixes/prefixes so "our on-prem data center" still resolves."""
+    words = re.sub(r"[()\[\]\"']", " ", fragment or "").split()
+    stop = {"our", "the", "a", "an", "legacy", "existing", "old", "current", "new", "modern", "self-managed", "managed"}
+    words = [w for w in words if w.lower() not in stop] or words
+    for size in range(min(3, len(words)), 0, -1):
+        for start in range(0, len(words) - size + 1):
+            cand = " ".join(words[start:start + size]).strip(".,")
+            for table in (_FULL_COMPILED, _EXTRA_COMPILED):
+                for name, rx in table.items():
+                    if rx.match(cand):
+                        return name
+    return None
+
+
+def _migration_label(src: str | None, dst: str | None) -> str:
+    if dst in CLOUD_TARGETS or src in ONPREM_SOURCES:
+        return "Cloud Migration"
+    if dst == "Kubernetes":
+        return "Kubernetes Migration"
+    if (src in DATA_TECH) or (dst in DATA_TECH):
+        return "Database Migration"
+    if dst in FINGERPRINTS["infrastructure"] or dst in ("Microservices", "ECS", "Serverless"):
+        return "Platform Migration"
+    return "Stack Migration"
+
+
+def commercial_intent(text: str, openings: int = 1, freshest_age_days: float | None = None) -> dict[str, Any]:
+    """Score buying intent (0-100) from a company's postings. Pure function."""
+    hits: list[dict[str, Any]] = []  # {category, label, weight, evidence}
+    path = ""
+    for kind, rx in MIGRATION_PATTERNS:
+        for m in rx.finditer(text):
+            src = resolve_tech(m.group("src")) if "src" in rx.groupindex else None
+            dst = resolve_tech(m.group("dst")) if "dst" in rx.groupindex else None
+            if kind == "named" and dst is None and m.group("dst").lower().split()[-1] in ("cloud", "database", "data", "platform"):
+                dst = {"cloud": "Cloud", "platform": "Kubernetes" if "kubernetes" in m.group("dst").lower() else None}.get(
+                    m.group("dst").lower().split()[-1], "PostgreSQL" if "database" in m.group("dst").lower() else None)
+                label = "Cloud Migration" if dst == "Cloud" else "Database Migration" if dst else "Platform Migration"
+                hits.append({"category": "migration", "label": label, "weight": 40, "evidence": m.group(0)})
+                continue
+            if src is None and dst is None:
+                continue  # "moving from junior to senior", "switching to a new team"
+            if src and dst and src == dst:
+                continue
+            explicit = bool(src and dst)
+            if explicit and not path:
+                path = f"{src} → {dst}"
+            hits.append({"category": "migration", "label": _migration_label(src, dst), "weight": 55 if explicit else 45,
+                         "evidence": m.group(0)})
+    if not any(h["category"] == "migration" for h in hits):
+        m = MODERNIZATION.search(text)
+        if m:
+            hits.append({"category": "migration", "label": "Legacy Modernization", "weight": 30, "evidence": m.group(0)})
+    pursuing = bool(PURSUING.search(text))
+    for label, weight, rx in COMPLIANCE_PATTERNS:
+        m = rx.search(text)
+        if m:
+            boost = 10 if pursuing and label not in ("Security Hardening", "GDPR Compliance") else 0
+            hits.append({"category": "compliance", "label": label, "weight": weight + boost, "evidence": m.group(0)})
+    for label, weight, rx in LEADERSHIP_PATTERNS:
+        m = rx.search(text)
+        if m:
+            role = (m.groupdict().get("role") or "").lower()
+            nice = _ROLE_LABELS.get(role, role.title())
+            hits.append({"category": "leadership", "label": label.format(role=nice), "weight": weight, "evidence": m.group(0)})
+    if not hits:
+        return {"intent_score": 0, "intent_level": "", "intent_tag": "", "intent_category": "", "commercial_signals": [],
+                "migration_path": "", "intent_evidence": []}
+    best_by_cat: dict[str, dict[str, Any]] = {}
+    for h in hits:
+        if h["weight"] > best_by_cat.get(h["category"], {"weight": -1})["weight"]:
+            best_by_cat[h["category"]] = h
+    ranked = sorted(best_by_cat.values(), key=lambda h: -h["weight"])
+    labels = list(dict.fromkeys(h["label"] for h in sorted(hits, key=lambda h: -h["weight"])))
+    score = ranked[0]["weight"] + 0.5 * sum(h["weight"] for h in ranked[1:])
+    score += min(10, 3 * (len(labels) - 1))
+    score += min(10, 3 * max(0, openings - 1))
+    if freshest_age_days is not None:
+        score += 10 if freshest_age_days <= 7 else 5 if freshest_age_days <= 14 else 0
+    score = max(0, min(100, round(score)))
+    level = next(name for floor, name in INTENT_LEVELS if score >= floor)
+    evidence = list(dict.fromkeys(re.sub(r"\s+", " ", h["evidence"]).strip()[:60] for h in hits))[:3]
+    return {
+        "intent_score": score, "intent_level": level, "intent_tag": f"Urgency: {level} ({ranked[0]['label']})",
+        "intent_category": ranked[0]["category"], "commercial_signals": labels, "migration_path": path,
+        "intent_evidence": evidence,
+    }
 
 
 def _age_days(posted_at: str, now: datetime) -> float | None:
@@ -150,6 +315,7 @@ def build_company_records(leads: list[dict[str, Any]], now: datetime) -> list[di
         ages = [a for a in (_age_days(g.get("posted_at", ""), now) for g in group) if a is not None]
         domain = next((g["company_domain"] for g in group if g.get("company_domain")), "")
         positions = sorted({g.get("title", "") for g in group if g.get("title")})
+        intent = commercial_intent(text, len(positions), min(ages) if ages else None)
         record = {
             "company": group[0]["company"],
             "domain": domain,
@@ -164,6 +330,7 @@ def build_company_records(leads: list[dict[str, Any]], now: datetime) -> list[di
             "intent_signals": signals,
             "urgency_score": urgency_score(signals, len(positions), min(ages) if ages else None,
                                            any(g.get("salary_min") for g in group)),
+            **intent,
             "careers_candidates": careers_candidates(domain, group),
             "careers_url": "",
             "careers_url_verified": False,
@@ -188,7 +355,13 @@ def render_tech_radar_md(niche_label: str, records: list[dict[str, Any]], genera
     ]
     hot = [r for r in records if r["urgency_score"] >= high_urgency]
     signals = Counter(s for r in records for s in r["intent_signals"])
+    buying = [r for r in records if r.get("intent_score", 0) > 0]
+    levels = Counter(r.get("intent_level") for r in buying)
+    cats = Counter(r.get("intent_category") for r in buying)
     lines += [
+        f"- **{len(buying)} companies** show commercial buying intent ({levels.get('High', 0)} high, "
+        f"{levels.get('Medium', 0)} medium): {cats.get('migration', 0)} migrating or modernizing, "
+        f"{cats.get('compliance', 0)} facing compliance work, {cats.get('leadership', 0)} hiring a first/founding lead.",
         f"- **{len(hot)} companies** show high hiring urgency (score ≥ {high_urgency}).",
         f"- **{signals.get('migration', 0)}** are migrating platforms; **{signals.get('legacy_refactor', 0)}** are refactoring legacy systems.",
         f"- **{signals.get('new_team', 0)}** are building new teams; **{signals.get('erp_integration', 0)}** mention ERP integration.",
@@ -206,10 +379,20 @@ def render_tech_radar_md(niche_label: str, records: list[dict[str, Any]], genera
     lines += ["", "## Intent signals", "", "| Signal | Companies |", "|---|---|"]
     for label, c in signals.most_common():
         lines.append(f"| {label.replace('_', ' ')} | {c} |")
-    lines += ["", "## Top 10 by hiring urgency", "", "| Company | Urgency | Openings | Signals | Stack |", "|---|---|---|---|---|"]
+    if buying:
+        lines += ["", "## Commercial buying intent", "",
+                  "| Company | Intent | Score | Migration path | Signals | Stack |", "|---|---|---|---|---|---|"]
+        for r in sorted(buying, key=lambda r: (-r["intent_score"], r["company"].lower()))[:15]:
+            lines.append(
+                f"| {r['company'].replace('|', '/')} | **{r['intent_tag']}** | {r['intent_score']} | "
+                f"{r.get('migration_path') or '-'} | {', '.join(r.get('commercial_signals', [])[:3])} | "
+                f"{', '.join(r['stack'][:5]) or '-'} |"
+            )
+    lines += ["", "## Top 10 by hiring urgency", "", "| Company | Urgency | Intent | Openings | Signals | Stack |",
+              "|---|---|---|---|---|---|"]
     for r in records[:10]:
         lines.append(
-            f"| {r['company'].replace('|', '/')} | {r['urgency_score']} | {r['openings']} | "
+            f"| {r['company'].replace('|', '/')} | {r['urgency_score']} | {r.get('intent_tag') or '-'} | {r['openings']} | "
             f"{', '.join(r['intent_signals']) or '-'} | {', '.join(r['stack'][:6]) or '-'} |"
         )
     migrating = [r for r in records if "migration" in r["intent_signals"] or "legacy_refactor" in r["intent_signals"]]

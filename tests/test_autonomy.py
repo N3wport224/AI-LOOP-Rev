@@ -508,7 +508,9 @@ def test_render_and_parse_config_round_trip_with_restricted_ingress():
     cfg = tunnel.parse_config(text)
     assert cfg["tunnel"] == TUNNEL_ID and cfg["credentials-file"] == "/Users/sam/.cloudflared/x.json"
     s = tunnel.summarize_config(cfg)
-    assert s["hostnames"] == ["hooks.example.com"] and s["paths"] == ["^/webhook$", "^/healthz$"]
+    assert s["hostnames"] == ["hooks.example.com"]
+    assert s["paths"] == ["^/webhook$", "^/healthz$", "^/lead\\-magnet/capture$", "^/lead\\-magnet/confirm$",
+                          "^/lead\\-magnet/unsubscribe$"]
     assert s["services"] == ["http://127.0.0.1:8443"] and s["catch_all_404"]
 
 

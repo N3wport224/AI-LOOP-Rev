@@ -24,7 +24,7 @@ from strategies.b2b_lead_aggregator import EXPORT_FIELDS
 from strategies.base import Strategy, TaskContext, TaskResult
 from tools.storefront import price_for
 
-SAMPLE_FIELDS_INTEL = ["company", "domain", "urgency_score", "intent_signals", "stack", "open_positions"]
+SAMPLE_FIELDS_INTEL = ["company", "domain", "intent_tag", "urgency_score", "intent_signals", "stack", "open_positions"]
 SAMPLE_FIELDS_LEADS = ["company", "title", "location", "remote", "stack"]
 
 ASSET_KIND = "lead_directory"

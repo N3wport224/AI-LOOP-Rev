@@ -321,6 +321,54 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
             fut.add_done_callback(pending.discard)
         return web.json_response(outcome.body, status=outcome.status)
 
+    leads = None
+    if processor.tools.config.lead_magnet_enabled:
+        from strategies.lead_magnet import LeadEndpoints
+
+        leads = LeadEndpoints(processor.tools)
+
+    def client_ip(request: web.Request) -> str:
+        # Behind the tunnel every request comes from 127.0.0.1; cloudflared passes the visitor's
+        # address in CF-Connecting-IP. Only trust it from loopback (i.e. from cloudflared).
+        peer = request.remote or ""
+        if peer in ("127.0.0.1", "::1"):
+            return request.headers.get("CF-Connecting-IP", peer)[:64]
+        return peer
+
+    def page_response(page: Any) -> web.Response:
+        resp = web.Response(status=page.status, text=page.body, content_type=page.content_type)
+        resp.headers.update(page.headers)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        if page.after is not None:
+            fut = asyncio.get_running_loop().run_in_executor(executor, held, page.after)
+            pending.add(fut)
+            fut.add_done_callback(pending.discard)
+        return resp
+
+    async def lead_capture(request: web.Request) -> web.Response:
+        if request.content_length and request.content_length > 8192:
+            return web.Response(status=413, text="payload too large")
+        wants_json = "application/json" in request.headers.get("Content-Type", "")
+        try:
+            data = await request.json() if wants_json else dict(await request.post())
+        except (ValueError, UnicodeDecodeError):
+            return web.Response(status=400, text="bad request")
+        form = {k: str(v)[:300] for k, v in (data or {}).items() if isinstance(k, str)}
+        page = await asyncio.get_running_loop().run_in_executor(executor, held, leads.capture, form, client_ip(request), wants_json)
+        return page_response(page)
+
+    def lead_action(action: str):
+        async def handler(request: web.Request) -> web.Response:
+            loop = asyncio.get_running_loop()
+            if request.method == "GET":
+                page = await loop.run_in_executor(executor, held, leads.action_page, action, request.query.get("t", "")[:100])
+                return page_response(page)
+            form = dict(await request.post()) if request.content_type != "application/json" else {}
+            token = str(form.get("t") or request.query.get("t", ""))[:100]
+            page = await loop.run_in_executor(executor, held, getattr(leads, action), token)
+            return page_response(page)
+        return handler
+
     async def health(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "events": processor.tools.state.webhook_event_counts()})
 
@@ -335,6 +383,11 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
     app = web.Application(client_max_size=MAX_BODY_BYTES)
     app.router.add_post(path, webhook)
     app.router.add_get("/healthz", health)
+    if leads is not None:
+        app.router.add_post("/lead-magnet/capture", lead_capture)
+        for action in ("confirm", "unsubscribe"):
+            app.router.add_route("GET", f"/lead-magnet/{action}", lead_action(action))
+            app.router.add_route("POST", f"/lead-magnet/{action}", lead_action(action))
     app.on_shutdown.append(drain)
     app.on_cleanup.append(release_executor)
     app[pending_key()] = pending

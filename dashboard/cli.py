@@ -233,7 +233,33 @@ def cmd_stop(args: argparse.Namespace, console: Console) -> int:
 def cmd_resume(args: argparse.Namespace, console: Console) -> int:
     config = Config.load(args.config)
     Engine(config).resume()
-    console.print("[green]emergency stop cleared; circuit breaker reset[/]")
+    console.print("[green]pause and emergency stop cleared; circuit breaker reset[/]")
+    return 0
+
+
+def cmd_pause(args: argparse.Namespace, console: Console) -> int:
+    config = Config.load(args.config)
+    Engine(config).pause(args.reason)
+    console.print("[yellow]engine paused: cycles are skipped; the webhook and lead capture stay up. "
+                  "`automonetize resume` to continue.[/]")
+    return 0
+
+
+def cmd_gui(args: argparse.Namespace, console: Console) -> int:
+    from gui.server import check_loopback, run_gui
+
+    workdir = Path(__file__).resolve().parents[1]
+    env_file = Path(args.env_file or workdir / ".env").resolve()
+    try:
+        check_loopback(args.host)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    try:
+        run_gui(args.config, env_file, workdir, host=args.host, port=args.port, open_browser=not args.no_browser)
+    except OSError as exc:
+        console.print(f"[red]could not start the control panel: {exc}[/]")
+        return 1
     return 0
 
 
@@ -627,8 +653,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--reason", default="manual stop")
     s.set_defaults(func=cmd_stop)
 
-    s = sub.add_parser("resume", help="clear the emergency stop and reset the circuit breaker")
+    s = sub.add_parser("resume", help="clear a pause, the emergency stop or a quarantine, and reset the circuit breaker")
     s.set_defaults(func=cmd_resume)
+
+    s = sub.add_parser("pause", help="skip engine cycles (webhook and lead capture stay up) until `resume`")
+    s.add_argument("--reason", default="paused from the command line")
+    s.set_defaults(func=cmd_pause)
+
+    g = sub.add_parser("gui", help="local control panel on http://127.0.0.1:8080 (opens your browser)")
+    g.add_argument("--port", type=int, help="default: gui_port (8080)")
+    g.add_argument("--host", default="127.0.0.1", help="loopback only: 127.0.0.1, localhost or ::1")
+    g.add_argument("--env-file", help="default: <checkout>/.env")
+    g.add_argument("--no-browser", action="store_true")
+    g.set_defaults(func=cmd_gui)
 
     s = sub.add_parser("hypotheses", help="list hypotheses and their outcomes")
     s.set_defaults(func=cmd_hypotheses)

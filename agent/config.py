@@ -183,6 +183,36 @@ class Config:
     subscription_delivery_hour: int = 8
     subscription_timezone: str = "UTC"
 
+    # Free lead magnet (10-record sample by email, then a Monday "Weekly Tech Pulse")
+    lead_magnet_enabled: bool = True
+    lead_magnet_double_opt_in: bool = True   # the weekly pulse only goes to addresses that confirmed
+    lead_magnet_sample_size: int = 10
+    lead_magnet_max_per_hour: int = 60       # global cap on captures (abuse brake)
+    lead_magnet_max_per_ip_hour: int = 5
+    lead_nurture_weekday: int = 0            # 0 = Monday
+    lead_nurture_hour: int = 9               # in subscription_timezone
+    lead_nurture_signals: int = 3
+
+    # Programmatic SEO matrix pages (intel/companies-hiring-<tech>-engineers.html ...)
+    seo_matrix_enabled: bool = True
+    seo_min_companies: int = 5               # no thin pages: skip a technology below this
+    seo_min_migrations: int = 3
+    seo_max_pages: int = 60
+    indexnow_enabled: bool = True            # submit changed URLs to IndexNow (Bing, Yandex, Seznam...)
+    indexnow_key: str = ""                   # generated on first use when empty
+
+    # Local control GUI
+    gui_host: str = "127.0.0.1"
+    gui_port: int = 8080
+
+    @property
+    def lead_capture_base(self) -> str:
+        """Public origin that serves /lead-magnet/* (the tunnel hostname), or "" when not set up."""
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(self.public_webhook_url)
+        return f"{parts.scheme}://{parts.netloc}" if parts.scheme == "https" and parts.netloc else ""
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / self.db_filename
@@ -243,6 +273,14 @@ _PLAIN_ENV = {
     "DEVTO_API_KEY": "devto_api_key",
     "HASHNODE_TOKEN": "hashnode_token",
     "PUBLIC_WEBHOOK_URL": "public_webhook_url",
+    # Aliases accepted for hand-edited .env files (and the names the GUI shows).
+    "STRIPE_API_KEY": "stripe_secret_key",
+    "SMTP_HOST": "smtp_host",
+    "SMTP_PORT": "smtp_port",
+    "SMTP_USER": "smtp_username",
+    "SMTP_USERNAME": "smtp_username",
+    "CAN_SPAM_POSTAL_ADDRESS": "sender_postal_address",
+    "CAN_SPAM_UNSUBSCRIBE_EMAIL": "unsubscribe_email",
 }
 
 _TRUE = {"1", "true", "yes", "on"}
