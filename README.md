@@ -210,11 +210,12 @@ stripe trigger checkout.session.completed
 ### Production
 
 Stripe must reach the endpoint over public HTTPS. The listener binds to localhost on
-purpose; expose it with a tunnel (Cloudflare Tunnel's free tier, or ngrok) or run on a
-small VPS behind a reverse proxy. Then Dashboard → Developers → Webhooks → *Add endpoint*
-`https://<your-host>/webhook` with the seven events above, and put that endpoint's signing
-secret in `STRIPE_WEBHOOK_SECRET`. If the endpoint is unreachable for a while, Stripe retries
-for up to 3 days and polling covers the gap.
+purpose. On a Mac, `deploy/tunnel/setup_tunnel.sh` sets up a permanent Cloudflare Tunnel and
+`automonetize setup-autonomous` registers the endpoint with Stripe (see
+[Set-and-forget on macOS](#set-and-forget-on-macos)). Elsewhere, use any tunnel or reverse
+proxy, then Dashboard → Developers → Webhooks → *Add endpoint* `https://<your-host>/webhook`
+with the events above, and put its signing secret in `STRIPE_WEBHOOK_SECRET`. If the endpoint
+is unreachable for a while, Stripe retries for up to 3 days and polling covers the gap.
 
 ## Inbound distribution
 
@@ -434,25 +435,90 @@ cp deploy/automonetize.service ~/.config/systemd/user/ && \
 
 # 4. watch it
 automonetize dashboard --watch         # or: automonetize status --json
-tail -f ~/Library/Logs/automonetize.stdout.log   # macOS; Linux: journalctl --user -u automonetize -f
+tail -f ~/Library/Logs/automonetize/*.log       # macOS; Linux: journalctl --user -u automonetize -f
 ```
 
-### macOS: launchd
+### Set-and-forget on macOS
+
+Three commands, once:
 
 ```bash
-deploy/install_launchd.sh              # renders deploy/com.automonetize.agent.plist into
-                                       # ~/Library/LaunchAgents/, lints it, bootstraps and starts it
-launchctl print gui/$(id -u)/com.automonetize.agent | head -30   # state, PID, last exit
-launchctl kickstart -k gui/$(id -u)/com.automonetize.agent        # restart
-deploy/install_launchd.sh uninstall    # stop and remove
+deploy/tunnel/setup_tunnel.sh hooks.example.com   # permanent public URL (Cloudflare Tunnel)
+automonetize setup-autonomous --live               # validate, preflight, register, load, verify
+sudo visudo -f /etc/sudoers.d/automonetize         # optional: let the agent wake the Mac (line below)
 ```
 
-The agent starts at login (`RunAtLoad`), restarts whenever it exits (`KeepAlive = true`,
-at most every 30 s via `ThrottleInterval`), and logs to
-`~/Library/Logs/automonetize.stdout.log` / `.stderr.log`. Secrets are not copied into the
-plist: `deploy/run_agent.sh` sources `.env` at every start, then `exec`s
-`automonetize supervise`, so launchd's SIGTERM reaches the supervisor directly.
-`ExitTimeOut` gives it 90 s to finish up.
+**1. Tunnel** (`deploy/tunnel/setup_tunnel.sh <hostname>`). Installs `cloudflared` with
+Homebrew if it's missing, logs in once, creates (or reuses) a named tunnel, routes the DNS
+record, and writes `~/.cloudflared/automonetize.yml`. The tunnel forwards only `^/webhook$` and
+`^/healthz$` to `127.0.0.1:8443`; everything else gets a 404 at Cloudflare's edge. It saves
+`PUBLIC_WEBHOOK_URL=https://<hostname>/webhook` to `.env` (mode 600) and `data/tunnel.json`,
+and installs the companion launchd job `com.automonetize.tunnel` (`RunAtLoad` + `KeepAlive`).
+The config parsing and `.env` editing are in `agent/tunnel.py`, so they're tested.
+
+**2. `automonetize setup-autonomous`**. Every step is idempotent; re-run it after any change.
+
+| Step | What it checks or does |
+|---|---|
+| Validate `.env` | Stripe key shape and mode (`--live` fails on a test key), `whsec_` secret, public URL (https, real hostname, path matches `webhook_path`), mailer credentials for the configured backend, `DRY_RUN`, `.env` permissions |
+| Preflight | network, `GET /v1/balance` with the key, a real mailer login (SMTP `STARTTLS`+`AUTH`, SendGrid scopes or Postmark server), DB `quick_check` and write, free disk |
+| Register | finds or creates the Stripe webhook endpoint for the public URL with exactly the events the listener handles. Stripe returns the signing secret only on creation, so it's written straight to `.env` and never printed. An existing endpoint that isn't ours is never touched |
+| Load launchd | `deploy/install_launchd.sh`: agent + tunnel jobs, (re)started so they pick up the new secret. `--daemon` installs them as LaunchDaemons instead (start at boot, no login needed, runs as you; asks for sudo) |
+| Handshake | POSTs a signed `automonetize.handshake` event to the **public** URL: Cloudflare → tunnel → listener → signature check → recorded under a random nonce. Retries for 20 s while things start. If no agent is serving the port (e.g. `--skip-launchd`), a temporary listener is started for the test |
+
+Exit status 0 means the whole path works. `--json` gives a machine-readable report.
+
+**3. Power** (`agent/power.py`). While a cycle runs or a webhook is being verified and
+fulfilled, the agent holds an IOKit `PreventUserIdleSystemSleep` assertion
+(`IOPMAssertionCreateWithName` via ctypes; falls back to `caffeinate -i -w <pid>`, which dies
+with the process). Holds are reference-counted across the engine and webhook threads and
+released as soon as both are idle, so the Mac sleeps normally between cycles. Waits between
+cycles run on the wall clock, so a cycle that fell due during sleep runs within 30 s of
+waking. To *wake* a sleeping Mac for the next cycle, the agent asks
+`sudo -n pmset schedule wake`. That needs root, so it only works with this sudoers line
+(setup-autonomous prints it with your username):
+
+```
+you ALL=(root) NOPASSWD: /usr/bin/pmset schedule wake *
+```
+
+**launchd jobs** (`deploy/com.automonetize.agent.plist`, `deploy/tunnel/com.automonetize.tunnel.plist`):
+`RunAtLoad` and `KeepAlive` true, `ThrottleInterval` 30 s (15 s for the tunnel), logs under
+`~/Library/Logs/automonetize/` (`agent.stdout.log`, `agent.stderr.log`, `tunnel.*.log`).
+`WorkingDirectory` is the checkout, and `HOME`, `PATH` and `AUTOMONETIZE_ENV_FILE` are set in the
+plist. Secrets are not: `deploy/run_agent.sh` sources `.env` at every start, with no terminal or
+login shell involved, then `exec`s `automonetize supervise` so launchd's SIGTERM reaches the
+supervisor directly (`ExitTimeOut` 90 s).
+
+```bash
+launchctl print gui/$(id -u)/com.automonetize.agent | head -30   # state, PID, last exit
+launchctl kickstart -k gui/$(id -u)/com.automonetize.agent        # restart
+deploy/install_launchd.sh uninstall    # stop and remove both jobs
+```
+
+**Honest limits.** These can't be engineered away:
+
+* The tunnel needs a domain on your Cloudflare account (free plan is fine) and one browser
+  login. `trycloudflare.com` quick tunnels change URL on every restart, so they're refused.
+* A **LaunchAgent** (default) starts at login. With FileVault on, a Mac that reboots after a
+  power cut waits at the unlock screen until someone logs in; `--daemon` (LaunchDaemons)
+  starts at boot but still needs the disk unlocked once.
+* A sleeping Mac receives nothing. Webhooks that arrive while it sleeps fail, Stripe retries
+  them for up to 3 days, and the hourly `sync_revenue` poll records and delivers those orders
+  on the next cycle. For instant delivery around the clock, keep it on power with
+  *Prevent automatic sleeping when the display is off*, or add the sudoers line.
+* Without the sudoers line, a cycle that falls due while the Mac sleeps runs when it next wakes.
+
+### Self-healing (`agent/recovery.py`)
+
+| Failure | Response |
+|---|---|
+| Syndication 5xx / 429 / timeout (Dev.to, Hashnode, Discussions, HN Algolia) | That platform gets an exponential cooldown (15 min doubling, capped at 24 h, `Retry-After` honoured, persisted across restarts). Other platforms and the loop carry on, and the post is retried after the cooldown. Permanent errors (401/403) start at the long end |
+| SQLite `database is locked` / busy | Each statement already waits `busy_timeout` (5 s); after that it's retried up to 5 times with randomised exponential jitter (50 ms → 2 s). `BEGIN IMMEDIATE` and `COMMIT` too |
+| Circuit breaker trips (5 consecutive systemic failures) | **Quarantine** instead of a permanent stop: an alert (error log, `data/ALERTS.log`, a macOS notification), then a 2 h cooldown (4 h, 8 h … up to 24 h if it trips again within a day). After the cooldown a self-diagnostic runs (DB integrity and write, disk space, network). Pass → breaker reset, a clean cycle runs, alert "resumed". Fail → another 2 h. Only offline → waits without adding hours |
+| Manual stop (`automonetize stop`, `data/EMERGENCY_STOP`) | Never lifted automatically. `supervise` still starts (rather than exiting into a launchd restart loop) with the engine paused, so the webhook keeps fulfilling orders |
+
+Set `quarantine_hours = 0` for the old behaviour (a trip waits for `automonetize resume`).
 
 ### Supervisor and resilience (`agent/supervisor.py`)
 
@@ -476,8 +542,8 @@ a shared variant.
 
 Safety rails stay on in production: a process lock (`data/agent.lock`) stops two loops
 sharing a database; the circuit breaker caps tasks and API calls per cycle; 5 consecutive
-operational failures trigger an emergency stop that survives restarts (`touch data/EMERGENCY_STOP`
-or `automonetize stop` to halt by hand, `automonetize resume` to clear).
+operational failures quarantine the engine (above) and the quarantine survives restarts
+(`touch data/EMERGENCY_STOP` or `automonetize stop` to halt by hand, `automonetize resume` to clear).
 
 ## Configuration reference
 
@@ -501,6 +567,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `demand_sales_threshold` / `premium_price_cents` / `max_scrape_depth` | `3` / `1900` / `3` | Demand expansion |
 | `stripe_webhook_secret` / `webhook_host` / `webhook_port` / `webhook_path` | env / `127.0.0.1` / `8443` / `/webhook` | Webhook listener |
 | `network_check_hosts` | Stripe + GitHub API | Offline probe (`[]` disables) |
+| `quarantine_hours` / `quarantine_max_hours` / `alert_notifications` | `2` / `24` / `true` | Self-healing cooldown after a breaker trip (`0` = stop for a human) |
+| `public_webhook_url` (`PUBLIC_WEBHOOK_URL`) | empty | Set by `setup_tunnel.sh`; used by `setup-autonomous` |
+| `power_assertions` / `schedule_wake` | `true` / `true` | Stay awake while working; `pmset` wake for the next cycle (needs the sudoers line) |
 | `github_pages_branch` / `github_pages_dir` / `site_title` | `""` / `docs` / `Tech Stack Intel` | Site publishing |
 | `syndication_publish` / `syndication_interval_days` / `syndication_min_companies` | `true` / `5` (floor) / `10` | Syndication |
 | `allow_manual_fulfillment` | `false` | Sell even when the agent can't email the file |
@@ -515,6 +584,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 ## CLI
 
 ```
+automonetize setup-autonomous [--live] [--daemon] [--json] [--skip-register|--skip-launchd|--skip-handshake]
 automonetize supervise [--no-webhook] [--headless]   # daemon: engine + webhook listener
 automonetize webhook [--port P] [--selftest]         # listener only
 automonetize run [--once|--cycles N] [--interval S] [--headless]
@@ -559,7 +629,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 308 tests, ~15 s, no network
+pytest     # 364 tests, ~16 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -567,6 +637,19 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Set-and-forget (`tests/test_autonomy.py`, 56 tests) adds: backoff maths and transient-error
+classification, persisted per-platform cooldowns with `Retry-After`, SQLite lock retries against
+a real competing writer, quarantine entry, escalation, cap, failed-diagnostic extension,
+offline-only waiting and clean-cycle recovery (manual stops never auto-lifted); power holds
+shared by the engine cycle and the aiohttp webhook, reference counting across threads, the IOKit
+calls through a fake ctypes library, `caffeinate -w`, non-Darwin no-ops, `sudo -n pmset`
+wake scheduling, and wall-clock waits across a simulated 3-hour sleep; cloudflared config
+render/parse round trips, restricted ingress, hostname validation, `tunnel create` / `tunnel
+list` parsing, `.env` updates read back by bash; both launchd jobs rendered and parsed
+(LaunchAgent and LaunchDaemon); and setup-autonomous validation, preflight, endpoint
+creation and reuse, secret handling, and the handshake through a simulated tunnel (including
+a tunnel that's still connecting and a secret mismatch).
 
 Phase 4 adds: Dev.to/Hashnode payloads, mocked responses and duplicate-title refusal, per-channel
 UTM and `client_reference_id` link rendering, the 5-day cadence floor, the HN tracker (thread

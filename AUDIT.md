@@ -100,3 +100,26 @@ pytest -W error                                   # 308 passed
 pytest tests/test_audit_regressions.py -v         # the 28 audit regressions
 ruff check agent strategies tools dashboard --select E,F,W,B,PL,SIM,RUF   # see the ignore list in this report
 ```
+
+## 6. Addendum: set-and-forget operation on macOS
+
+Follow-up to section 4, bottleneck 4 ("single host"). Test suite: **364 passed** under
+`pytest -W error` (56 new in `tests/test_autonomy.py`).
+
+| Gap | Before | Now |
+|---|---|---|
+| Public webhook URL | Manual tunnel in a terminal | `deploy/tunnel/setup_tunnel.sh`: named Cloudflare Tunnel, ingress limited to `/webhook` and `/healthz`, companion launchd job, URL saved to `.env` |
+| Stripe endpoint and secret | Copied by hand from the Dashboard | `setup-autonomous` creates or reuses it; the secret goes straight to `.env` (0600) |
+| Verification | None end to end | Signed handshake through the public URL must be verified and recorded by the listener |
+| Breaker trip | Permanent stop until a human ran `resume` | Alert, 2 h quarantine (escalating to 24 h), self-diagnostic, automatic clean cycle |
+| Manual stop under launchd | `supervise` exited, so launchd restarted it every 30 s | Starts paused; webhook keeps fulfilling |
+| Syndication outages | Retried every cycle | Persisted exponential cooldown per platform |
+| SQLite lock outlasting `busy_timeout` | Task failure | 5 jittered retries |
+| Mac sleep | Cycles delayed by the full interval after wake (monotonic wait) | Wall-clock waits; power assertion only while working; optional `pmset` wake |
+
+Remaining limits, by design or by the platform: a Cloudflare-managed domain and one browser login
+are required; a sleeping Mac can't receive webhooks (Stripe retries plus polling mean orders are
+delayed, not lost); waking from sleep needs a one-line sudoers rule; a FileVault Mac that reboots
+waits at the unlock screen. Real Cloudflare, launchd and IOKit were not exercised here (Linux
+container): they're covered through their command lines, config formats and a fake ctypes
+library, and `setup-autonomous` is the on-device check.

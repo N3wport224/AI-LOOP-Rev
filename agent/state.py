@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from agent.recovery import retry_sqlite
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
@@ -273,20 +275,24 @@ class StateStore:
     def open_count(cls) -> int:
         return len(cls.open_stores())
 
-    def __init__(self, db_path: str | Path, clock: Callable[[], datetime] = utc_now):
+    def __init__(self, db_path: str | Path, clock: Callable[[], datetime] = utc_now, busy_timeout: float = 5.0,
+                 lock_retry_sleep: Callable[[float], None] | None = None):
         self.db_path = str(db_path)
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self.clock = clock
         self._lock = threading.RLock()
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, isolation_level=None)
+        # SQLite waits up to busy_timeout inside each statement; retry_sqlite adds up to 5 jittered
+        # attempts on top for the rare lock that outlasts it (a CLI command, a long checkpoint).
+        self._retry_kwargs: dict[str, Any] = {} if lock_retry_sleep is None else {"sleep": lock_retry_sleep}
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, isolation_level=None, timeout=busy_timeout)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         if self.db_path != ":memory:":
-            self.conn.execute("PRAGMA journal_mode = WAL")
-        self.conn.executescript(SCHEMA)
-        self._migrate()
-        self.conn.executescript(INDEXES)  # after migrations: some index columns were added by them
+            self._retry(lambda: self.conn.execute("PRAGMA journal_mode = WAL"))
+        self._retry(lambda: self.conn.executescript(SCHEMA))
+        self._retry(self._migrate)
+        self._retry(lambda: self.conn.executescript(INDEXES))  # after migrations: some index columns were added by them
         self.closed = False
         StateStore._instances.add(self)
 
@@ -308,26 +314,31 @@ class StateStore:
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
-            self.conn.execute("BEGIN IMMEDIATE")
+            # BEGIN IMMEDIATE takes the write lock up front, so it is the point that can find the
+            # database locked; a COMMIT that hits a busy checkpoint is retried the same way.
+            self._retry(lambda: self.conn.execute("BEGIN IMMEDIATE"))
             try:
                 yield self.conn
             except BaseException:
                 self.conn.execute("ROLLBACK")
                 raise
-            self.conn.execute("COMMIT")
+            self._retry(lambda: self.conn.execute("COMMIT"))
+
+    def _retry(self, fn: Callable[[], Any]) -> Any:
+        return retry_sqlite(fn, **self._retry_kwargs)
 
     def _all(self, sql: str, args: tuple = ()) -> list[dict[str, Any]]:
         with self._lock:
-            return [dict(r) for r in self.conn.execute(sql, args).fetchall()]
+            return self._retry(lambda: [dict(r) for r in self.conn.execute(sql, args).fetchall()])
 
     def _one(self, sql: str, args: tuple = ()) -> dict[str, Any] | None:
         with self._lock:
-            row = self.conn.execute(sql, args).fetchone()
+            row = self._retry(lambda: self.conn.execute(sql, args).fetchone())
             return dict(row) if row else None
 
     def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
         with self._lock:
-            return self.conn.execute(sql, args)
+            return self._retry(lambda: self.conn.execute(sql, args))
 
     # -- key/value ------------------------------------------------------------
     def get(self, key: str, default: Any = None) -> Any:

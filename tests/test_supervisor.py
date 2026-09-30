@@ -182,8 +182,9 @@ def test_launchd_plist_template_renders_valid_plist():
     plist = plistlib.loads(rendered.encode())
     assert plist["Label"] == "com.automonetize.agent"
     assert plist["KeepAlive"] is True and plist["RunAtLoad"] is True and plist["ThrottleInterval"] >= 10
-    assert plist["StandardOutPath"] == "/Users/sam/Library/Logs/automonetize.stdout.log"
-    assert plist["StandardErrorPath"].endswith("Library/Logs/automonetize.stderr.log")
+    assert plist["StandardOutPath"] == "/Users/sam/Library/Logs/automonetize/agent.stdout.log"
+    assert plist["StandardErrorPath"] == "/Users/sam/Library/Logs/automonetize/agent.stderr.log"
+    assert plist["EnvironmentVariables"]["HOME"] == "/Users/sam"
     assert plist["ProgramArguments"] == ["/bin/bash", "/Users/sam/AutoMonetize/deploy/run_agent.sh"]
     assert plist["EnvironmentVariables"]["AUTOMONETIZE_ENV_FILE"] == "/Users/sam/AutoMonetize/.env"
     assert "__" not in rendered

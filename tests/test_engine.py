@@ -129,7 +129,8 @@ def test_operational_failure_after_three_attempts(engine_factory, state):
     assert engine.breaker.consecutive_errors == 0
 
 
-def test_consecutive_failures_trigger_emergency_stop(engine_factory, state, config):
+def test_consecutive_failures_trigger_emergency_stop_when_quarantine_disabled(engine_factory, state, config):
+    config.quarantine_hours = 0  # opt out of self-healing: a trip then waits for a human
     def always(ctx):
         raise RuntimeError("broken")
 

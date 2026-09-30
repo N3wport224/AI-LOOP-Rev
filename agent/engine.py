@@ -2,7 +2,9 @@
 
 Each cycle:
 
-1. **Guard**: refuse to run while the emergency stop is engaged.
+1. **Guard**: refuse to run while a manual emergency stop is engaged. An *automatic* breaker trip
+   quarantines the engine instead (``agent.recovery.Quarantine``): an alert, a cooldown, then a
+   self-diagnostic and, if it passes, a clean cycle. The loop never halts permanently on its own.
 2. **Observe**: load (or formulate) the active hypothesis and its verified revenue.
 3. **Reflect**: deprecate the hypothesis if it has had ``pivot_after_iterations`` cycles without
    a cent of verified revenue, and formulate an alternative.
@@ -21,12 +23,14 @@ import signal
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from agent.config import Config
 from agent.hypotheses import formulate_next, pivot_reason, score_hypothesis
+from agent.power import PowerManager
+from agent.recovery import Quarantine, self_diagnostic
 from agent.state import StateStore
 from strategies import default_strategies
 from strategies.base import Strategy, TaskContext, TaskResult
@@ -67,7 +71,7 @@ class NetworkDown(Exception):
 @dataclass
 class CycleReport:
     cycle: int
-    status: str  # ran | stopped | idle
+    status: str  # ran | stopped | quarantined | offline | idle | crashed
     hypothesis_id: int | None = None
     hypothesis_key: str = ""
     actions: list[dict[str, Any]] = field(default_factory=list)
@@ -85,6 +89,8 @@ class Engine:
         transport=None,
         sleep: Callable[[float], None] = time.sleep,
         online_check: Callable[[], bool] | None = None,
+        power: PowerManager | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ):
         config.ensure_dirs()
         self.config = config
@@ -111,6 +117,13 @@ class Engine:
 
             online_check = lambda: is_online(config.network_check_hosts)  # noqa: E731
         self.online_check = online_check
+        self.quarantine = Quarantine(self.state, config)
+        if power is None:
+            from agent import power as power_mod
+
+            power = power_mod.shared(config)
+        self.power = power
+        self._wall = wall_clock
 
     # ------------------------------------------------------------------ emergency stop
     def _load_breaker(self) -> None:
@@ -126,12 +139,43 @@ class Engine:
     def is_stopped(self) -> tuple[bool, str]:
         if self.config.stop_file.exists():
             return True, f"stop file present: {self.config.stop_file}"
-        if self.breaker.tripped:
-            return True, f"circuit breaker tripped: {self.breaker.trip_reason}"
         stop = self.state.get("emergency_stop")
         if stop:
             return True, f"emergency stop: {stop.get('reason', '')}"
+        if self.quarantine.active():
+            rec = self.quarantine.record or {}
+            return True, f"quarantined until {rec.get('until')}: {rec.get('reason', '')}"
+        if self.breaker.tripped:
+            return True, f"circuit breaker tripped: {self.breaker.trip_reason}"
         return False, ""
+
+    def on_breaker_trip(self, reason: str) -> None:
+        """Systemic failure: quarantine and self-heal, or (quarantine disabled) stop for a human."""
+        self._save_breaker()
+        if self.config.quarantine_hours <= 0:
+            self.emergency_stop(reason)
+            return
+        until = self.quarantine.enter(reason)
+        self.state.log_error("engine", f"QUARANTINE until {until.isoformat(timespec='seconds')}: {reason}", kind="circuit")
+        log.error("quarantined until %s: %s", until, reason)
+
+    def try_leave_quarantine(self, cycle: int) -> tuple[bool, str]:
+        """Called when the cooldown is over. Returns (resumed, message)."""
+        diag = self_diagnostic(self.state, self.config, self.online_check)
+        if diag["passed"]:
+            self.breaker.reset()
+            self._save_breaker()
+            self.quarantine.release(diag)
+            self.state.log_action(cycle, None, "quarantine", "ok", f"self-diagnostic passed: {diag}")
+            return True, "self-diagnostic passed"
+        failed = [k for k in ("db_integrity", "db_write", "disk_ok", "network") if diag.get(k) is not True]
+        if failed == ["network"]:
+            # Just offline: not a reason to add hours. Try again next cycle.
+            self.state.log_action(cycle, None, "quarantine", "skipped", "cooldown over, waiting for network")
+            return False, "cooldown over; waiting for network"
+        until = self.quarantine.extend(f"self-diagnostic failed: {', '.join(failed)} ({diag})")
+        self.state.log_action(cycle, None, "quarantine", "failed", f"diagnostic failed ({', '.join(failed)}); extended")
+        return False, f"self-diagnostic failed ({', '.join(failed)}); quarantined until {until.isoformat(timespec='seconds')}"
 
     def emergency_stop(self, reason: str) -> None:
         self.state.set("emergency_stop", {"reason": reason, "at": self.state.now()})
@@ -142,6 +186,8 @@ class Engine:
         log.error("emergency stop engaged: %s", reason)
 
     def resume(self) -> None:
+        if self.quarantine.active():
+            self.quarantine.release({"manual": True})
         self.state.set("emergency_stop", None)
         if self.config.stop_file.exists():
             self.config.stop_file.unlink()
@@ -177,15 +223,25 @@ class Engine:
         return int(self.state.get("iteration", 0))
 
     def run_cycle(self) -> CycleReport:
+        # Keep the Mac awake for the whole cycle; it may sleep again once the loop goes idle.
+        with self.power.hold("engine cycle"):
+            return self._run_cycle()
+
+    def _run_cycle(self) -> CycleReport:
         cycle = self.state.incr("iteration")
         self.state.set("last_cycle_at", self.state.now())
         if self.state.get("started_at") is None:
             self.state.set("started_at", self.state.now())
 
+        if self.quarantine.due() and not self.config.stop_file.exists() and not self.state.get("emergency_stop"):
+            resumed, msg = self.try_leave_quarantine(cycle)
+            if not resumed:
+                return CycleReport(cycle, "quarantined", message=msg)
         stopped, why = self.is_stopped()
         if stopped:
             self.state.log_action(cycle, None, "cycle", "skipped", why)
-            return CycleReport(cycle, "stopped", message=why)
+            manual = self.config.stop_file.exists() or bool(self.state.get("emergency_stop"))
+            return CycleReport(cycle, "quarantined" if self.quarantine.active() and not manual else "stopped", message=why)
 
         if not self.online_check():
             # Network down (wifi drop, laptop asleep, proxy gone): wait it out without burning
@@ -237,8 +293,8 @@ class Engine:
                 break
 
         if self.breaker.tripped:
-            self.emergency_stop(self.breaker.trip_reason)
-            report.message = f"emergency stop: {self.breaker.trip_reason}"
+            self.on_breaker_trip(self.breaker.trip_reason)
+            report.message = f"{'quarantined' if self.quarantine.active() else 'emergency stop'}: {self.breaker.trip_reason}"
         current = self.state.get_hypothesis(hyp["id"])
         # An aborted offline cycle isn't evidence about the niche: don't spend its pivot budget.
         if current["status"] == "active" and report.status != "offline":
@@ -360,7 +416,7 @@ class Engine:
 
                 self.state.log_error("engine", f"cycle crashed: {exc!r}", traceback.format_exc())
                 if self.breaker.record_failure(f"cycle crash: {exc!r}"):
-                    self.emergency_stop(self.breaker.trip_reason)
+                    self.on_breaker_trip(self.breaker.trip_reason)
                 self._save_breaker()
                 report = CycleReport(self.current_cycle(), "crashed", message=repr(exc))
             if on_cycle is not None:
@@ -368,10 +424,29 @@ class Engine:
             ran += 1
             if max_cycles is not None and ran >= max_cycles:
                 break
-            self._stop_event.wait(interval)
+            self.idle_wait(interval)
         self.state.set("pid", None)
         self.state.set("stopped_at", self.state.now())
         return ran
+
+
+    def idle_wait(self, interval: float, slice_seconds: float = 30.0) -> None:
+        """Wait ``interval`` seconds of *wall-clock* time between cycles, holding no power assertion.
+
+        ``Event.wait`` runs on the monotonic clock, which stops while a Mac sleeps: a plain
+        one-hour wait that started before a 3-hour sleep would still have most of an hour left on
+        wake. Waiting in short slices against the wall clock runs the overdue cycle within
+        ``slice_seconds`` of waking. It also asks pmset to wake the Mac for the next cycle."""
+        deadline = self._wall() + interval
+        try:
+            self.power.schedule_wake(self.state.clock() + timedelta(seconds=interval), now=self.state.clock())
+        except Exception as exc:  # noqa: BLE001 - wake scheduling is best effort
+            log.debug("schedule_wake failed: %r", exc)
+        while not self._stop_event.is_set():
+            remaining = deadline - self._wall()
+            if remaining <= 0:
+                return
+            self._stop_event.wait(min(remaining, slice_seconds))
 
 
 class ProcessLock:

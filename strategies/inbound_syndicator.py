@@ -136,9 +136,24 @@ class InboundSyndicator(Strategy):
     def track_hn(self, ctx: TaskContext) -> TaskResult:
         if not ctx.tools.config.hn_tracker_enabled:
             return TaskResult(True, "HN tracker disabled", {})
+        from agent.recovery import PlatformBackoff, is_transient
         from tools.syndication.hn_algolia_tracker import HNHiringTracker
 
-        res = HNHiringTracker(ctx.tools).run()
+        backoff = PlatformBackoff(ctx.tools.state)
+        blocked = backoff.blocked_until("hn_algolia")
+        if blocked is not None:
+            return TaskResult(True, f"HN tracker backing off until {blocked.isoformat(timespec='seconds')}", {"status": "backoff"})
+        try:
+            res = HNHiringTracker(ctx.tools).run()
+        except Exception as exc:  # noqa: BLE001
+            if not is_transient(exc):
+                raise
+            # Algolia or GitHub is having a moment: reschedule instead of failing the task and
+            # counting toward the circuit breaker.
+            until = backoff.failure("hn_algolia", exc)
+            ctx.tools.state.log_error("syndication:hn_algolia", f"transient failure {exc!r}; retry after {until.isoformat(timespec='seconds')}")
+            return TaskResult(True, f"HN tracker deferred to {until.isoformat(timespec='seconds')}: {exc}", {"status": "backoff"})
+        backoff.success("hn_algolia")
         if res.get("status") == "published":
             ctx.tools.state.add_metric(ctx.hypothesis["id"], "impressions", "hn_gist", 1)
         return TaskResult(True, "HN tracker: " + ", ".join(f"{k}={v}" for k, v in res.items()), res)

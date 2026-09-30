@@ -5,6 +5,10 @@
   ``supervisor_max_restarts`` crashes inside ``supervisor_restart_window_seconds`` means it's broken:
   a broken **webhook** worker is disabled (the engine's polling sync still records and delivers
   orders); a broken **engine** worker shuts the whole supervisor down.
+* The engine and the webhook share one ``PowerManager``: the Mac stays awake while either is working
+  and may sleep when both are idle (``agent.power``).
+* Systemic failures never end the process: the engine quarantines itself and self-heals
+  (``agent.recovery``). If the supervisor does exit, launchd's ``KeepAlive`` restarts it.
 * SIGTERM, SIGINT and SIGHUP request a graceful shutdown: stop accepting work, let the current
   cycle and any in-flight fulfilment finish (up to ``shutdown_timeout_seconds``), flush the SQLite
   WAL into the database (``PRAGMA wal_checkpoint(TRUNCATE)``), write an operational checkpoint
@@ -75,7 +79,7 @@ class Supervisor:
         if webhook and config.stripe_webhook_secret:
             from tools.storefront.webhook_listener import WebhookServer
 
-            self.webhook_server = WebhookServer(self.engine.tools)
+            self.webhook_server = WebhookServer(self.engine.tools, power=self.engine.power)
             self.workers.append(Worker("webhook", self.webhook_server.run, critical=False))
         elif webhook:
             log.warning("STRIPE_WEBHOOK_SECRET not set: webhook listener disabled, polling sync only")
@@ -189,6 +193,7 @@ class Supervisor:
             self.state.set("pid", None)
             self.state.checkpoint()  # flush WAL into the main db file
         finally:
+            self.engine.power.release_all()  # never leave the Mac pinned awake
             self.lock.release()
             self.restore_signal_handlers()
         log.info("supervisor stopped: %s", checkpoint["reason"])

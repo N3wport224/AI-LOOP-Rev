@@ -20,11 +20,12 @@ class RobotsDisallowed(ToolError):
 
 
 class HttpError(ToolError):
-    def __init__(self, status: int, url: str, body: str = ""):
+    def __init__(self, status: int, url: str, body: str = "", retry_after: float | None = None):
         super().__init__(f"HTTP {status} for {url}")
         self.status = status
         self.url = url
         self.body = body
+        self.retry_after = retry_after  # seconds from a Retry-After header, when the server sent one
 
 
 class OperationalFailure(ToolError):

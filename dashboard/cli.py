@@ -426,11 +426,14 @@ def cmd_supervise(args: argparse.Namespace, console: Console) -> int:
     config.ensure_dirs()
     _setup_logging(config, args.headless, args.verbose)
     engine = Engine(config)
+    log = logging.getLogger("automonetize.cli")
     stopped, why = engine.is_stopped()
     if stopped:
-        console.print(f"[red]refusing to start: {why}. Run `automonetize resume` first.[/]")
-        return 3
-    log = logging.getLogger("automonetize.cli")
+        # Don't exit: under launchd KeepAlive that's a restart loop every 30 s. Start anyway: the
+        # engine skips cycles until resumed (or self-heals from a quarantine) and the webhook
+        # listener keeps recording and fulfilling orders in the meantime.
+        log.warning("starting paused: %s (webhook stays up; `automonetize resume` to continue)", why)
+        console.print(f"[yellow]starting paused: {why}[/]")
 
     def on_cycle(report: CycleReport) -> None:
         summary = "; ".join(f"{a['task']}={a['status']}" for a in report.actions) or report.message
@@ -562,6 +565,38 @@ def cmd_subscriptions(args: argparse.Namespace, console: Console) -> int:
 
 
 # --------------------------------------------------------------------------- parser
+def cmd_setup_autonomous(args: argparse.Namespace, console: Console) -> int:
+    from agent.setup_autonomous import SetupOptions, load_env_into, run_setup, summarize
+    from agent.connectivity import is_online
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    workdir = Path(__file__).resolve().parents[1]
+    env_file = Path(args.env_file or workdir / ".env").resolve()
+    config = Config.load(args.config, env=load_env_into(env_file))
+    config.ensure_dirs()
+    state = StateStore(config.db_path)
+    breaker = CircuitBreaker(max_actions_per_cycle=10_000, max_api_calls_per_cycle=10_000, max_consecutive_errors=10_000)
+    tools = build_toolkit(config, state, breaker)
+    opts = SetupOptions(env_file=env_file, workdir=workdir, require_live=args.live, skip_register=args.skip_register,
+                        skip_launchd=args.skip_launchd, skip_handshake=args.skip_handshake, as_daemon=args.daemon)
+    checks = run_setup(config, tools, opts, online_check=lambda: is_online(config.network_check_hosts))
+    result = summarize(checks)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        table = Table(title="setup-autonomous")
+        for col in ("step", "check", "", "detail"):
+            table.add_column(col)
+        icons = {"ok": "[green]ok[/]", "warn": "[yellow]warn[/]", "fail": "[red]FAIL[/]", "skip": "[dim]skip[/]"}
+        for c in checks:
+            table.add_row(c.step, c.name, icons.get(c.status, c.status), c.detail)
+        console.print(table)
+        console.print("[green]Unattended operation is set up.[/]" if result["ok"]
+                      else "[red]Not ready: fix the FAIL rows and re-run (every step is idempotent).[/]")
+    return 0 if result["ok"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="automonetize", description="Autonomous zero-capital revenue agent")
     p.add_argument("--config", "-c", help="path to automonetize.toml")
@@ -657,6 +692,17 @@ def build_parser() -> argparse.ArgumentParser:
     su.add_argument("--headless", action="store_true")
     su.add_argument("--verbose", "-v", action="store_true")
     su.set_defaults(func=cmd_supervise)
+
+    sa = sub.add_parser("setup-autonomous", help="validate .env, preflight, register the Stripe webhook, load launchd, "
+                        "verify the public URL end to end")
+    sa.add_argument("--env-file", help="default: <checkout>/.env")
+    sa.add_argument("--live", action="store_true", help="fail unless the Stripe key is a live-mode key")
+    sa.add_argument("--daemon", action="store_true", help="install as LaunchDaemons (start at boot without login; uses sudo)")
+    sa.add_argument("--skip-register", action="store_true")
+    sa.add_argument("--skip-launchd", action="store_true")
+    sa.add_argument("--skip-handshake", action="store_true")
+    sa.add_argument("--json", action="store_true")
+    sa.set_defaults(func=cmd_setup_autonomous)
 
     wh = sub.add_parser("webhook", help="run only the Stripe webhook listener")
     wh.add_argument("--port", type=int)

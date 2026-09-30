@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Companion launchd job: keeps the Cloudflare named tunnel up so Stripe can reach the local
+  webhook listener at a permanent https:// hostname. Rendered by deploy/install_launchd.sh
+  (called from deploy/tunnel/setup_tunnel.sh). The tunnel only forwards /webhook and /healthz
+  to 127.0.0.1; its ingress rules live in __CONFIG__.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.automonetize.tunnel</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__CLOUDFLARED__</string>
+    <string>tunnel</string>
+    <string>--config</string>
+    <string>__CONFIG__</string>
+    <string>run</string>
+    <string>__TUNNEL__</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+
+  <!-- cloudflared reconnects by itself after network changes; launchd restarts it if it exits. -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/automonetize/tunnel.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/automonetize/tunnel.stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Standard</string>
+</dict>
+</plist>

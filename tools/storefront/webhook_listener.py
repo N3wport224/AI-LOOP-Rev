@@ -72,7 +72,11 @@ HANDLED = {
     "invoice.paid",
     "customer.subscription.updated",
     "customer.subscription.deleted",
+    "automonetize.handshake",
 }
+# Sent by ``automonetize setup-autonomous`` through the public tunnel URL, signed with the webhook
+# secret: proves the path Stripe → Cloudflare → tunnel → this listener works end to end.
+HANDSHAKE_TYPE = "automonetize.handshake"
 
 
 class SignatureError(Exception):
@@ -188,6 +192,10 @@ class WebhookProcessor:
     # -- event handlers -------------------------------------------------------------
     def _dispatch(self, event_type: str, obj: dict[str, Any],
                   after: list[Callable[[], Any]]) -> tuple[str, str, list[dict[str, Any]]]:
+        if event_type == HANDSHAKE_TYPE:
+            nonce = str(obj.get("nonce", ""))[:64]
+            self.tools.state.set(f"handshake:{nonce}", {"received_at": self.tools.state.now(), "via": obj.get("via", "")})
+            return "processed", f"handshake {nonce}", []
         if event_type == "payment_intent.succeeded":
             return self._payment_intent_succeeded(obj)
         if event_type == "invoice.paid":
@@ -283,10 +291,18 @@ class WebhookProcessor:
 
 # ---------------------------------------------------------------------------- aiohttp server
 def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Callable[[dict[str, Any]], Any] | None = None,
-              executor: ThreadPoolExecutor | None = None):
+              executor: ThreadPoolExecutor | None = None, power: Any = None):
     from aiohttp import web
 
+    from agent import power as power_mod
     from strategies.distribution_engine import fulfil_order
+
+    power = power or power_mod.shared(processor.tools.config)
+
+    def held(fn: Callable[..., Any], *args: Any) -> Any:
+        # Verification, recording and fulfilment keep the Mac awake until the order is delivered.
+        with power.hold("webhook"):
+            return fn(*args)
 
     executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="webhook")
     fulfil = fulfil or (lambda order: fulfil_order(processor.tools, order))
@@ -297,10 +313,10 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
             return web.json_response({"error": "payload too large"}, status=413)
         payload = await request.read()
         loop = asyncio.get_running_loop()
-        outcome = await loop.run_in_executor(executor, processor.handle, payload, request.headers.get("Stripe-Signature"))
+        outcome = await loop.run_in_executor(executor, held, processor.handle, payload, request.headers.get("Stripe-Signature"))
         jobs = [lambda order=order: fulfil(order) for order in outcome.fulfil] + list(outcome.after)
         for job in jobs:
-            fut = loop.run_in_executor(executor, job)
+            fut = loop.run_in_executor(executor, held, job)
             pending.add(fut)
             fut.add_done_callback(pending.discard)
         return web.json_response(outcome.body, status=outcome.status)
@@ -328,8 +344,10 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
 class WebhookServer:
     """Runs the aiohttp app on its own event loop; ``run(stop_event)`` blocks until the event is set."""
 
-    def __init__(self, tools: "Toolkit", host: str | None = None, port: int | None = None, path: str | None = None):
+    def __init__(self, tools: "Toolkit", host: str | None = None, port: int | None = None, path: str | None = None,
+                 power: Any = None):
         cfg = tools.config
+        self.power = power
         self.tools = tools
         self.host = host or cfg.webhook_host
         self.port = cfg.webhook_port if port is None else port
@@ -344,7 +362,7 @@ class WebhookServer:
     async def _serve(self, stop_event: threading.Event) -> None:
         from aiohttp import web
 
-        runner = web.AppRunner(build_app(self.processor, self.path), access_log=None)
+        runner = web.AppRunner(build_app(self.processor, self.path, power=self.power), access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, self.host, self.port)
         await site.start()

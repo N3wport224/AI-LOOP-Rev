@@ -16,6 +16,9 @@ Anti-spam guardrails:
 * **Canonical URL**: set on every platform that supports it, so search credit goes to the lander
   and cross-posts aren't treated as duplicate content.
 * **No personal data**: no emails, no contact details, no text copied from postings.
+* **Backoff**: a 5xx, 429 or network failure puts that platform on an exponential cooldown
+  (``agent.recovery.PlatformBackoff``, persisted, honours ``Retry-After``). The other platforms
+  and the engine loop carry on; the article is retried once the cooldown ends.
 
 Links are rendered per channel: lander/showcase links get ``utm_source=<platform>`` and checkout
 links get a ``client_reference_id``, so sales are attributed to the platform that drove them.
@@ -30,6 +33,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
+from agent.recovery import PlatformBackoff, is_transient
 from tools.attribution import add_utm, checkout_link
 
 MIN_INTERVAL_DAYS = 5
@@ -168,11 +172,18 @@ def build_article(
 
 
 class Syndicator:
-    def __init__(self, config, state, files, publishers: list[Any]):
+    def __init__(self, config, state, files, publishers: list[Any], backoff: PlatformBackoff | None = None):
         self.config = config
         self.state = state
         self.files = files
         self.publishers = publishers
+        self.backoff = backoff or PlatformBackoff(state)
+
+    def _failed(self, platform: str, what: str, exc: BaseException) -> str:
+        until = self.backoff.failure(platform, exc)
+        kind = "transient" if is_transient(exc) else "error"
+        self.state.log_error(f"syndication:{platform}", f"{what} failed ({kind}): {exc!r}; retry after {until.isoformat(timespec='seconds')}")
+        return until.isoformat(timespec="seconds")
 
     @property
     def interval(self) -> timedelta:
@@ -219,14 +230,18 @@ class Syndicator:
             if not self.due(pub.name, now):
                 results[pub.name] = "not due"
                 continue
+            blocked = self.backoff.blocked_until(pub.name)
+            if blocked is not None:
+                results[pub.name] = f"backing off until {blocked.isoformat(timespec='seconds')}"
+                continue
             if hasattr(pub, "last_published_at"):
                 # The platform's own history is the source of truth: a wiped or fresh local DB
                 # must not reset the cadence. If it can't be read, don't post (fail closed).
                 try:
                     remote_last = pub.last_published_at()
                 except Exception as exc:  # noqa: BLE001
-                    self.state.log_error(f"syndication:{pub.name}", f"cadence check failed: {exc!r}")
-                    results[pub.name] = "skipped: platform history unavailable"
+                    until = self._failed(pub.name, "cadence check", exc)
+                    results[pub.name] = f"skipped: platform history unavailable (retry after {until})"
                     continue
                 if remote_last and now - remote_last < self.interval:
                     self.state.set(f"syndicated:{pub.name}", remote_last.isoformat(timespec="seconds"))
@@ -235,9 +250,10 @@ class Syndicator:
             try:
                 url = pub.publish(article.for_channel(getattr(pub, "channel", pub.name)), self.config.syndication_publish)
             except Exception as exc:  # noqa: BLE001 - one platform failing must not block the others
-                self.state.log_error(f"syndication:{pub.name}", repr(exc))
-                results[pub.name] = f"failed: {exc}"
+                until = self._failed(pub.name, "publish", exc)
+                results[pub.name] = f"failed: {exc} (retry after {until})"
                 continue
+            self.backoff.success(pub.name)
             if not self.config.syndication_publish and not url:
                 results[pub.name] = "skipped (syndication_publish = false)"
                 continue

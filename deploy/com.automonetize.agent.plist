@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  launchd user agent for AutoMonetize. Do not edit the double-underscore placeholders by hand:
-  deploy/install_launchd.sh renders this into ~/Library/LaunchAgents/com.automonetize.agent.plist.
-  Secrets are NOT stored here: deploy/run_agent.sh loads them from __WORKDIR__/.env at start.
+  launchd job for AutoMonetize (engine + webhook supervisor). Do not edit the double-underscore
+  placeholders by hand: deploy/install_launchd.sh renders this into
+  ~/Library/LaunchAgents/ (starts at login) or, with sudo and -system, /Library/LaunchDaemons/
+  (starts at boot, runs as your user, no login needed).
+  Secrets are NOT stored here: deploy/run_agent.sh loads __WORKDIR__/.env on every start, so no
+  terminal or login shell is involved.
 -->
 <plist version="1.0">
 <dict>
@@ -19,7 +22,7 @@
   <key>WorkingDirectory</key>
   <string>__WORKDIR__</string>
 
-  <!-- Start at login and restart whenever the process exits (crash, kill, network-induced failure). -->
+  <!-- Start at load (login or boot) and restart whenever the process exits for any reason. -->
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -33,8 +36,10 @@
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
     <key>PATH</key>
-    <string>__WORKDIR__/.venv/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <string>__WORKDIR__/.venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>PYTHONUNBUFFERED</key>
     <string>1</string>
     <key>AUTOMONETIZE_ENV_FILE</key>
@@ -42,11 +47,13 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/automonetize.stdout.log</string>
+  <string>__HOME__/Library/Logs/automonetize/agent.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/automonetize.stderr.log</string>
+  <string>__HOME__/Library/Logs/automonetize/agent.stderr.log</string>
 
+  <!-- Standard (not Background): Background jobs get throttled CPU and I/O on battery. The engine
+       sleeps between cycles anyway, and holds a power assertion only while it works. -->
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Standard</string>
 </dict>
 </plist>

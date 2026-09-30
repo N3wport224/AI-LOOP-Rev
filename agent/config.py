@@ -141,6 +141,16 @@ class Config:
     supervisor_max_restarts: int = 5
     supervisor_restart_window_seconds: int = 600
     shutdown_timeout_seconds: float = 60.0
+    # Systemic breaker trips quarantine the engine instead of stopping it for good: an alert, a
+    # cooldown (doubling on repeat trips within 24h, capped), then a self-diagnostic and resume.
+    quarantine_hours: float = 2.0
+    quarantine_max_hours: float = 24.0
+    alert_notifications: bool = True         # macOS Notification Center banner for alerts
+
+    # Unattended operation (macOS)
+    public_webhook_url: str = ""             # https://<tunnel hostname>/webhook, set by setup_tunnel.sh
+    power_assertions: bool = True            # hold off idle sleep while a cycle or webhook is in flight
+    schedule_wake: bool = True               # ask pmset to wake the Mac for the next cycle (needs sudo -n)
 
     # Pricing engine
     price_matrix: list[int] = field(default_factory=lambda: [900, 1400, 1900])
@@ -232,6 +242,7 @@ _PLAIN_ENV = {
     "STRIPE_WEBHOOK_SECRET": "stripe_webhook_secret",
     "DEVTO_API_KEY": "devto_api_key",
     "HASHNODE_TOKEN": "hashnode_token",
+    "PUBLIC_WEBHOOK_URL": "public_webhook_url",
 }
 
 _TRUE = {"1", "true", "yes", "on"}

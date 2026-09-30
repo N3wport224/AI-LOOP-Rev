@@ -174,7 +174,11 @@ def _health_panel(snap: dict[str, Any]) -> Panel:
         (f"  operational failures {snap['operational_failures']}", "dim"),
     )
     parts: list[Any] = [head]
-    if br["trip_reason"] or br["emergency_stop"]:
+    q = br.get("quarantine")
+    if q and not br["emergency_stop"]:
+        parts.append(Text(f"QUARANTINE until {q['until']} (#{q['count']}): {q['reason']}  "
+                          "(self-diagnostic and automatic resume after the cooldown)", style="bold yellow"))
+    elif br["trip_reason"] or br["emergency_stop"]:
         parts.append(Text(f"STOP: {br['emergency_stop'] or br['trip_reason']}  (run `automonetize resume`)", style="bold red"))
     errors = Table(show_header=True, header_style="bold", box=None, padding=(0, 1), expand=True)
     errors.add_column("time", no_wrap=True, style="dim")

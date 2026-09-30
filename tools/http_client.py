@@ -141,9 +141,9 @@ class HttpClient:
         params["headers"] = headers
         params["timeout"] = min(self.max_timeout, params["timeout"] * 1.5)
         if isinstance(exc, HttpError) and exc.status == 429:
-            retry_after = params.get("_retry_after")
+            retry_after = _seconds(params.get("_retry_after"))
             if retry_after:
-                self._sleep(min(float(retry_after), 60.0))
+                self._sleep(min(retry_after, 60.0))
         return params
 
     def request(
@@ -157,6 +157,7 @@ class HttpClient:
         json_body: Any = None,
         check_robots: bool | None = None,
         attempts: int | None = None,
+        raw_body: bytes | None = None,
     ) -> Response:
         parts = urllib.parse.urlsplit(url)
         if parts.scheme not in ("http", "https"):
@@ -176,6 +177,8 @@ class HttpClient:
         elif data is not None:
             body = urllib.parse.urlencode(data, doseq=True).encode()
             base_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        elif raw_body is not None:
+            body = raw_body  # sent byte-for-byte (e.g. a signed payload)
         base_headers.update(headers or {})
 
         def attempt(p: dict[str, Any]) -> Response:
@@ -183,7 +186,7 @@ class HttpClient:
             if resp.ok:
                 return resp
             p["_retry_after"] = resp.headers.get("retry-after")
-            raise HttpError(resp.status, redact(url), resp.text[:500])
+            raise HttpError(resp.status, redact(url), resp.text[:500], retry_after=_seconds(p["_retry_after"]))
 
         def on_error(n: int, exc: BaseException, tb: str) -> None:
             if self.error_sink is not None:
@@ -222,6 +225,14 @@ class HttpClient:
 
     def get_json(self, url: str, **kwargs: Any) -> Any:
         return self.get(url, **kwargs).json()
+
+
+def _seconds(value: str | None) -> float | None:
+    """Retry-After as seconds (the delta-seconds form; an HTTP date is ignored)."""
+    try:
+        return max(0.0, float(value)) if value else None
+    except ValueError:
+        return None
 
 
 class _Permanent(Exception):

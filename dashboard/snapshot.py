@@ -68,8 +68,16 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
             "max_consecutive_errors": breaker.get("max_consecutive_errors", config.max_consecutive_errors),
             "trip_reason": breaker.get("trip_reason", ""),
             "emergency_stop": (emergency or {}).get("reason") or ("stop file present" if stop_file else ""),
+            "quarantine": _quarantine(state),
         },
     }
+
+
+def _quarantine(state: StateStore) -> dict[str, Any] | None:
+    q = state.get("quarantine")
+    if not q or not q.get("active"):
+        return None
+    return {k: q.get(k) for k in ("reason", "since", "until", "count")}
 
 
 def _distribution(state: StateStore, config: Config) -> dict[str, Any]:
