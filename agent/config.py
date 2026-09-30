@@ -35,7 +35,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 20
+    max_actions_per_cycle: int = 30         # must exceed len(engine.PLAN) (22), or every other cycle is cut short
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3

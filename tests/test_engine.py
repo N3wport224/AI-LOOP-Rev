@@ -268,3 +268,11 @@ def test_uptime_freezes_after_loop_exit(engine_factory, state, clock):
     assert uptime_seconds(state) == 60
     clock.advance(hours=5)
     assert uptime_seconds(state) == 60
+
+
+def test_the_whole_plan_fits_in_one_cycle():
+    """Regression (Phase 7): the plan grew past max_actions_per_cycle, so each cycle left tasks
+    over and the next one ran only those leftovers, skipping revenue sync every other hour."""
+    from agent.config import Config
+
+    assert len(PLAN) < Config().max_actions_per_cycle

@@ -44,10 +44,12 @@ log = logging.getLogger("automonetize.engine")
 # (task, priority) — lower priority runs first. Tasks without a registered handler are left out.
 PLAN: list[tuple[str, int]] = [
     ("aggregate_leads", 10),
+    ("discover_sources", 12),
     ("build_intel", 15),
     ("package_asset", 20),
     ("publish_listing", 25),
     ("publish_showcase", 30),
+    ("tune_copy", 29),
     ("syndicate", 31),
     ("build_site", 32),
     ("track_hn", 33),
@@ -61,6 +63,7 @@ PLAN: list[tuple[str, int]] = [
     ("deliver_subscriptions", 51),
     ("nurture_leads", 52),
     ("collect_metrics", 55),
+    ("run_satellites", 58),
     ("optimize_pricing", 60),
 ]
 BUILTIN_TASKS = {"sync_revenue"}

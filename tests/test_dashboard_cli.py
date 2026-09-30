@@ -32,7 +32,7 @@ def test_snapshot_and_render_after_pipeline(config, state, toolkit):
     for expected in (
         "Active Objective", "Reach $10.00/day", "lead_directory:python-remote:g1", "Iteration", "Uptime",
         "Staged Assets / Leads", "Python Remote Tech Stack Intel v1", "Daily Revenue vs Target", "$7.60",
-        "$10.00 target", "Circuit breaker", "OK", "HTTP 503", "Recent Actions", "aggregate_leads",
+        "$10.00 target", "Circuit breaker", "OK", "HTTP 503", "Recent Actions", "optimize_pricing",  # the latest action
     ):
         assert expected in out, expected
 

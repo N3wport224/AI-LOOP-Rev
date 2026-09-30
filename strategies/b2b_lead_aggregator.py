@@ -325,6 +325,16 @@ class LeadAggregator(Strategy):
         ctx.payload["failed_sources"] = failed_sources
         if sources and len(failed_sources) == len(sources):
             raise RuntimeError(f"all lead sources failed: {failed_sources}")
+        discovered = 0
+        if tools.config.source_discovery_enabled:
+            # Sources the agent discovered and trialled itself (agent/source_discovery.py). Read
+            # from SQLite each run, so a newly activated source is used without a restart; its
+            # failures are tracked there and never fail this task.
+            from agent.source_discovery import ingest_active
+
+            extra, _ = ingest_active(tools)
+            raw.extend(extra)
+            discovered = len(extra)
 
         valid = []
         for lead in raw:
@@ -346,7 +356,7 @@ class LeadAggregator(Strategy):
 
         metrics = {
             "fetched": len(raw), "valid": len(valid), "matched": len(matched), "unique": len(unique),
-            "new": new, "total": total, "failed_sources": failed_sources,
+            "new": new, "total": total, "failed_sources": failed_sources, "from_discovered_sources": discovered,
         }
         min_leads = tools.config.min_leads_for_asset
         # Only condemn the niche when sources actually answered and still produced too little.

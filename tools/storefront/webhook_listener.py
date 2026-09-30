@@ -186,6 +186,11 @@ class WebhookProcessor:
             state.release_webhook_event(event_id)
             state.log_error("webhook", f"{event_type} {event_id} failed: {exc!r}")
             return WebhookOutcome(500, {"error": "processing failed"})
+        if (event_type in ("checkout.session.completed", "checkout.session.async_payment_succeeded") and status == "processed"
+                and obj.get("payment_status") in ("paid", "no_payment_required")):
+            from tools.copy_bandit import record_purchase_from_ref
+
+            record_purchase_from_ref(state, obj.get("client_reference_id"), state.clock())  # credit the copy that sold
         state.finish_webhook_event(event_id, status, detail)
         state.set("webhook_last_event", {"id": event_id, "type": event_type, "at": state.now(), "status": status})
         return WebhookOutcome(200, {"received": True, "status": status, "detail": detail}, fulfil, after)
@@ -401,6 +406,23 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         for action in ("confirm", "unsubscribe"):
             app.router.add_route("GET", f"/lead-magnet/{action}", lead_action(action))
             app.router.add_route("POST", f"/lead-magnet/{action}", lead_action(action))
+    if processor.tools.config.copy_bandit_enabled:
+        from strategies.lead_magnet import CaptureLimiter
+        from tools.copy_bandit import handle_beacon
+
+        beacon_limiter = CaptureLimiter(600)
+
+        async def beacon(request: web.Request) -> web.Response:
+            if request.content_length and request.content_length > 1024:
+                return web.Response(status=413)
+            if not beacon_limiter.allow(client_ip(request)):
+                return web.Response(status=429)
+            body = await request.read()
+            status, _ = await asyncio.get_running_loop().run_in_executor(
+                executor, handle_beacon, processor.tools.state, body, processor.tools.state.clock())
+            return web.Response(status=status, headers={"Cache-Control": "no-store"})
+
+        app.router.add_post("/t/e", beacon)
     if processor.tools.config.api_enabled:
         from api.server import mount
 

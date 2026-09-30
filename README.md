@@ -704,7 +704,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `20` / `60` / `5` | Circuit breakers |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 22-task plan) |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
 | `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
 | `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |

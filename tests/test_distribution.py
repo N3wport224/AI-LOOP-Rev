@@ -361,7 +361,7 @@ def test_closed_loop_through_engine(config, state, breaker, transport, smtp):
     engine = Engine(config, state=state, toolkit=kit, sleep=lambda s: None)
 
     first = engine.run_cycle()
-    assert all(a["status"] == "ok" for a in first.actions), first.actions
+    assert all(a["status"] == "ok" for a in first.actions), [a for a in first.actions if a["status"] != "ok"]
     asset = state.latest_asset(first.hypothesis_id, "lead_directory")
     assert asset["checkout_url"] == "https://buy.stripe.com/t"
 

@@ -18,7 +18,8 @@ from typing import Any
 from strategies.base import Strategy, TaskContext, TaskResult
 from strategies.digital_asset_packager import ASSET_KIND, niche_title
 from tools.page_builder import (
-    FeedItem, MatrixPage, ProductPage, SiteBuilder, changed_urls, compile_matrix_pages, indexnow_key, submit_indexnow,
+    FeedItem, MatrixPage, ProductPage, SiteBuilder, changed_urls, compile_matrix_pages, indexnow_key, link_related,
+    submit_indexnow,
 )
 from tools.syndication import DevToPublisher, GitHubDiscussionsPublisher, HashnodePublisher, Syndicator, build_article
 
@@ -32,6 +33,7 @@ def intel_metrics(files, niche: str, high_urgency: int = 60) -> tuple[list[dict[
         "high_urgency": sum(1 for r in records if r.get("urgency_score", 0) >= high_urgency) if records else None,
         "roles": sum(r.get("openings", 0) for r in records) or None,
         "verified_urls": sum(1 for r in records if r.get("careers_url_verified")) if records else None,
+        "high_intent": sum(1 for r in records if r.get("intent_level") == "High") if records else None,
         "signals": [(s.replace("_", " "), n) for s, n in signals.most_common(5)],
     }
 
@@ -72,8 +74,27 @@ def matrix_pages(tools, pages: list[ProductPage]) -> list[MatrixPage]:
                   "subscription_price_cents": p.subscription_price_cents, "subscription_interval": p.subscription_interval}
         for p in pages if p.kind == "dataset"
     }
-    return compile_matrix_pages(datasets, offers, tools.state.clock(), cfg.seo_min_companies, cfg.seo_min_migrations,
-                                cfg.seo_max_pages)
+    everything = compile_matrix_pages(datasets, offers, tools.state.clock(), cfg.seo_min_companies, cfg.seo_min_migrations,
+                                      max_pages=10**6)
+    shares = {n: s for n, s in ((tools.state.get("niche_allocation") or {}).get("shares") or {}).items() if n in offers}
+    if len(shares) < 2:
+        return link_related(everything[:cfg.seo_max_pages])
+    # Satellites: split the page budget by revenue share (largest remainder), strongest pages
+    # first within each niche; leftover budget goes to the strongest remaining pages.
+    from strategies.satellite_orchestrator import split_quota
+
+    quota = split_quota(cfg.seo_max_pages, {n: s / sum(shares.values()) for n, s in shares.items()})
+    chosen, rest = [], []
+    for page in everything:
+        niche = page.offer.get("niche")
+        if quota.get(niche, 0) > 0:
+            quota[niche] -= 1
+            chosen.append(page)
+        else:
+            rest.append(page)
+    chosen += rest[: max(0, cfg.seo_max_pages - len(chosen))]
+    order = {id(p): i for i, p in enumerate(everything)}
+    return link_related(sorted(chosen, key=lambda p: order[id(p)]))
 
 
 def site_pages(tools) -> list[ProductPage]:
@@ -88,6 +109,12 @@ def site_pages(tools) -> list[ProductPage]:
     for a in tools.state.list_assets():
         if a["kind"] == "subscription" and a.get("checkout_url") and a.get("niche") not in subs:
             subs[a["niche"]] = a
+    from api.auth import api_asset
+    from tools.copy_bandit import page_arms
+
+    api = api_asset(tools.state)
+    policy = tools.state.get("copy_policy") or {}
+    bandit = cfg.copy_bandit_enabled and bool(cfg.lead_capture_base)
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
@@ -110,12 +137,23 @@ def site_pages(tools) -> list[ProductPage]:
                    if kind == "dataset" and niche in subs else {}),
             )
         )
+        page = pages[-1]
+        if bandit and kind == "dataset":
+            facts = {"label": niche_title(niche).replace(" Remote", ""), "companies": metrics.get("companies") or 0,
+                     "hot": metrics.get("high_intent") or metrics.get("high_urgency") or 0,
+                     "verified": metrics.get("verified_urls") or 0, "price": f"${asset['price_cents'] / 100:.2f}",
+                     "api_price": f"${cfg.api_price_cents / 100:.2f}", "checkout_url": asset.get("checkout_url") or "",
+                     "lead_form": cfg.lead_magnet_enabled, "api_url": (api or {}).get("checkout_url") or ""}
+            page.copy_arms = page_arms(facts, policy)
+            page.copy_version = int(policy.get("version", 0))
+            page.copy_targets = {"free_sample": "#lead", "instant_feed": facts["checkout_url"], "developer_api": facts["api_url"]}
+            page.telemetry_url = f"{cfg.lead_capture_base}/t/e"
     return pages
 
 
 class InboundSyndicator(Strategy):
     name = "inbound_syndicator"
-    tasks = ("syndicate", "build_site", "track_hn")
+    tasks = ("syndicate", "build_site", "track_hn", "tune_copy")
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         return getattr(self, task)(ctx)
@@ -129,6 +167,25 @@ class InboundSyndicator(Strategy):
         ]
 
     def syndicate(self, ctx: TaskContext) -> TaskResult:
+        """Write about the niche furthest below its revenue share of recent articles (primary and
+        satellites); with a single niche this is simply the active one."""
+        tools, cfg = ctx.tools, ctx.tools.config
+        shares = (tools.state.get("niche_allocation") or {}).get("shares") or {}
+        if len(shares) > 1:
+            from strategies.satellite_orchestrator import choose_by_deficit, niche_of, working_set
+
+            hyps = {niche_of(h): h for h in working_set(tools.state)}
+            counts = tools.state.get("syndication_niche_counts") or {}
+            for niche in choose_by_deficit(shares, counts, eligible=[n for n in shares if n in hyps]):
+                records, _ = intel_metrics(tools.files, niche, cfg.high_urgency_threshold)
+                if len(records) >= cfg.syndication_min_companies:
+                    counts[niche] = counts.get(niche, 0) + 1
+                    tools.state.set("syndication_niche_counts", counts)
+                    ctx = TaskContext(tools, hyps[niche], {})
+                    break
+        return self.syndicate_niche(ctx)
+
+    def syndicate_niche(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
         cfg = tools.config
         records, _ = intel_metrics(tools.files, ctx.niche, cfg.high_urgency_threshold)
@@ -178,6 +235,20 @@ class InboundSyndicator(Strategy):
         if res.get("status") == "published":
             ctx.tools.state.add_metric(ctx.hypothesis["id"], "impressions", "hn_gist", 1)
         return TaskResult(True, "HN tracker: " + ", ".join(f"{k}={v}" for k, v in res.items()), res)
+
+    def tune_copy(self, ctx: TaskContext) -> TaskResult:
+        """Recompute the copy bandit's allocation (and retire losing variants) before the site build."""
+        from tools.copy_bandit import purge_seen, tune
+
+        tools = ctx.tools
+        if not tools.config.copy_bandit_enabled:
+            return TaskResult(True, "copy bandit disabled", {})
+        now = tools.state.clock()
+        purge_seen(tools.state, now)
+        policy = tune(tools.state, tools.config, now)
+        alloc = "; ".join(f"{slot}: " + ", ".join(f"{v} {p:.0%}" for v, p in arms.items()) for slot, arms in policy["allocation"].items())
+        return TaskResult(True, f"copy policy v{policy['version']}: {alloc}" + (f" ({'; '.join(policy['changes'])})" if policy["changes"] else ""),
+                          {"version": policy["version"], "winners": policy["winners"], "changes": policy["changes"]})
 
     def build_site(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools

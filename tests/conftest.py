@@ -158,6 +158,10 @@ def config(tmp_path: Path) -> Config:
         # Phase 1-3 tests were written against this price grid; Phase 4 defaults are tested separately.
         price_tiers=[[0, 500], [25, 900], [75, 1500]],
         price_matrix=[500, 900, 1400, 1900],
+        # Phase 7 features have their own suites; older tests keep the single-niche, no-discovery
+        # world they were written for (and never touch real DNS).
+        max_active_niches=1,
+        source_discovery_enabled=False,
     )
 
 

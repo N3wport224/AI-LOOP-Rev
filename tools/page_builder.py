@@ -76,6 +76,11 @@ class ProductPage:
     verified_profiles: int = 0     # companies with a live-verified careers page
     purchases_7d: int = 0
     lead_capture_url: str = ""     # https://<tunnel>/lead-magnet/capture when the free sample is on
+    # Copy bandit (tools/copy_bandit.py): {slot: {variant: {"text", "w"}}}, empty = static copy
+    copy_arms: dict[str, Any] = field(default_factory=dict)
+    copy_version: int = 0
+    copy_targets: dict[str, str] = field(default_factory=dict)   # cta variant -> href
+    telemetry_url: str = ""
 
     @property
     def slug(self) -> str:
@@ -151,7 +156,7 @@ td,th{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-al
 .muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.cta.alt{background:#2e7d32}
 .lead{border:1px solid #e3e3e3;border-radius:8px;padding:1rem;margin:1.2rem 0;max-width:34rem}.lead label{font-weight:600;display:block;margin-bottom:.4rem}
 .lead input[type=email]{padding:.6rem;border:1px solid #bbb;border-radius:6px;width:100%;max-width:20rem;font-size:1rem}.lead button{padding:.62rem 1rem;border:0;border-radius:6px;background:#2e7d32;color:#fff;font-weight:600;cursor:pointer}
-.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.tag{display:inline-block;background:#fff3e0;color:#8a4b00;border-radius:4px;padding:0 .35rem;font-size:.85rem}
+.hero{font-size:1.25rem;font-weight:600;margin:.2rem 0 .6rem}.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.tag{display:inline-block;background:#fff3e0;color:#8a4b00;border-radius:4px;padding:0 .35rem;font-size:.85rem}
 @media (prefers-color-scheme: dark){body{background:#111;color:#eee}.lede{color:#bbb}td,th,.kpi{border-color:#333}.cta{background:#eee;color:#111}.muted{color:#999}}"""
 
 
@@ -160,7 +165,7 @@ def lead_form_html(action: str, niche: str, source: str, size: int = 10) -> str:
     ``website`` is a honeypot: people never see or fill it, form-spamming bots do."""
     if not action:
         return ""
-    return f"""<form class="lead" method="post" action="{html.escape(action)}">
+    return f"""<form class="lead" id="lead" method="post" action="{html.escape(action)}">
 <label for="lm-email">Free: {size} records + a hiring-intent cheatsheet, by email</label>
 <input type="email" id="lm-email" name="email" required maxlength="254" autocomplete="email" placeholder="you@company.com">
 <input type="hidden" name="niche" value="{html.escape(niche)}"><input type="hidden" name="source" value="{html.escape(source)}">
@@ -176,6 +181,42 @@ def lead_form_html(action: str, niche: str, source: str, size: int = 10) -> str:
 LEAD_REF_JS = """(function(){try{var st=JSON.parse(localStorage.getItem('%(key)s')||'null');
 document.querySelectorAll('[data-lm-ref]').forEach(function(el){if(st&&st.ref&&Date.now()-st.t<%(days)d*864e5){el.value=st.ref;}});
 }catch(e){}})();""" % {"key": STORAGE_KEY, "days": FIRST_TOUCH_DAYS}
+
+
+# Copy bandit, phase 1 (before ATTRIBUTION_JS): pick this visitor's arms (sticky per policy
+# version), swap the headline and CTA, report the view. Phase 2 (after it): tag checkout links'
+# client_reference_id with the variant, so Stripe purchases are credited to the copy that sold.
+COPY_APPLY_JS = """var AMC=(function(){try{var el=document.getElementById('am-copy');if(!el)return null;var cfg=JSON.parse(el.textContent);
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){return null;}}
+var vid=ls('am_vid');if(!vid){vid=Math.random().toString(36).slice(2)+Date.now().toString(36);ls('am_vid',vid);}
+var key='am_copy_'+cfg.version,pick={};try{pick=JSON.parse(ls(key)||'{}')||{};}catch(e){pick={};}
+Object.keys(cfg.arms).forEach(function(slot){var arms=cfg.arms[slot];if(pick[slot]&&arms[pick[slot]])return;
+var r=Math.random(),acc=0,names=Object.keys(arms);pick[slot]=names[names.length-1];
+for(var i=0;i<names.length;i++){acc+=arms[names[i]].w;if(r<acc){pick[slot]=names[i];break;}}});ls(key,JSON.stringify(pick));
+var h=document.querySelector('[data-copy=headline]');if(h&&pick.headline)h.textContent=cfg.arms.headline[pick.headline].text;
+var c=document.querySelector('[data-copy=cta]');if(c&&pick.cta){c.textContent=cfg.arms.cta[pick.cta].text;var t=cfg.targets[pick.cta];
+if(t){c.setAttribute('href',t);if(t.charAt(0)==='#')c.removeAttribute('data-checkout');else c.setAttribute('data-checkout','');}}
+var tag='h'+cfg.codes.headline[pick.headline]+'_c'+cfg.codes.cta[pick.cta];
+document.querySelectorAll('form.lead').forEach(function(f){var i=document.createElement('input');i.type='hidden';i.name='copy';i.value=tag;f.appendChild(i);});
+function send(e){if(!cfg.endpoint||!navigator.sendBeacon)return;try{navigator.sendBeacon(cfg.endpoint,new Blob([JSON.stringify(
+{e:e,h:pick.headline,c:pick.cta,v:vid,p:cfg.page})],{type:'text/plain'}));}catch(x){}}
+send('view');if(c)c.addEventListener('click',function(){send('click');});return {tag:tag};}catch(e){return null;}})();"""
+COPY_TAG_JS = """(function(){if(!AMC)return;document.querySelectorAll('a[data-checkout]').forEach(function(a){try{var u=new URL(a.href);
+var ref=u.searchParams.get('client_reference_id')||'am--direct--';var p=ref.split('--');while(p.length<3)p.push('');
+u.searchParams.set('client_reference_id',p.slice(0,3).join('--')+'--'+AMC.tag);a.href=u.toString();}catch(e){}});})();"""
+
+
+def copy_blob(page: ProductPage) -> str:
+    from tools.copy_bandit import SLOTS
+
+    data = {"version": page.copy_version, "page": page.slug, "endpoint": page.telemetry_url, "arms": page.copy_arms,
+            "targets": page.copy_targets, "codes": {slot: {v: a["code"] for v, a in arms.items()} for slot, arms in SLOTS.items()}}
+    return _jsonld_script(data)  # same escaping: the blob can't close its <script> element
+
+
+def _server_pick(arms: dict[str, Any]) -> str | None:
+    """What crawlers and no-JS visitors see: the arm with the most traffic (the current winner)."""
+    return max(arms, key=lambda v: (arms[v]["w"], v)) if arms else None
 
 
 def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tech Stack Intel") -> str:
@@ -205,6 +246,20 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
         f'<a class="cta" data-checkout href="{html.escape(page.checkout_url)}" rel="noopener">Buy the full dataset: {price}</a>'
         if page.checkout_url else "<p><em>Checkout opens soon.</em></p>"
     )
+    headline_html = ""
+    if page.copy_arms.get("cta"):
+        v = _server_pick(page.copy_arms["cta"])
+        href = page.copy_targets.get(v, page.checkout_url)
+        checkout_attr = "" if href.startswith("#") else " data-checkout"
+        cta = (f'<a class="cta" data-copy="cta"{checkout_attr} href="{html.escape(href)}" rel="noopener">'
+               f'{html.escape(page.copy_arms["cta"][v]["text"])}</a>'
+               + (f' <a class="cta alt" data-checkout href="{html.escape(page.checkout_url)}" rel="noopener">Buy the full dataset: {price}</a>'
+                  if page.checkout_url and v != "instant_feed" else ""))
+    if page.copy_arms.get("headline"):
+        v = _server_pick(page.copy_arms["headline"])
+        headline_html = f'<p class="hero" data-copy="headline">{html.escape(page.copy_arms["headline"][v]["text"])}</p>'
+    copy_script = (f'<script type="application/json" id="am-copy">{copy_blob(page)}</script>'
+                   if page.copy_arms and page.telemetry_url else "")
     if page.subscription_url and page.subscription_price_cents:
         cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.subscription_url)}" rel="noopener">'
                 f"Weekly updates: ${page.subscription_price_cents / 100:.2f}/{html.escape(page.subscription_interval)}</a>")
@@ -239,6 +294,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 </script>
 <style>{CSS}</style></head><body>
 <h1>{title}</h1>
+{headline_html}
 <p class="lede">{html.escape(page.summary)}</p>
 {proof_html}
 <p><img src="radar-badge.svg" alt="{html.escape(str((page.metrics or {}).get("roles") or 0))} hiring signals tracked" height="20"></p>
@@ -252,7 +308,10 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
 <p class="muted"><a href="../">All datasets</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a></p>
-<script>{ATTRIBUTION_JS}
+{copy_script}
+<script>{COPY_APPLY_JS if copy_script else ""}
+{ATTRIBUTION_JS}
+{COPY_TAG_JS if copy_script else ""}
 {RELATIVE_TIME_JS}
 {LEAD_REF_JS}</script>
 </body></html>
@@ -395,8 +454,12 @@ def compile_matrix_pages(datasets: dict[str, list[dict[str, Any]]], offers: dict
             stats=stats, columns=MIGRATION_PREVIEW_FIELDS, rows=_preview(recs, MIGRATION_PREVIEW_FIELDS), updated_at=stamp,
             offer=offer_for(entries),
         ))
-    pages = pages[:max_pages]
-    for p in pages:  # internal links: the same technology's other page, then the biggest neighbours
+    return link_related(pages[:max_pages])
+
+
+def link_related(pages: list[MatrixPage]) -> list[MatrixPage]:
+    """Internal links: the same technology's other page, then the biggest neighbours."""
+    for p in pages:
         same = [(q.title, q.path) for q in pages if q.tech == p.tech and q.path != p.path]
         others = [(q.title, q.path) for q in pages if q.tech != p.tech][:5]
         p.related = (same + others)[:6]

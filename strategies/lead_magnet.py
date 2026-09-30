@@ -119,7 +119,7 @@ def known_niches(tools) -> set[str]:
 
 
 def capture(tools, email: str | None, niche: str | None = None, source: str = "", ref: str = "", honeypot: str = "",
-            ip: str = "", limiter: CaptureLimiter | None = None) -> CaptureResult:
+            ip: str = "", limiter: CaptureLimiter | None = None, copy_tag: str = "") -> CaptureResult:
     cfg, state = tools.config, tools.state
     if not cfg.lead_magnet_enabled:
         return CaptureResult("disabled")
@@ -144,6 +144,10 @@ def capture(tools, email: str | None, niche: str | None = None, source: str = ""
         channel, campaign = "lander", re.sub(r"[^a-z0-9_/.-]", "_", source.lower())[:60]
     status = "pending" if cfg.lead_magnet_double_opt_in else "active"
     sid, created = state.capture_free_subscriber(addr, niche, secrets.token_urlsafe(24), channel, campaign, status)
+    if created and copy_tag:
+        from tools.copy_bandit import record_signup
+
+        record_signup(state, copy_tag, state.clock())  # credits the copy variant the visitor saw
     sub = state.subscriber(sid) or {}
     if sub.get("subscription_status") == "unsubscribed":
         return CaptureResult("suppressed", sid)
@@ -499,7 +503,7 @@ class LeadEndpoints:
     def capture(self, form: dict[str, str], ip: str, wants_json: bool = False) -> PageResponse:
         cfg = self.tools.config
         res = capture(self.tools, form.get("email"), form.get("niche"), form.get("source", ""), form.get("ref", ""),
-                      form.get("website", ""), ip, self.limiter)
+                      form.get("website", ""), ip, self.limiter, form.get("copy", "")[:10])
         after = (lambda sid=res.subscriber_id: send_sample(self.tools, sid)) if res.send_sample and res.subscriber_id else None
         status = {"invalid": 400, "rate_limited": 429, "disabled": 404}.get(res.status, 200)
         if wants_json:
