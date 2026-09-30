@@ -41,9 +41,9 @@ def directory_lock(root: Path, timeout: float = 30.0, poll: float = 0.05) -> Ite
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except BlockingIOError:
+            except BlockingIOError as exc:
                 if time.monotonic() >= deadline:
-                    raise ToolError(f"could not lock {root} within {timeout}s")
+                    raise ToolError(f"could not lock {root} within {timeout}s") from exc
                 time.sleep(poll)
         yield
     finally:

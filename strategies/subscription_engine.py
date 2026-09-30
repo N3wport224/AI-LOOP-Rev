@@ -287,7 +287,7 @@ class SubscriptionEngine(Strategy):
             created = int(datetime.fromisoformat(asset["created_at"]).timestamp())
             for s in sf.client.completed_sessions(asset["product_ref"], created):
                 if s.get("mode") == "subscription":
-                    sid, is_new = activate_from_session(tools, s)
+                    _, is_new = activate_from_session(tools, s)
                     new_subs += is_new
         for sub in tools.state.list_subscribers():
             if sub["subscription_status"] in ("canceled", "incomplete_expired"):
@@ -315,6 +315,7 @@ class SubscriptionEngine(Strategy):
             return TaskResult(True, f"next delivery {moment.isoformat(timespec='minutes')}", {"due": False})
         sent = dry = failed = skipped = 0
         packages: dict[str, tuple[str, int, str]] = {}
+        refreshed = self.refresh_subscribed_niches(ctx, period)
         for sub in tools.state.list_subscribers(DELIVERABLE):
             if not sub.get("email") or not sub.get("niche"):
                 skipped += 1
@@ -342,5 +343,34 @@ class SubscriptionEngine(Strategy):
             tools.state.record_subscription_delivery(sub["id"], period, outcome, count)
             sent += outcome == "delivered"
             dry += outcome == "dry_run"
-        return TaskResult(True, f"{period}: {sent} sent, {dry} dry-run, {failed} failed, {skipped} skipped",
-                          {"due": True, "period": period, "sent": sent, "dry_run": dry, "failed": failed})
+        return TaskResult(True, f"{period}: {sent} sent, {dry} dry-run, {failed} failed, {skipped} skipped"
+                          + (f", refreshed {', '.join(refreshed)}" if refreshed else ""),
+                          {"due": True, "period": period, "sent": sent, "dry_run": dry, "failed": failed,
+                           "refreshed": refreshed})
+
+    def refresh_subscribed_niches(self, ctx: TaskContext, period: str) -> list[str]:
+        """Re-collect data for subscribed niches the engine is no longer working on.
+
+        After a pivot, only the active niche gets fresh data each cycle; without this, paying
+        subscribers of an older niche would get "0 changes" every week until they churned. Runs
+        once per niche per delivery period, right before its package is built."""
+        from strategies.b2b_lead_aggregator import LeadAggregator
+        from strategies.tech_stack_intel import TechStackIntel
+
+        tools = ctx.tools
+        niches = {s["niche"] for s in tools.state.list_subscribers(DELIVERABLE) if s.get("niche")} - {ctx.niche}
+        refreshed = []
+        for niche in sorted(niches):
+            if tools.files.exists(f"assets/{niche}/weekly/{period}.zip"):
+                continue  # this week's package is already built
+            hyp = next((h for h in reversed(tools.state.list_hypotheses()) if h["params"].get("niche") == niche), None)
+            if hyp is None:
+                continue
+            sub_ctx = TaskContext(tools, hyp, {})
+            try:
+                LeadAggregator().run("aggregate_leads", sub_ctx)
+                TechStackIntel().run("build_intel", sub_ctx)
+                refreshed.append(niche)
+            except Exception as exc:  # noqa: BLE001 - deliver last week's data rather than nothing
+                tools.state.log_error("subscriptions", f"refresh of {niche} failed: {exc!r}")
+        return refreshed

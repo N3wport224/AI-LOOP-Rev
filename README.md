@@ -71,14 +71,25 @@ funnel score (`impressions`, `views`, `purchases`, `conversion` = purchases/view
   works (needs a GitHub showcase repo and token; without it this rule stays off rather than
   firing on missing data);
 * **no verified revenue after `pivot_after_iterations` (24) cycles**;
-* a task proves the niche can't work (for example, too few listings exist).
+* **traction faded**: it sold before, but has had no sale in `stale_revenue_days` (14) and
+  no active subscribers;
+* a task proves the niche can't work (for example, too few listings exist). This pivots at
+  once.
 
-The next hypothesis comes from, in order:
-1. **clusters adjacent** to the one just dropped (e.g. Python → AI Infrastructure, Data
-   Engineering, Cloud Security), ranked by how many pooled roles matched them in the last 7 days;
-2. configured niches;
-3. new variants mined from the most frequent hiring tags;
-4. broadened revisits of dropped niches.
+The first three rules also wait until the niche is `min_hypothesis_days` (10) old. Cycle
+counts alone would give a product only 24 hours at hourly cycles, less than one pricing
+window or syndication slot. Cycles aborted because the network dropped don't count.
+
+The next hypothesis is **ranked by live market demand**: every candidate (clusters adjacent
+to the niche just dropped, with a small bonus; configured niches; all known clusters; tags
+mined from recent postings) is scored by how many distinct roles first seen in the last 7
+days match it, as whole words. Only candidates backed by at least `min_leads_for_asset`
+roles qualify, so a hiring spike in, say, Elixir becomes a niche as soon as the data shows
+it. With no evidence yet (cold start, sources down) it falls back to a fixed order: adjacent
+clusters, configured niches, mined tags, then broadened revisits of dropped niches.
+
+After a pivot, niches with paying subscribers keep getting refreshed data before each Monday
+delivery, so subscribers never receive a stale "0 changes" update.
 
 ## Installation
 
@@ -91,7 +102,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 280 tests, ~12 s, no network
+pytest                     # 308 tests, ~15 s, no network
 ```
 
 Existing databases from earlier versions are migrated automatically on open.
@@ -241,7 +252,9 @@ for up to 3 days and polling covers the gap.
 
 At most one post per platform every `syndication_interval_days` (5, and never less, whatever
 you configure), each article once, and only when at least `syndication_min_companies` (10)
-back it. Contact details are never included. `automonetize syndicate [--drafts]` runs it on demand.
+back it. The cadence is checked against **the platform's own record** of your last post
+(Dev.to articles, Hashnode publication, Discussions), so a wiped or fresh database can't
+reset it. If that history can't be read, nothing is posted (fail closed). Contact details are never included. `automonetize syndicate [--drafts]` runs it on demand.
 
 ### Setting up Dev.to and Hashnode
 
@@ -313,8 +326,9 @@ also pulls `/v1/invoices?subscription=…&status=paid`, so a missed webhook neve
 Every outbound link is tagged: lander and showcase links get `utm_source` (devto, hashnode,
 github, rss, substack…), `utm_medium` and `utm_campaign`, and links straight to checkout get
 Stripe's `client_reference_id` (`am--<source>--<campaign>`). On the lander, a small script
-carries the visitor's UTM values into the checkout links, so a Dev.to reader who lands on
-the page and then buys is still attributed to Dev.to. Stripe copies `client_reference_id`
+carries the visitor's UTM values into the checkout links, and remembers the first touch for 30
+days (`localStorage`), so a Dev.to reader who lands, browses to another dataset and buys there
+days later is still attributed to Dev.to. Stripe copies `client_reference_id`
 onto every Checkout Session, completed or abandoned, and webhooks/polling decode it onto the
 order.
 
@@ -343,12 +357,20 @@ orders and cart drop-off.
 
 | Condition | Action |
 |---|---|
+| ≥ 3 abandoned checkouts, 0 orders, ≥ 48h | new Price one tier down (people reached Stripe and left: the clearest price signal) |
 | > 20 views, 0 orders, experiment ≥ 48h old | new Price one tier down ($19 → $14 → $9 → $5) |
+| no view tracking, 0 orders after 2 × 48h | step down anyway: an unsold price is never held forever |
 | same at $5 | 2-for-1 bundle with another niche's dataset (prefers adjacent clusters), at the higher price |
 | ≥ 2 orders at the current price | test one tier up, unless it already earned less per view |
 | 1 order in > 20 views after 48h | explore the cheaper tier once, then settle on the best |
 | neighbouring tiers tested and worse | **converge**: hold the best revenue-per-view tier |
+| converged, but no sale in the last 96h | re-open: demand shifted, step down and re-explore |
 | > 2 sales in 24h for the niche | scraping depth +1 (more Arbeitnow pages, more HN comments, broader keywords) and a $19 premium deep-dive (per-company profiles), at most weekly |
+
+Experiments belong to the *product*, not the data version: a routine refresh (new leads → new
+asset version) keeps the running experiment, its clock, its tested-tier history and its live
+price. Views come from a running total of GitHub's rolling 14-day counts (a lower bound), so
+later experiments still see new traffic after the first peak.
 
 Revenue per view uses a smoothed conversion estimate, so a single lucky sale can't lock a
 price in. The tests drive the decision rule against three demand curves and check it
@@ -467,6 +489,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 |---|---|---|
 | `interval_seconds` | `3600` | Time between cycles |
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
+| `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
 | `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `20` / `60` / `5` | Circuit breakers |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
@@ -536,7 +559,13 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 280 tests, ~12 s, no network
+pytest     # 308 tests, ~15 s, no network
+```
+
+See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
+
+```bash
+pytest -W error              # the audit's strict mode; also clean
 ```
 
 Phase 4 adds: Dev.to/Hashnode payloads, mocked responses and duplicate-title refusal, per-channel

@@ -29,7 +29,9 @@ EXAMPLE_CONFIG = """# AutoMonetize configuration. Environment variables AUTOMONE
 [automonetize]
 data_dir = "data"
 interval_seconds = 3600          # one cycle per hour
-pivot_after_iterations = 24      # cycles with zero verified revenue before a pivot
+pivot_after_iterations = 24      # cycles with zero verified revenue before a pivot...
+min_hypothesis_days = 10         # ...and never before a niche is this old (hard evidence still pivots at once)
+stale_revenue_days = 14          # a niche whose last sale is older than this is re-evaluated
 signal_window_iterations = 12    # cycles with zero views AND zero sales before a pivot (needs GitHub traffic)
 daily_target_cents = 1000        # $10.00/day
 max_actions_per_cycle = 20
@@ -236,7 +238,7 @@ def cmd_resume(args: argparse.Namespace, console: Console) -> int:
 
 
 def cmd_hypotheses(args: argparse.Namespace, console: Console) -> int:
-    config, state = _open(args)
+    _, state = _open(args)
     t = Table("id", "key", "status", "iterations", "revenue", "reason")
     for h in state.list_hypotheses():
         t.add_row(
@@ -328,7 +330,7 @@ def cmd_outreach(args: argparse.Namespace, console: Console) -> int:
 
 
 def cmd_assets(args: argparse.Namespace, console: Console) -> int:
-    config, state = _open(args)
+    _, state = _open(args)
     if args.assets_cmd == "link":
         state.link_product(args.asset_id, args.product_id)
         console.print(f"asset #{args.asset_id} linked to product {args.product_id}; its sales now count toward its hypothesis")
@@ -391,7 +393,7 @@ def cmd_dispatch(args: argparse.Namespace, console: Console) -> int:
 
 
 def cmd_suppress(args: argparse.Namespace, console: Console) -> int:
-    config, state = _open(args)
+    _, state = _open(args)
     if args.suppress_cmd == "add":
         for email in args.emails:
             console.print(f"{email}: {'suppressed' if state.suppress(email, args.reason) else 'already suppressed'}")
@@ -704,7 +706,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, console: Console | None = None) -> int:
     args = build_parser().parse_args(argv)
     console = console or Console()
-    return int(args.func(args, console) or 0)
+    before = {id(s) for s in StateStore.open_stores()}
+    try:
+        return int(args.func(args, console) or 0)
+    finally:
+        # Close every database this command opened (directly or through an Engine), checkpointing
+        # the WAL so a short-lived CLI call never leaves -wal/-shm growth or open handles behind.
+        for store in StateStore.open_stores():
+            if id(store) not in before:
+                try:
+                    store.checkpoint()
+                finally:
+                    store.close()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -22,7 +22,7 @@ import base64
 import json
 import re
 import smtplib
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
@@ -401,8 +401,4 @@ class Dispatcher:
             raise
         self._audit(email, "live", "sent", message_id, backend.name)
         return "delivered"
-
-
-def report_dict(report: DispatchReport) -> dict[str, Any]:
-    return asdict(report)
 

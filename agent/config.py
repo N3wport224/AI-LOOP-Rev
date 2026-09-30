@@ -28,6 +28,10 @@ class Config:
     # Loop
     interval_seconds: int = 3600
     pivot_after_iterations: int = 24
+    stale_revenue_days: int = 14            # a niche with no sale for this long is re-evaluated
+    # Wall-clock floor before a zero-traction pivot. Iteration counts alone gave a product only
+    # 24 hours at hourly cycles: less than one pricing window and one syndication slot.
+    min_hypothesis_days: float = 10
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
@@ -56,7 +60,7 @@ class Config:
     lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring"])
     niches: list[dict[str, Any]] = field(default_factory=lambda: [dict(n) for n in DEFAULT_NICHES])
     min_leads_for_asset: int = 10
-    asset_price_cents: int = 900
+    asset_price_cents: int = 900  # legacy (Phase 1); starting prices now come from price_tiers. Kept so old configs still load.
     storefront_url: str = ""
 
     # Outreach (drafts only, never sent automatically)
@@ -230,6 +234,9 @@ _PLAIN_ENV = {
     "HASHNODE_TOKEN": "hashnode_token",
 }
 
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
 _LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts"}
 _JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix"}
 
@@ -242,7 +249,14 @@ def _coerce(raw: str, default: Any, name: str) -> Any:
     if name == "data_dir":
         return Path(raw)
     if isinstance(default, bool):
-        return raw.strip().lower() in ("1", "true", "yes", "on")
+        # Only an explicit token flips a switch. An empty or unrecognised value (a blanked
+        # DRY_RUN= line, a typo) keeps the safe default instead of silently becoming False.
+        value = raw.strip().lower()
+        if value in _TRUE:
+            return True
+        if value in _FALSE:
+            return False
+        return default
     if isinstance(default, int):
         return int(raw)
     if isinstance(default, float):

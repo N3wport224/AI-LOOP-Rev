@@ -81,7 +81,7 @@ class Supervisor:
             log.warning("STRIPE_WEBHOOK_SECRET not set: webhook listener disabled, polling sync only")
 
     # -- signals -----------------------------------------------------------------------
-    def _on_signal(self, signum: int, frame: Any) -> None:
+    def _on_signal(self, signum: int, _frame: Any) -> None:
         # Only set flags here: the main loop does the actual shutdown work.
         self.stop_reason = self.stop_reason or signal.Signals(signum).name
         self.stop_event.set()

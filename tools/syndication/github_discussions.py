@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
+
+from tools.syndication.timeutil import parse_ts
 
 if TYPE_CHECKING:  # pragma: no cover
     from tools.storefront.github import GitHubClient
@@ -23,6 +26,16 @@ class GitHubDiscussionsPublisher:
 
     def configured(self) -> bool:
         return bool(self.github.configured() and self.repo)
+
+    LAST_POST = (
+        "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { "
+        "discussions(first: 1, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { createdAt } } } }"
+    )
+
+    def last_published_at(self) -> "datetime | None":
+        owner, name = self.repo.split("/", 1)
+        nodes = self.github.graphql(self.LAST_POST, {"owner": owner, "name": name})["repository"]["discussions"]["nodes"]
+        return parse_ts(nodes[0]["createdAt"]) if nodes else None
 
     def publish(self, article: "Article", published: bool) -> str:
         if not published:

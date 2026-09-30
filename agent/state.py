@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
+import weakref
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -206,6 +208,23 @@ CREATE TABLE IF NOT EXISTS subscription_deliveries (
 );
 """
 
+# Hot-path indexes (the audit found every per-cycle query doing a full table scan).
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_orders_hyp_time ON orders (hypothesis_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_orders_ref ON orders (product_ref, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
+CREATE INDEX IF NOT EXISTS idx_assets_ref ON assets (product_ref);
+CREATE INDEX IF NOT EXISTS idx_assets_hyp_kind ON assets (hypothesis_id, kind, version);
+CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses (status);
+CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers (subscription_status, niche);
+CREATE INDEX IF NOT EXISTS idx_sessions_pi ON checkout_sessions (payment_intent);
+CREATE INDEX IF NOT EXISTS idx_sessions_ref ON checkout_sessions (product_ref, updated_at);
+CREATE INDEX IF NOT EXISTS idx_experiments_asset ON price_experiments (asset_id, status);
+CREATE INDEX IF NOT EXISTS idx_experiments_ref ON price_experiments (product_ref);
+CREATE INDEX IF NOT EXISTS idx_revenue_hyp ON revenue (hypothesis_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_leads_first_seen ON leads (first_seen);
+"""
+
 # Columns added after the first release; applied to existing databases on open.
 MIGRATIONS: dict[str, dict[str, str]] = {
     "assets": {
@@ -244,6 +263,16 @@ def iso(dt: datetime) -> str:
 
 
 class StateStore:
+    _instances: "weakref.WeakSet[StateStore]" = weakref.WeakSet()
+
+    @classmethod
+    def open_stores(cls) -> list["StateStore"]:
+        return [s for s in list(cls._instances) if not s.closed]
+
+    @classmethod
+    def open_count(cls) -> int:
+        return len(cls.open_stores())
+
     def __init__(self, db_path: str | Path, clock: Callable[[], datetime] = utc_now):
         self.db_path = str(db_path)
         if self.db_path != ":memory:":
@@ -257,6 +286,9 @@ class StateStore:
             self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
         self._migrate()
+        self.conn.executescript(INDEXES)  # after migrations: some index columns were added by them
+        self.closed = False
+        StateStore._instances.add(self)
 
     def _migrate(self) -> None:
         for table, columns in MIGRATIONS.items():
@@ -266,7 +298,9 @@ class StateStore:
                     self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     def close(self) -> None:
-        self.conn.close()
+        if not getattr(self, "closed", False):
+            self.conn.close()
+            self.closed = True
 
     def now(self) -> str:
         return iso(self.clock())
@@ -878,7 +912,7 @@ class StateStore:
         return self._all("SELECT * FROM price_experiments WHERE hypothesis_id = ? ORDER BY id", (hypothesis_id,))
 
     def update_experiment(self, exp_id: int, **fields: Any) -> None:
-        allowed = {"views", "initiations", "status", "reason", "ended_at"}
+        allowed = {"views", "initiations", "status", "reason", "ended_at", "asset_id"}
         if set(fields) - allowed:
             raise ValueError(f"cannot update experiment fields {sorted(set(fields) - allowed)}")
         cols = ", ".join(f"{k} = ?" for k in fields)
@@ -994,16 +1028,31 @@ class StateStore:
         )
         return {r["metric"]: int(r["v"]) for r in rows}
 
-    def lead_demand(self, keywords: list[str], since: datetime, pool: str = "__all__") -> int:
-        """How many pooled leads first seen since ``since`` mention any keyword (title, tags or stack)."""
-        kws = [k.lower() for k in keywords]
-        n = 0
-        for r in self._all("SELECT data FROM leads WHERE niche = ? AND first_seen >= ?", (pool, iso(since))):
+    def recent_lead_texts(self, since: datetime) -> list[str]:
+        """Title + tags + stack of every distinct lead first seen since ``since`` (all niches)."""
+        seen: set[str] = set()
+        texts = []
+        for r in self._all("SELECT dedupe_key, data FROM leads WHERE first_seen >= ? ORDER BY id", (iso(since),)):
+            if r["dedupe_key"] in seen:
+                continue
+            seen.add(r["dedupe_key"])
             d = json.loads(r["data"])
-            hay = " ".join([d.get("title", ""), " ".join(d.get("tags") or []), " ".join(d.get("stack") or [])]).lower()
-            if any(k in hay for k in kws):
-                n += 1
-        return n
+            texts.append(" ".join([d.get("title", ""), " ".join(d.get("tags") or []), " ".join(d.get("stack") or [])]).lower())
+        return texts
+
+    def lead_demand(self, keywords: list[str], since: datetime, texts: list[str] | None = None) -> int:
+        """How many distinct leads first seen since ``since`` mention any keyword (whole words, so
+        "rust" doesn't match "trust")."""
+        texts = self.recent_lead_texts(since) if texts is None else texts
+        patterns = [re.compile(rf"(?<![\w+#.]){re.escape(k.lower())}(?![\w+#])") for k in keywords if k]
+        return sum(1 for t in texts if any(p.search(t) for p in patterns))
+
+    def revenue_for_hypothesis_since(self, hypothesis_id: int, since: datetime) -> int:
+        row = self._one(
+            "SELECT COALESCE(SUM(net_cents),0) AS net FROM revenue WHERE hypothesis_id = ? AND verified = 1 AND occurred_at >= ?",
+            (hypothesis_id, iso(since)),
+        )
+        return int(row["net"])  # type: ignore[index]
 
     def outreach_counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self._all("SELECT status, COUNT(*) AS n FROM outreach_queue GROUP BY status")}

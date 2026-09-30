@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from tools.syndication.timeutil import parse_ts
 
 if TYPE_CHECKING:  # pragma: no cover
     from tools.http_client import HttpClient
@@ -44,6 +47,15 @@ class DevToPublisher:
         rows = self.http.get_json(f"{API}/articles/me/all", params={"per_page": 100}, headers=self._headers(),
                                   check_robots=False) or []
         return {str(r.get("title", "")).strip().lower() for r in rows if isinstance(r, dict)}
+
+    def last_published_at(self) -> "datetime | None":
+        """When this account last published anything: the platform's record, which survives a
+        local state reset. Raises if the history can't be fetched (callers fail closed)."""
+        rows = self.http.get_json(f"{API}/articles/me/all", params={"per_page": 100}, headers=self._headers(),
+                                  check_robots=False)
+        stamps = [parse_ts(r.get("published_at")) for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+        stamps = [s for s in stamps if s]
+        return max(stamps) if stamps else None
 
     def publish(self, article: "Article", published: bool) -> str:
         if article.title[:128].strip().lower() in self.existing_titles():

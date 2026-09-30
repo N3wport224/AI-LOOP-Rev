@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from agent.config import Config
@@ -72,6 +72,11 @@ def formulate_next(state: StateStore, config: Config) -> dict[str, Any] | None:
     """
     tried = state.hypothesis_keys()
 
+    ranked = demand_ranked(state, config, tried)
+    if ranked:
+        return ranked
+
+    # No market evidence yet (cold start, or sources down): fall back to the fixed exploration order.
     adjacent = adjacent_candidates(state, tried)
     if adjacent:
         return adjacent
@@ -102,6 +107,58 @@ def formulate_next(state: StateStore, config: Config) -> dict[str, Any] | None:
         keywords = _broaden(h["params"]["keywords"], state)
         return _params(niche, keywords, generation, origin=f"revisit of #{h['id']}")
     return None
+
+
+ADJACENCY_BONUS = 1.25
+
+
+def demand_ranked(state: StateStore, config: Config, tried: set[str]) -> dict[str, Any] | None:
+    """Pick the untried niche with the most hiring demand in the last ``DEMAND_WINDOW_DAYS``.
+
+    Candidates come from every source at once: clusters adjacent to the last deprecated niche
+    (small bonus), configured niches, all known clusters, and tags mined from live postings.
+    Only candidates backed by at least ``min_leads_for_asset`` recent roles count as evidence.
+    """
+    since = state.clock() - timedelta(days=DEMAND_WINDOW_DAYS)
+    texts = state.recent_lead_texts(since)
+    if not texts:
+        return None
+    deprecated = [h for h in state.list_hypotheses() if h["status"] == "deprecated"]
+    last = max(deprecated, key=lambda h: (h["updated_at"], h["id"]))["params"]["niche"] if deprecated else None
+    adjacent = set(ADJACENT.get(last or "", []))
+
+    candidates: dict[str, tuple[int, list[str], str]] = {}  # niche -> (priority, keywords, kind)
+    for c in ADJACENT.get(last or "", []):
+        candidates.setdefault(c, (0, CLUSTERS[c], "adjacent"))
+    for n in config.niches:
+        candidates.setdefault(slugify(n["name"]), (1, list(n["keywords"]), "configured"))
+    for c, kws in CLUSTERS.items():
+        candidates.setdefault(c, (2, kws, "cluster"))
+    configured_keywords = {k.lower() for n in config.niches for k in n["keywords"]}
+    for tag, _ in state.tag_frequencies(limit=40):
+        if tag in GENERIC_TAGS or tag in configured_keywords or len(tag) < 2:
+            continue
+        candidates.setdefault(f"tag-{slugify(tag)}", (3, [tag], "mined"))
+
+    best = None
+    for niche, (priority, keywords, kind) in candidates.items():
+        if hypothesis_key(niche, 1) in tried:
+            continue
+        demand = state.lead_demand(keywords, since, texts)
+        if demand < config.min_leads_for_asset:
+            continue
+        score = demand * (ADJACENCY_BONUS if niche in adjacent else 1.0)
+        if best is None or (score, -priority) > (best[0], -best[1]):
+            best = (score, priority, niche, keywords, kind, demand)
+    if best is None:
+        return None
+    _, _, niche, keywords, kind, demand = best
+    evidence = f"{demand} matching roles in {DEMAND_WINDOW_DAYS}d"
+    origin = {
+        "adjacent": f"adjacent to {last} ({evidence})",
+        "mined": f"mined from market demand ({evidence})",
+    }.get(kind, f"{kind}, market demand ({evidence})")
+    return _params(niche, list(keywords), 1, origin=origin)
 
 
 def adjacent_candidates(state: StateStore, tried: set[str]) -> dict[str, Any] | None:
@@ -145,9 +202,21 @@ def score_hypothesis(state: StateStore, hyp: dict[str, Any]) -> dict[str, Any]:
 def pivot_reason(state: StateStore, config: Config, hyp: dict[str, Any]) -> str | None:
     """Why this hypothesis should be deprecated now, or None to keep going."""
     s = score_hypothesis(state, hyp)
-    if s["revenue_cents"] > 0 or s["purchases"] > 0:
-        return None
     n = hyp["iterations"]
+    age = state.clock() - datetime.fromisoformat(hyp["created_at"])
+    if age < timedelta(days=config.min_hypothesis_days):
+        return None  # too young to judge; hard evidence (no data at all) still pivots via the engine
+    if s["revenue_cents"] > 0 or s["purchases"] > 0:
+        # Traction must be current, not historical: one early sale shouldn't pin the agent to a
+        # niche that stopped selling. Active subscribers count as current traction.
+        days = config.stale_revenue_days
+        since = state.clock() - timedelta(days=days)
+        niche = hyp["params"].get("niche")
+        subscribed = niche and state.list_subscribers(("active", "trialing"), niche=niche)
+        recent = state.revenue_for_hypothesis_since(hyp["id"], since) > 0 or state.orders_since(hyp["id"], since) > 0
+        if n >= config.pivot_after_iterations and not subscribed and not recent:
+            return f"traction faded: no verified revenue in {days} days"
+        return None
     if state.get("view_tracking") and n >= config.signal_window_iterations and s["views"] == 0:
         return f"no views or sales after {n} iterations"
     if n >= config.pivot_after_iterations:

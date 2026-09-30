@@ -9,7 +9,6 @@ from agent.pricing_engine import PricingEngine, decide, neighbour, revenue_per_v
 from strategies.b2b_lead_aggregator import fetch_arbeitnow
 from tests.conftest import NOW
 from tests.test_distribution import pipeline
-from tools import build_toolkit
 from tools.http_client import Response
 
 MATRIX = [500, 900, 1400, 1900]
@@ -95,28 +94,6 @@ def test_simulated_convergence(true_rates, best):
 STRIPE = "https://api.stripe.com/v1"
 
 
-@pytest.fixture
-def live(config, state, breaker, transport, make_hypothesis, clock):
-    config.stripe_secret_key = "sk_test"
-    counter = {"n": 0}
-
-    def link(method, url, headers):
-        counter["n"] += 1
-        return Response(200, url, json.dumps({"id": f"plink_{counter['n']}", "url": f"https://buy.stripe.com/l{counter['n']}"}).encode())
-
-    transport.add_json(f"{STRIPE}/products", {"id": "prod_1"})
-    transport.add_json(f"{STRIPE}/prices", {"id": "price_1"})
-    transport.add(f"{STRIPE}/payment_links", link)
-    transport.add_json(f"{STRIPE}/checkout/sessions", {"has_more": False, "data": []})
-    kit = build_toolkit(config, state, breaker, transport=transport, sleep=lambda s: None)
-    hyp = make_hypothesis()
-    pipeline(kit, hyp)
-    a = state.latest_asset(hyp["id"], "lead_directory")
-    state.update_asset(a["id"], price_cents=900, product_ref="plink_0", checkout_url="https://buy.stripe.com/l0",
-                       provider="stripe", status="published")
-    return kit, state.get_hypothesis(hyp["id"]), state.get_asset(a["id"])
-
-
 def test_high_views_no_sales_lowers_price(live, state, clock, transport):
     kit, hyp, asset = live
     eng = PricingEngine(kit)
@@ -195,7 +172,7 @@ def test_initiations_and_dropoff_from_sessions(live, state, clock, transport):
     eng = PricingEngine(kit)
     eng.run(hyp)
     stats = eng.refresh(state.running_experiment(asset["id"]))
-    assert stats == {"views": 0, "initiations": 4, "orders": 1, "dropoff_pct": 75}
+    assert stats == {"views": 0, "initiations": 4, "orders": 1, "recent_orders": 1, "dropoff_pct": 75}
 
 
 def test_pricing_needs_an_api_storefront(toolkit, state, make_hypothesis):

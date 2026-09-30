@@ -312,10 +312,15 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         if pending:
             await asyncio.wait(list(pending), timeout=30)
 
+    async def release_executor(app: web.Application) -> None:
+        # Fulfilment has drained; without this every webhook restart leaked its worker threads.
+        await asyncio.get_running_loop().run_in_executor(None, executor.shutdown, True)
+
     app = web.Application(client_max_size=MAX_BODY_BYTES)
     app.router.add_post(path, webhook)
     app.router.add_get("/healthz", health)
     app.on_shutdown.append(drain)
+    app.on_cleanup.append(release_executor)
     app[pending_key()] = pending
     return app
 

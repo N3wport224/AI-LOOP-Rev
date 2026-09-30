@@ -64,17 +64,39 @@ def neighbour(matrix: list[int], price: int, step: int) -> int | None:
     return above[0] if above else None
 
 
+ABANDONED_CHECKOUTS = 3  # started-but-unpaid checkouts with no sale that count as a price signal
+
+
 def decide(
     exp: dict[str, Any], stats: dict[str, int], history: list[dict[str, Any]], now: datetime,
-    matrix: list[int], min_views: int, window_hours: int, can_bundle: bool = True,
+    matrix: list[int], min_views: int, window_hours: int, can_bundle: bool = True, view_tracking: bool = True,
 ) -> Decision:
-    """Pure decision function: current experiment + its stats + past experiments → next action."""
-    if exp["status"] == "converged":
-        return Decision("hold", exp["price_cents"], "converged")
+    """Pure decision function: current experiment + its stats + past experiments → next action.
+
+    Signals, strongest first: completed orders, abandoned checkouts (reached Stripe, didn't pay),
+    showcase views. Without view tracking, time alone (2 × window with no sale) stands in for
+    traffic, so an unsold price can never be held forever.
+    """
     price = exp["price_cents"]
     age = now - datetime.fromisoformat(exp["started_at"])
+    window = timedelta(hours=window_hours)
     views, orders = stats["views"], stats["orders"]
+    initiations = stats.get("initiations", 0)
     here = revenue_per_view(price, orders, views)
+
+    def step_down(reason: str) -> Decision:
+        down = neighbour(matrix, price, -1)
+        if down is not None:
+            return Decision("lower", down, reason)
+        if can_bundle:
+            return Decision("bundle", price, f"{reason} at the lowest tier")
+        return Decision("hold", price, "lowest tier and nothing to bundle with")
+
+    if exp["status"] == "converged":
+        recent = stats.get("recent_orders", orders)
+        if recent == 0 and age >= 2 * window and (views > min_views or not view_tracking):
+            return step_down(f"converged ${price / 100:.0f} stopped selling: demand shifted, re-exploring")
+        return Decision("hold", price, "converged")
 
     def tested(p: int) -> list[dict[str, Any]]:
         return [h for h in history if h["price_cents"] == p and h["id"] != exp["id"]]
@@ -88,18 +110,19 @@ def decide(
             return Decision("converge", price, f"${up / 100:.0f} already tested and earned less per view")
         return Decision("raise", up, f"{orders} orders at ${price / 100:.0f}: testing ${up / 100:.0f}")
 
-    if age < timedelta(hours=window_hours):
+    if age < window:
         return Decision("wait", price, f"experiment is {age.total_seconds() / 3600:.0f}h old (< {window_hours}h)")
 
-    if orders == 0 and views > min_views:
-        down = neighbour(matrix, price, -1)
-        if down is not None:
-            return Decision("lower", down, f"{views} views, 0 orders in {window_hours}h at ${price / 100:.0f}")
-        if can_bundle:
-            return Decision("bundle", price, f"{views} views, 0 orders at the lowest tier")
-        return Decision("hold", price, "lowest tier and nothing to bundle with")
+    if orders == 0:
+        if initiations >= ABANDONED_CHECKOUTS:
+            return step_down(f"{initiations} checkouts abandoned, 0 orders at ${price / 100:.0f}")
+        if views > min_views:
+            return step_down(f"{views} views, 0 orders in {window_hours}h at ${price / 100:.0f}")
+        if not view_tracking and age >= 2 * window:
+            return step_down(f"no traffic data; 0 orders in {age.total_seconds() / 3600:.0f}h at ${price / 100:.0f}")
 
-    if orders >= 1 and views > min_views:
+    enough_signal = views > min_views or (not view_tracking and age >= 2 * window)
+    if orders >= 1 and enough_signal:
         # Weak but non-zero conversion: explore the cheaper tier once, then settle on the best one seen.
         down = neighbour(matrix, price, -1)
         if down is not None and not tested(down):
@@ -146,19 +169,31 @@ class PricingEngine:
                 self.state.log_error("pricing", f"session poll failed: {exc!r}")
         views = max(0, self.views_now(exp["hypothesis_id"]) - exp["views_at_start"]) if exp.get("hypothesis_id") else 0
         orders = self.state.orders_for_refs(refs, since=exp["started_at"])
-        initiations = max(self.state.initiations_for_refs(refs), orders)
+        initiations = max(self.state.initiations_for_refs(refs, since=exp["started_at"]), orders)
+        recent_since = (self.state.clock() - timedelta(hours=2 * self.cfg.pricing_window_hours)).isoformat(timespec="seconds")
         self.state.update_experiment(exp["id"], views=views, initiations=initiations)
         return {"views": views, "initiations": initiations, "orders": orders,
+                "recent_orders": self.state.orders_for_refs(refs, since=recent_since),
                 "dropoff_pct": round(100 * (1 - orders / initiations)) if initiations else 0}
 
     def history(self, asset: dict[str, Any]) -> list[dict[str, Any]]:
-        rows = [e for e in self.state.experiments_for_hypothesis(asset["hypothesis_id"]) if e["asset_id"] == asset["id"]]
+        """Every experiment on this product line (same hypothesis and kind), across data versions."""
+        kinds = {a["id"]: a["kind"] for a in self.state.list_assets(asset["hypothesis_id"])}
+        rows = [e for e in self.state.experiments_for_hypothesis(asset["hypothesis_id"])
+                if kinds.get(e["asset_id"]) == asset["kind"]]
         for e in rows:
             e["orders"] = self.state.orders_for_refs([e["product_ref"]] if e["product_ref"] else [], since=e["started_at"])
         return rows
 
     def ensure_experiment(self, asset: dict[str, Any]) -> dict[str, Any] | None:
         exp = self.state.running_experiment(asset["id"])
+        if exp is None and asset.get("product_ref"):
+            # A new data version of the same product (same Payment Link) continues its experiment:
+            # restarting the 48h window on every data refresh would mean it never elapses.
+            for prior in reversed(self.state.experiments_for_hypothesis(asset["hypothesis_id"])):
+                if prior["status"] in ("running", "converged") and prior["product_ref"] == asset["product_ref"]:
+                    self.state.update_experiment(prior["id"], asset_id=asset["id"])
+                    return self.state.running_experiment(asset["id"])
         if exp is None and asset.get("checkout_url") and asset.get("product_ref"):
             self.state.start_experiment(
                 asset["id"], asset["hypothesis_id"], asset["price_cents"], asset.get("provider") or "",
@@ -271,7 +306,7 @@ class PricingEngine:
             out.writestr(f"{niche}-deep-dive/tech_radar.json", json.dumps(records, indent=2))
         zip_rel = f"assets/{niche}/{niche}-premium-v{version}.zip"
         files.write_bytes(zip_rel, buf.getvalue())
-        price = max(self.cfg.premium_price_cents, max(self.cfg.price_matrix))
+        price = max(self.cfg.premium_price_cents, *self.cfg.price_matrix)
         summary = f"Per-company profiles for {min(40, len(records))} {niche_title(niche)} companies: full stack by category, every open role, intent signals and verified careers pages."
         files.write_json(f"{base}/listing.json", {"name": title, "summary": summary, "price_cents": price, "file": zip_rel})
         top = [{"company": r["company"], "urgency_score": r["urgency_score"], "openings": r["openings"],
@@ -337,7 +372,7 @@ class PricingEngine:
             open_bundle = any(b["kind"] == "bundle" and b.get("checkout_url") for b in live)
             d = decide(self.state.running_experiment(a["id"]), stats, self.history(a), self.state.clock(),
                        self.cfg.price_matrix, self.cfg.pricing_min_views, self.cfg.pricing_window_hours,
-                       can_bundle=bool(partner) and not open_bundle)
+                       can_bundle=bool(partner) and not open_bundle, view_tracking=bool(self.state.get("view_tracking")))
             line = f"{a['title']}: {d.action} ({d.reason}) · views {stats['views']}, initiations {stats['initiations']}, orders {stats['orders']}, drop-off {stats['dropoff_pct']}%"
             if d.action in ("lower", "raise"):
                 self.reprice(a, exp, d.price_cents, d.reason)  # type: ignore[arg-type]

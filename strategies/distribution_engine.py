@@ -233,8 +233,16 @@ class DistributionEngine(Strategy):
                 tools.state.log_error("metrics", f"GitHub traffic unavailable: {exc!r}")
             else:
                 needle = f"/showcase/{ctx.niche}"
-                views = sum(int(p.get("count", 0)) for p in paths if needle in str(p.get("path", "")))
-                tools.state.set_metric(hid, "views", "github_traffic", views)
+                window = sum(int(p.get("count", 0)) for p in paths if needle in str(p.get("path", "")))
+                # GitHub reports a rolling 14-day count. Accumulate every increase into a running
+                # total (a lower bound on real views): tracking its maximum would freeze after
+                # the peak, and later price experiments would never see new traffic.
+                key = f"traffic:{hid}:{ctx.niche}"
+                seen = tools.state.get(key) or {"last": 0, "total": 0}
+                total = seen["total"] + max(0, window - seen["last"])
+                tools.state.set(key, {"last": window, "total": total})
+                views = total
+                tools.state.set_metric(hid, "views", "github_traffic", total)
                 tools.state.set("view_tracking", True)
         assets = tools.state.list_assets(hid)
         surfaces = sum(1 for k in ("checkout_url", "showcase_url", "lander_url") if assets and assets[0].get(k))

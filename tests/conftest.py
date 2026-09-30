@@ -154,6 +154,7 @@ def config(tmp_path: Path) -> Config:
             {"name": "rust-systems", "keywords": ["rust"]},
         ],
         network_check_hosts=[],
+        min_hypothesis_days=0,  # most tests exercise the iteration rules; the age floor has its own tests
         # Phase 1-3 tests were written against this price grid; Phase 4 defaults are tested separately.
         price_tiers=[[0, 500], [25, 900], [75, 1500]],
         price_matrix=[500, 900, 1400, 1900],
@@ -205,3 +206,31 @@ def make_hypothesis(state: StateStore) -> Callable[..., dict[str, Any]]:
         return state.get_hypothesis(hid)
 
     return _make
+
+
+@pytest.fixture
+def live(config, state, breaker, transport, make_hypothesis, clock):
+    """A published $9 dataset on Stripe; Payment Links are minted as plink_1, plink_2, ...
+
+    Shared by test_pricing and test_audit_regressions."""
+    from tests.test_distribution import pipeline
+
+    stripe = "https://api.stripe.com/v1"
+    config.stripe_secret_key = "sk_test"
+    counter = {"n": 0}
+
+    def link(method, url, headers):
+        counter["n"] += 1
+        return Response(200, url, json.dumps({"id": f"plink_{counter['n']}", "url": f"https://buy.stripe.com/l{counter['n']}"}).encode())
+
+    transport.add_json(f"{stripe}/products", {"id": "prod_1"})
+    transport.add_json(f"{stripe}/prices", {"id": "price_1"})
+    transport.add(f"{stripe}/payment_links", link)
+    transport.add_json(f"{stripe}/checkout/sessions", {"has_more": False, "data": []})
+    kit = build_toolkit(config, state, breaker, transport=transport, sleep=lambda s: None)
+    hyp = make_hypothesis()
+    pipeline(kit, hyp)
+    a = state.latest_asset(hyp["id"], "lead_directory")
+    state.update_asset(a["id"], price_cents=900, product_ref="plink_0", checkout_url="https://buy.stripe.com/l0",
+                       provider="stripe", status="published")
+    return kit, state.get_hypothesis(hyp["id"]), state.get_asset(a["id"])

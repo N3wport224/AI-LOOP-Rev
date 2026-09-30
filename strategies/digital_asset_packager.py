@@ -203,7 +203,10 @@ class DigitalAssetPackager(Strategy):
         tools.files.write_bytes(zip_rel, buf.getvalue())
 
         companies = len(intel) or stats["companies"]
-        price = price_for(companies, cfg.price_tiers)
+        # Tiers only pick the *starting* price. Once a version is live, the pricing engine owns the
+        # price: re-deriving it here would silently undo experiments and put a different price on
+        # the lander than the Payment Link charges.
+        price = latest["price_cents"] if latest and latest.get("checkout_url") else price_for(companies, cfg.price_tiers)
         hot = sum(1 for r in intel if r.get("urgency_score", 0) >= cfg.high_urgency_threshold)
         summary = (
             f"{companies} companies hiring for {niche_title(niche)} roles, fingerprinted by tech stack "

@@ -219,6 +219,19 @@ class Syndicator:
             if not self.due(pub.name, now):
                 results[pub.name] = "not due"
                 continue
+            if hasattr(pub, "last_published_at"):
+                # The platform's own history is the source of truth: a wiped or fresh local DB
+                # must not reset the cadence. If it can't be read, don't post (fail closed).
+                try:
+                    remote_last = pub.last_published_at()
+                except Exception as exc:  # noqa: BLE001
+                    self.state.log_error(f"syndication:{pub.name}", f"cadence check failed: {exc!r}")
+                    results[pub.name] = "skipped: platform history unavailable"
+                    continue
+                if remote_last and now - remote_last < self.interval:
+                    self.state.set(f"syndicated:{pub.name}", remote_last.isoformat(timespec="seconds"))
+                    results[pub.name] = "not due"
+                    continue
             try:
                 url = pub.publish(article.for_channel(getattr(pub, "channel", pub.name)), self.config.syndication_publish)
             except Exception as exc:  # noqa: BLE001 - one platform failing must not block the others

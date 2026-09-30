@@ -110,7 +110,6 @@ class LemonSqueezyStorefront:
         self.client = LemonSqueezyClient(http, config.lemonsqueezy_api_key)
         self.fee_pct = config.lemonsqueezy_fee_pct
         self.fee_fixed_cents = config.lemonsqueezy_fee_fixed_cents
-        self._verified: dict[str, bool] = {}
 
     def configured(self) -> bool:
         c = self.config

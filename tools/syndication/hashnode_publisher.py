@@ -3,7 +3,10 @@ over HTTPS with the ``Authorization`` token); the old REST API is retired."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from tools.syndication.timeutil import parse_ts
 
 if TYPE_CHECKING:  # pragma: no cover
     from tools.http_client import HttpClient
@@ -33,6 +36,17 @@ class HashnodePublisher:
         if article.canonical_url.startswith("http"):
             inp["originalArticleURL"] = article.canonical_url
         return {"query": self.MUTATION, "variables": {"input": inp}}
+
+    LAST_POST = "query($id: ObjectId!) { publication(id: $id) { posts(first: 1) { edges { node { publishedAt } } } } }"
+
+    def last_published_at(self) -> "datetime | None":
+        resp = self.http.post(self.URL, json_body={"query": self.LAST_POST, "variables": {"id": self.publication_id}},
+                              headers={"Authorization": self.token}, check_robots=False)
+        data = resp.json() or {}
+        if data.get("errors"):
+            raise RuntimeError(f"hashnode: {data['errors'][0].get('message', data['errors'])}")
+        edges = (((data.get("data") or {}).get("publication") or {}).get("posts") or {}).get("edges") or []
+        return parse_ts(edges[0]["node"].get("publishedAt")) if edges else None
 
     def publish(self, article: "Article", published: bool) -> str:
         if not published:

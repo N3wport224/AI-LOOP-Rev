@@ -22,7 +22,6 @@ PREFIX = "am"
 SEP = "--"
 MAX_COMPONENT = 60
 DIRECT = "direct"
-KNOWN_CHANNELS = ("devto", "hashnode", "github", "rss", "hn", "showcase", "email", "site", DIRECT)
 
 
 def clean(value: str) -> str:
@@ -68,10 +67,17 @@ def checkout_link(url: str, source: str, campaign: str = "") -> str:
     return _with_params(url, {"client_reference_id": encode_ref(source, campaign)})
 
 
-# Mirrors clean()/encode_ref() for visitors arriving on a lander with UTM parameters.
-LANDER_ATTRIBUTION_JS = """(function(){try{var p=new URLSearchParams(location.search),s=p.get('utm_source');
-if(!s)return;function c(x){return(x||'').toLowerCase().replace(/[^a-z0-9_]/g,'_').slice(0,%d)}
-var ref='%s%s'+c(s)+'%s'+c(p.get('utm_campaign'));
+# Mirrors clean()/encode_ref() for visitors arriving on a lander with UTM parameters. The first
+# touch is kept in localStorage for 30 days, so a visitor who lands from Dev.to, browses another
+# dataset page and buys there is still attributed to Dev.to (a static site has no other memory).
+STORAGE_KEY = "am_ref"
+FIRST_TOUCH_DAYS = 30
+LANDER_ATTRIBUTION_JS = """(function(){try{function c(x){return(x||'').toLowerCase().replace(/[^a-z0-9_]/g,'_').slice(0,%(max)d)}
+var p=new URLSearchParams(location.search),s=p.get('utm_source'),ref=null,K='%(key)s',T=%(days)d*864e5,st=null;
+try{st=JSON.parse(localStorage.getItem(K)||'null')}catch(e){}
+if(st&&st.ref&&Date.now()-st.t<T){ref=st.ref}
+if(!ref&&s){ref='%(prefix)s%(sep)s'+c(s)+'%(sep)s'+c(p.get('utm_campaign'));try{localStorage.setItem(K,JSON.stringify({ref:ref,t:Date.now()}))}catch(e){}}
+if(!ref)return;
 document.querySelectorAll('a[data-checkout]').forEach(function(a){var u=new URL(a.href);
 if(!u.searchParams.has('client_reference_id')){u.searchParams.set('client_reference_id',ref);a.href=u.toString();}});
-}catch(e){}})();""" % (MAX_COMPONENT, PREFIX, SEP, SEP)
+}catch(e){}})();""" % {"max": MAX_COMPONENT, "prefix": PREFIX, "sep": SEP, "key": STORAGE_KEY, "days": FIRST_TOUCH_DAYS}

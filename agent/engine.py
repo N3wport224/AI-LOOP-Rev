@@ -60,6 +60,10 @@ PLAN: list[tuple[str, int]] = [
 BUILTIN_TASKS = {"sync_revenue"}
 
 
+class NetworkDown(Exception):
+    """Raised when a task fails and the connectivity probe confirms the network is gone."""
+
+
 @dataclass
 class CycleReport:
     cycle: int
@@ -226,6 +230,9 @@ class Engine:
                 self.pivot(hyp, reason)
                 report.pivots.append(f"{hyp['key']}: {reason}")
                 break
+            if outcome["status"] == "offline":
+                report.status, report.message = "offline", "network lost mid-cycle; paused until it returns"
+                break
             if outcome["status"] in ("circuit_open",) or self.breaker.tripped:
                 break
 
@@ -233,7 +240,8 @@ class Engine:
             self.emergency_stop(self.breaker.trip_reason)
             report.message = f"emergency stop: {self.breaker.trip_reason}"
         current = self.state.get_hypothesis(hyp["id"])
-        if current["status"] == "active":
+        # An aborted offline cycle isn't evidence about the niche: don't spend its pivot budget.
+        if current["status"] == "active" and report.status != "offline":
             self.state.increment_hypothesis_iterations(hyp["id"])
             self.state.set(f"score:{hyp['id']}", score_hypothesis(self.state, self.state.get_hypothesis(hyp["id"])))
         self._save_breaker()
@@ -274,6 +282,10 @@ class Engine:
             return self._dispatch(name, TaskContext(self.tools, hyp, payload, attempt=attempts["n"]))
 
         def on_error(n: int, exc: BaseException, tb: str) -> None:
+            # A failure might just be the network dropping mid-cycle. Re-probe before retrying: if
+            # we're offline, retries are pointless and the failure isn't the task's fault.
+            if not self.online_check():
+                raise NetworkDown(f"network lost during {name}: {exc!r}") from exc
             self.state.log_error(f"task:{name}", f"attempt {n}/{max_attempts} failed: {exc!r}", tb)
 
         def adjust(n: int, exc: BaseException, payload: dict[str, Any]) -> dict[str, Any]:
@@ -287,6 +299,13 @@ class Engine:
                 attempt, dict(task["payload"]), attempts=max_attempts, adjust=adjust, on_error=on_error,
                 sleep=self._sleep, label=f"task {name}",
             )
+        except NetworkDown as exc:
+            self.state.finish_task(task["id"], "pending", str(exc), 0)
+            if not self.state.get("offline_since"):
+                self.state.set("offline_since", self.state.now())
+            self.state.log_action(cycle, hyp["id"], name, "skipped", f"offline: {exc}", time.monotonic() - started)
+            outcome.update(status="offline", summary=str(exc))
+            return outcome
         except CircuitOpenError as exc:
             # Budget exhausted: not the task's fault. Leave it queued for the next cycle.
             self.state.finish_task(task["id"], "pending", str(exc), attempts["n"])

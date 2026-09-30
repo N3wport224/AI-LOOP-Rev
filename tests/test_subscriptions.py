@@ -222,7 +222,7 @@ def test_monday_delivery_once_per_week_to_active_subscribers(live_niche, stripe_
     post(stripe_kit, event("customer.subscription.updated", {"id": "sub_2", "status": "past_due", "metadata": {}}, "evt_c"))
     eng = SubscriptionEngine()
     ctx = TaskContext(stripe_kit, live_niche[0], {})
-    assert eng.deliver_subscriptions(ctx).metrics == {"due": True, "period": "2026-W40", "sent": 1, "dry_run": 0, "failed": 0}
+    assert eng.deliver_subscriptions(ctx).metrics == {"due": True, "period": "2026-W40", "sent": 1, "dry_run": 0, "failed": 0, "refreshed": []}
     clock.now = datetime(2026, 10, 5, 7, 59, tzinfo=timezone.utc)
     assert eng.deliver_subscriptions(ctx).metrics["due"] is False  # before Monday 08:00
     clock.now = MONDAY_9
