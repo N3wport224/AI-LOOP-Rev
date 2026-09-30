@@ -804,3 +804,14 @@ def test_supervise_starts_paused_instead_of_exiting(tmp_path, monkeypatch):
     assert cli.main(["-c", str(cfg_file), "stop", "--reason", "maintenance"]) == 0
     assert cli.main(["-c", str(cfg_file), "supervise", "--headless", "--no-webhook"]) == 0
     assert ran["stopped"] is True
+
+
+def test_env_parser_reads_inline_comments_like_the_shell():
+    from agent.tunnel import parse_env
+
+    # A regression: `KEY=   # comment` used to yield the comment text as the value, so the
+    # template's empty STRIPE_WEBHOOK_SECRET / PUBLIC_WEBHOOK_URL failed validation.
+    env = parse_env("A=   # written later\nB=#literal\nC=value  # note\nD=\nE=\"quoted # kept\"\nF=x#y\n")
+    assert env == {"A": "", "B": "#literal", "C": "value", "D": "", "E": "quoted # kept", "F": "x#y"}
+    example = parse_env((Path(__file__).resolve().parents[1] / ".env.example").read_text())
+    assert example["STRIPE_WEBHOOK_SECRET"] == "" and example["PUBLIC_WEBHOOK_URL"] == ""

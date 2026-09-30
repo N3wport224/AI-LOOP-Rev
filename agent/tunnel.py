@@ -194,7 +194,11 @@ def parse_env(text: str) -> dict[str, str]:
         m = _ENV_LINE.match(raw)
         if not m or raw.lstrip().startswith("#"):
             continue
-        key, value = m.group(1), m.group(2).strip()
+        key, raw_value = m.group(1), m.group(2)
+        if re.match(r"\s*(#|$)", raw_value) and not raw_value.startswith("#"):
+            out[key] = ""  # `KEY=   # comment`: empty, as the shell reads it
+            continue
+        value = raw_value.strip()
         if value[:1] in ("'", '"'):
             try:
                 parts = shlex.split(value, posix=True)
