@@ -8,15 +8,20 @@ revenue** with zero startup capital. Every cycle it:
    signals, urgency scores, verified careers URLs) packaged as a paid dataset;
 3. **publishes** it: a live checkout (Stripe Payment Link or Lemon Squeezy), an SEO lander
    with `schema.org/Product` markup on GitHub Pages, and a sanitized free preview;
-4. **distributes** it inbound, with no approval needed: a weekly data-driven "Tech Radar"
-   article syndicated to Dev.to, Hashnode, GitHub Discussions and an RSS feed, linking back
-   to the lander and checkout. (Cold outreach still exists, but only sends drafts a human approved.)
+4. **distributes** it inbound, with no approval needed: value-first "State of…" breakdowns
+   syndicated to Dev.to, Hashnode, GitHub Discussions and RSS (at most one post per platform
+   every 5 days), plus a free monthly Hacker News "Who is hiring?" stack gist. Every link carries
+   UTM tags. (Cold outreach still exists, but only sends drafts a human approved.)
 5. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
    emails the buyer their zip plus a receipt seconds after payment; polling reconciles anything missed;
-6. **optimizes price**: experiments across $5/$9/$14/$19 per dataset, steps down or bundles
+6. **sells recurring**: a $10/month subscription next to the one-off $9/$14/$19 price; Monday
+   morning delta packages go to every active subscriber, and each paid invoice is verified revenue;
+7. **optimizes price**: experiments across the one-off tiers per dataset, steps down or bundles
    2-for-1 when traffic doesn't convert, steps up and converges when it does, and on strong
    demand scrapes deeper and ships a $19 premium deep-dive add-on;
-7. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
+8. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
+   MRR, churn and net revenue per day against the $10 goal (`automonetize analytics`);
+9. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
    cluster when it isn't converting.
 
 It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
@@ -85,7 +90,8 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
-pytest                     # 222 tests, ~10 s, no network
+pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
+pytest                     # 280 tests, ~12 s, no network
 ```
 
 Existing databases from earlier versions are migrated automatically on open.
@@ -183,7 +189,7 @@ never counted twice, and it catches anything sent while the machine was asleep.
 ```bash
 brew install stripe/stripe-cli/stripe && stripe login
 stripe listen --forward-to localhost:8443/webhook \
-  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired,payment_intent.succeeded
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired,payment_intent.succeeded,invoice.paid,customer.subscription.updated,customer.subscription.deleted
 # copy the printed "whsec_..." into .env as STRIPE_WEBHOOK_SECRET, then in another terminal:
 automonetize webhook --selftest          # checks the secret round-trips
 automonetize supervise                   # engine + listener (or: automonetize webhook for the listener only)
@@ -195,7 +201,7 @@ stripe trigger checkout.session.completed
 Stripe must reach the endpoint over public HTTPS. The listener binds to localhost on
 purpose; expose it with a tunnel (Cloudflare Tunnel's free tier, or ngrok) or run on a
 small VPS behind a reverse proxy. Then Dashboard → Developers → Webhooks → *Add endpoint*
-`https://<your-host>/webhook` with the four events above, and put that endpoint's signing
+`https://<your-host>/webhook` with the seven events above, and put that endpoint's signing
 secret in `STRIPE_WEBHOOK_SECRET`. If the endpoint is unreachable for a while, Stripe retries
 for up to 3 days and polling covers the gap.
 
@@ -209,23 +215,123 @@ for up to 3 days and polling covers the gap.
   `data/site/` and committed to `github_pages_repo`, on `github_pages_branch` (e.g.
   `gh-pages`) under `github_pages_dir` (`docs` by default, `""` for the root). Unchanged
   files make no commit. Rebuild by hand with `automonetize site`.
-* **Syndication** (`tools/syndicator.py`): a weekly article from the active niche's radar,
-  with a headline that only claims what the data shows (e.g. *"Weekly Tech Radar: Top 10
-  Python Companies Planning Migrations (PostgreSQL Leads Their Stacks)"*), a top-10 table,
-  stack adoption, signals, method, and a footer linking the free preview, the checkout and
-  the canonical lander.
+* **Meta assets** (`tools/seo_assets.py`): per dataset a `radar-badge.svg` (e.g. "python
+  radar | 142 hiring signals", where hiring signals = open roles tracked) plus a site-wide
+  badge, a 1200×630 OpenGraph card as `og.svg`, and `og.png` when Pillow is installed (most
+  social networks ignore SVG `og:image`). Pages carry `og:image` and `twitter:card` tags; the
+  JSON-LD lists both offers (one-off, and the subscription as a `UnitPriceSpecification` with
+  `billingDuration`).
+* **Social proof, real numbers only**: "Updated 2 hours ago · 14 company profiles added this
+  week · 30 verified careers pages · 3 purchases in the last 7 days". The relative time is
+  computed in the visitor's browser from the last data refresh, so a static page never shows a
+  stale "2 hours ago"; zero values aren't shown at all.
+* **Syndication** (`tools/syndication/`): a value-first breakdown of the active niche's radar,
+  headline computed from the data (e.g. *"State of Python Migrations Q3 2026: 30 Companies
+  Hiring for PostgreSQL & Snowflake"*). Sections: key findings, stack adoption, intent
+  signals, the 5-record sanitized preview, top 10 by urgency, method. The footer has the free
+  preview, one purchase link and the canonical link to the lander.
 
 | Channel | Setup | Notes |
 |---|---|---|
 | RSS | none | Always on; Substack, Medium and newsletter tools can import from it |
-| Dev.to | `DEVTO_API_KEY` (Settings → Extensions) | Sets `canonical_url`; `syndication_publish = false` makes drafts |
-| Hashnode | `HASHNODE_TOKEN` + `hashnode_publication_id` | GraphQL `publishPost` with `originalArticleURL` |
+| Dev.to | `DEVTO_API_KEY` | `POST /api/articles`; sets `canonical_url`; checks your existing titles first so it never double-posts; `syndication_publish = false` makes drafts |
+| Hashnode | `HASHNODE_TOKEN` + `hashnode_publication_id` | Hashnode's API is GraphQL only: `publishPost` with `originalArticleURL` |
 | GitHub Discussions | `github_discussions_repo` (Discussions enabled) + token with Discussions write | Category from `github_discussions_category` |
 | Substack | none | No public posting API: paste-ready file in `data/syndication/substack/` |
 
-At most one post per platform every `syndication_interval_days` (7), each article once, and
-only when at least `syndication_min_companies` (10) back it. Contact details are never included.
-`automonetize syndicate [--drafts]` runs it on demand.
+At most one post per platform every `syndication_interval_days` (5, and never less, whatever
+you configure), each article once, and only when at least `syndication_min_companies` (10)
+back it. Contact details are never included. `automonetize syndicate [--drafts]` runs it on demand.
+
+### Setting up Dev.to and Hashnode
+
+1. **Dev.to**: Settings → Extensions → *DEV Community API Keys* → generate a key and put it in
+   `.env` as `DEVTO_API_KEY`.
+2. **Hashnode**: Settings → Developer → generate a *Personal Access Token* → `HASHNODE_TOKEN`
+   in `.env`. The publication id is in your blog dashboard URL
+   (`hashnode.com/<publication-id>/dashboard`) → `hashnode_publication_id` in `automonetize.toml`.
+3. Start with drafts: `automonetize syndicate --drafts` creates a Dev.to draft (Hashnode is
+   skipped in draft mode). Check it on the site, then leave `syndication_publish = true` and
+   the engine posts on its own.
+
+### HN "Who is hiring?" tracker
+
+`tools/syndication/hn_algolia_tracker.py` finds the current monthly thread through the Algolia
+HN API. It parses each company's stack and intent signals and publishes a free Markdown
+breakdown (technology demand, remote share, signals, a company → stack table) as a **public
+Gist**, refreshed at most every `hn_gist_refresh_hours` (24) while the thread grows, with one
+RSS item per thread. It holds only derived facts: no contact details and no text copied
+from comments. Dataset links at the bottom carry `utm_source=github&utm_medium=gist`. Needs
+`GITHUB_TOKEN` with gist scope; without it the summary is written to `data/syndication/hn/`.
+
+## Subscriptions (recurring revenue)
+
+`strategies/subscription_engine.py` adds a **$10/month** tier (`subscription_price_cents`,
+`subscription_interval = "month"` or `"week"`) next to each niche's one-off dataset:
+
+1. Once the one-off dataset is live on Stripe, it creates a recurring Price
+   (`recurring[interval]=month`) and Payment Link, with `subscription_data.metadata` carrying the
+   niche. The lander offers both buttons.
+2. A completed subscription checkout (webhook or polling) creates the subscriber with
+   `subscription_status = "active"` and emails the full current dataset as a welcome.
+3. Every `invoice.paid` is one verified revenue event (idempotent by invoice id). The checkout
+   session isn't counted as well, because its amount *is* the first invoice.
+4. `customer.subscription.updated/deleted` keep the status current (active, past_due,
+   canceled...). Only active and trialing subscribers get deliveries.
+5. **Every Monday from 08:00** (`subscription_delivery_weekday/hour/timezone`), each active
+   subscriber gets that week's package once: `WEEKLY_UPDATE.md` plus `delta.csv/json` (companies
+   new, or with new roles, in the last 7 days) plus the full refreshed `tech_radar.csv`. If the
+   machine was asleep on Monday it catches up later the same week. In dry run the email goes
+   to the audit log once and is sent for real when you go live that week.
+
+The engine won't sell subscriptions until email delivery works (`dry_run = false` plus a
+backend), unless `allow_manual_fulfillment = true`. Lemon Squeezy/Gumroad subscriptions aren't
+automated.
+
+### Testing subscription fulfilment
+
+```bash
+# test-mode keys in .env: STRIPE_SECRET_KEY=sk_test_..., plus the whsec_ from `stripe listen`
+stripe listen --forward-to localhost:8443/webhook --events checkout.session.completed,invoice.paid,customer.subscription.updated,customer.subscription.deleted
+automonetize supervise                          # or: automonetize run --once, to create the offer
+automonetize assets list                        # the "subscription" asset has the Payment Link URL
+# open that URL, pay with 4242 4242 4242 4242 (any future date / CVC)
+automonetize subscriptions list                 # → active, channel attributed, welcome delivered
+automonetize analytics --period=30d             # → MRR $10.00, subscription tier revenue
+tail -3 data/dispatched_audit.log               # welcome email (or the real email when dry_run=false)
+# weekly delivery: set subscription_delivery_weekday to today and the hour to now, then
+automonetize subscriptions deliver              # → "2026-W41: 1 sent ..."; running it again sends nothing
+# cancellation: cancel in Dashboard → Customers → subscription → `subscriptions list` shows canceled
+```
+
+Renewals: Stripe sends `invoice.paid` each period (Stripe *test clocks* can fast-forward
+billing for subscriptions you create in the Dashboard). The polling sweep (`sync_subscriptions`)
+also pulls `/v1/invoices?subscription=…&status=paid`, so a missed webhook never loses a renewal.
+
+## Acquisition analytics
+
+Every outbound link is tagged: lander and showcase links get `utm_source` (devto, hashnode,
+github, rss, substack…), `utm_medium` and `utm_campaign`, and links straight to checkout get
+Stripe's `client_reference_id` (`am--<source>--<campaign>`). On the lander, a small script
+carries the visitor's UTM values into the checkout links, so a Dev.to reader who lands on
+the page and then buys is still attributed to Dev.to. Stripe copies `client_reference_id`
+onto every Checkout Session, completed or abandoned, and webhooks/polling decode it onto the
+order.
+
+```bash
+automonetize analytics --period=30d      # 7d, 30d, 12w, 3m, 1y, all; add --json for machine output
+```
+
+* Revenue, payments and gross by **acquisition channel**, **niche** and **pricing tier**
+  (one-off tiers and subscription invoices listed separately).
+* **Checkout conversion per channel** = completed ÷ started Checkout Sessions. A static site
+  can't see page visits, so this is measured from the checkout step on.
+* **MRR** (active and trialing subscribers, weekly plans × 52/12), new and canceled
+  subscribers, **churn** = cancelled in period ÷ active at its start.
+* **Net revenue per day** vs the $10 goal, today's net, days the goal was met, and how much of
+  the goal MRR alone covers.
+
+The dashboard shows a Recurring row (MRR, active, past due, canceled).
 
 ## Pricing engine
 
@@ -362,15 +468,18 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `interval_seconds` | `3600` | Time between cycles |
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `16` / `60` / `5` | Circuit breakers |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `20` / `60` / `5` | Circuit breakers |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
-| `price_tiers` | `[[0,500],[25,900],[75,1500]]` | Starting price by company count, clamped to $5-$19 |
-| `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[500,900,1400,1900]` / `20` / `48` | Price experiments |
+| `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
+| `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |
+| `subscription_price_cents` / `subscription_interval` | `1000` / `month` | Recurring tier (0 disables) |
+| `subscription_delivery_weekday` / `_hour` / `subscription_timezone` | `0` (Mon) / `8` / `UTC` | Weekly delta delivery |
+| `hn_tracker_enabled` / `hn_gist_refresh_hours` / `og_images` | `true` / `24` / `true` | HN gist, PNG OG cards |
 | `demand_sales_threshold` / `premium_price_cents` / `max_scrape_depth` | `3` / `1900` / `3` | Demand expansion |
 | `stripe_webhook_secret` / `webhook_host` / `webhook_port` / `webhook_path` | env / `127.0.0.1` / `8443` / `/webhook` | Webhook listener |
 | `network_check_hosts` | Stripe + GitHub API | Offline probe (`[]` disables) |
 | `github_pages_branch` / `github_pages_dir` / `site_title` | `""` / `docs` / `Tech Stack Intel` | Site publishing |
-| `syndication_publish` / `syndication_interval_days` / `syndication_min_companies` | `true` / `7` / `10` | Syndication |
+| `syndication_publish` / `syndication_interval_days` / `syndication_min_companies` | `true` / `5` (floor) / `10` | Syndication |
 | `allow_manual_fulfillment` | `false` | Sell even when the agent can't email the file |
 | `intel_max_url_checks` / `high_urgency_threshold` | `15` / `60` | Careers URL checks per cycle; "hot" cutoff |
 | `github_showcase_repo` / `github_showcase_mode` / `github_pages_repo` / `pages_base_url` | empty / `repo` | Publishing targets |
@@ -387,6 +496,8 @@ automonetize supervise [--no-webhook] [--headless]   # daemon: engine + webhook 
 automonetize webhook [--port P] [--selftest]         # listener only
 automonetize run [--once|--cycles N] [--interval S] [--headless]
 automonetize site | syndicate [--drafts] | pricing status|run
+automonetize analytics [--period=30d] [--json]       # revenue by channel/niche/tier, MRR, churn, net/day
+automonetize subscriptions list [--status S] | deliver
 automonetize dashboard [--watch] | status [--json] | hypotheses
 automonetize outreach list [--full] | approve ID… | reject ID… | export | mark-sent ID…
 automonetize dispatch [--check]           # send approved outreach now
@@ -425,8 +536,18 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 222 tests, ~10 s, no network
+pytest     # 280 tests, ~12 s, no network
 ```
+
+Phase 4 adds: Dev.to/Hashnode payloads, mocked responses and duplicate-title refusal, per-channel
+UTM and `client_reference_id` link rendering, the 5-day cadence floor, the HN tracker (thread
+discovery, sanitized gist, refresh window, RSS item); Stripe recurring Price and Payment Link
+payloads, subscription activation, `invoice.paid` revenue (both invoice API shapes, idempotent),
+status changes and cancellation, polling reconciliation, delta packaging, Monday delivery
+(timezone, once per week, past-due exclusion, catch-up, dry-run → live); UTM parsing,
+reference encoding within Stripe's limits, channel/niche/tier breakdowns, checkout conversion,
+MRR, churn and goal maths, the analytics CLI; SVG badge and OG card validity, PNG cards,
+JSON-LD with subscription offers, real-data social proof, and binary asset publishing to `docs/`.
 
 Phase 3 adds: webhook signature verification with both the Stripe SDK and the built-in
 verifier (tampered, wrong-secret, stale/replayed and malformed signatures), event-id dedupe,

@@ -174,6 +174,36 @@ CREATE TABLE IF NOT EXISTS checkout_sessions (
     amount_cents INTEGER,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS subscribers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    subscription_id TEXT NOT NULL UNIQUE,
+    customer_id TEXT,
+    email TEXT,
+    niche TEXT,
+    asset_id INTEGER,
+    hypothesis_id INTEGER,
+    price_cents INTEGER NOT NULL DEFAULT 0,
+    interval TEXT NOT NULL DEFAULT 'month',
+    subscription_status TEXT NOT NULL DEFAULT 'active',  -- active | trialing | past_due | canceled | unpaid | incomplete
+    channel TEXT,
+    campaign TEXT,
+    started_at TEXT NOT NULL,
+    canceled_at TEXT,
+    current_period_end TEXT,
+    last_delivered_at TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS subscription_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscriber_id INTEGER NOT NULL,
+    period_key TEXT NOT NULL,                  -- e.g. 2026-W40, or "welcome"
+    status TEXT NOT NULL,                      -- delivered | dry_run | failed
+    delta_count INTEGER NOT NULL DEFAULT 0,
+    detail TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (subscriber_id, period_key)
+);
 """
 
 # Columns added after the first release; applied to existing databases on open.
@@ -185,6 +215,16 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "lander_url": "TEXT",
         "niche": "TEXT",
         "kind_meta": "TEXT",
+    },
+    "orders": {
+        "channel": "TEXT",
+        "campaign": "TEXT",
+        "kind": "TEXT NOT NULL DEFAULT 'one_off'",  # one_off | subscription
+    },
+    "checkout_sessions": {
+        "channel": "TEXT",
+        "campaign": "TEXT",
+        "mode": "TEXT",
     },
     "outreach_queue": {
         "sent_at": "TEXT",
@@ -400,6 +440,20 @@ class StateStore:
             sql += " AND verified = 1"
         return int(self._one(sql, (hypothesis_id,))["net"])  # type: ignore[index]
 
+    def revenue_with_orders(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Verified revenue rows in [start, end) joined with their order (channel, kind, asset)."""
+        return self._all(
+            "SELECT r.source, r.external_id, r.gross_cents, r.fee_cents, r.net_cents, r.hypothesis_id, r.occurred_at, "
+            "o.channel, o.campaign, o.kind, o.asset_id FROM revenue r LEFT JOIN orders o "
+            "ON o.provider = r.source AND o.order_id = r.external_id "
+            "WHERE r.verified = 1 AND r.occurred_at >= ? AND r.occurred_at < ? ORDER BY r.occurred_at",
+            (iso(start), iso(end)),
+        )
+
+    def first_revenue_at(self) -> str | None:
+        row = self._one("SELECT MIN(occurred_at) AS t FROM revenue WHERE verified = 1")
+        return row["t"] if row else None
+
     def list_revenue(self, limit: int = 50) -> list[dict[str, Any]]:
         return self._all("SELECT * FROM revenue ORDER BY occurred_at DESC LIMIT ?", (limit,))
 
@@ -478,6 +532,10 @@ class StateStore:
             d["first_seen"] = r["first_seen"]
             out.append(d)
         return out
+
+    def niche_last_seen(self, niche: str) -> str | None:
+        row = self._one("SELECT MAX(last_seen) AS t FROM leads WHERE niche = ?", (niche,))
+        return row["t"] if row else None
 
     def count_leads(self, niche: str | None = None) -> int:
         if niche:
@@ -658,12 +716,13 @@ class StateStore:
     def record_order(
         self, provider: str, order_id: str, email: str | None, gross_cents: int, product_ref: str | None,
         asset_id: int | None, hypothesis_id: int | None, occurred_at: str | None = None, status: str = "paid",
+        channel: str | None = None, campaign: str | None = None, kind: str = "one_off",
     ) -> bool:
         cur = self._exec(
             "INSERT OR IGNORE INTO orders (provider, order_id, email, gross_cents, product_ref, asset_id, hypothesis_id, "
-            "status, occurred_at, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "status, occurred_at, recorded_at, channel, campaign, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (provider, order_id, (email or "").lower() or None, gross_cents, product_ref, asset_id, hypothesis_id,
-             status, occurred_at or self.now(), self.now()),
+             status, occurred_at or self.now(), self.now(), channel, campaign, kind),
         )
         return cur.rowcount == 1
 
@@ -762,15 +821,22 @@ class StateStore:
     def upsert_checkout_session(
         self, session_id: str, product_ref: str | None, payment_intent: str | None, status: str,
         payment_status: str | None, email: str | None, amount_cents: int | None,
+        channel: str | None = None, campaign: str | None = None, mode: str | None = None,
     ) -> None:
         self._exec(
             "INSERT INTO checkout_sessions (session_id, product_ref, payment_intent, status, payment_status, email, "
-            "amount_cents, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "
+            "amount_cents, updated_at, channel, campaign, mode) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "
             "product_ref = COALESCE(excluded.product_ref, product_ref), payment_intent = COALESCE(excluded.payment_intent, payment_intent), "
             "status = excluded.status, payment_status = excluded.payment_status, email = COALESCE(excluded.email, email), "
-            "amount_cents = COALESCE(excluded.amount_cents, amount_cents), updated_at = excluded.updated_at",
-            (session_id, product_ref, payment_intent, status, payment_status, email, amount_cents, self.now()),
+            "amount_cents = COALESCE(excluded.amount_cents, amount_cents), updated_at = excluded.updated_at, "
+            "channel = COALESCE(excluded.channel, channel), campaign = COALESCE(excluded.campaign, campaign), "
+            "mode = COALESCE(excluded.mode, mode)",
+            (session_id, product_ref, payment_intent, status, payment_status, email, amount_cents, self.now(),
+             channel, campaign, mode),
         )
+
+    def sessions_between(self, start: str, end: str) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM checkout_sessions WHERE updated_at >= ? AND updated_at < ?", (start, end))
 
     def session_for_payment_intent(self, payment_intent: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM checkout_sessions WHERE payment_intent = ?", (payment_intent,))
@@ -817,6 +883,75 @@ class StateStore:
             raise ValueError(f"cannot update experiment fields {sorted(set(fields) - allowed)}")
         cols = ", ".join(f"{k} = ?" for k in fields)
         self._exec(f"UPDATE price_experiments SET {cols} WHERE id = ?", (*fields.values(), exp_id))
+
+    # -- subscriptions ------------------------------------------------------------
+    def upsert_subscriber(
+        self, provider: str, subscription_id: str, *, customer_id: str | None = None, email: str | None = None,
+        niche: str | None = None, asset_id: int | None = None, hypothesis_id: int | None = None,
+        price_cents: int | None = None, interval: str | None = None, status: str | None = None,
+        channel: str | None = None, campaign: str | None = None, current_period_end: str | None = None,
+    ) -> tuple[int, bool]:
+        """Create or update a subscriber. Returns (id, created)."""
+        now = self.now()
+        with self.tx() as conn:
+            row = conn.execute("SELECT id FROM subscribers WHERE subscription_id = ?", (subscription_id,)).fetchone()
+            if row is None:
+                cur = conn.execute(
+                    "INSERT INTO subscribers (provider, subscription_id, customer_id, email, niche, asset_id, hypothesis_id, "
+                    "price_cents, interval, subscription_status, channel, campaign, current_period_end, started_at, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (provider, subscription_id, customer_id, (email or "").lower() or None, niche, asset_id, hypothesis_id,
+                     price_cents or 0, interval or "month", status or "active", channel, campaign, current_period_end, now, now),
+                )
+                return int(cur.lastrowid), True
+            fields = {
+                "customer_id": customer_id, "email": (email or "").lower() or None, "niche": niche, "asset_id": asset_id,
+                "hypothesis_id": hypothesis_id, "price_cents": price_cents, "interval": interval,
+                "subscription_status": status, "channel": channel, "campaign": campaign,
+                "current_period_end": current_period_end,
+            }
+            fields = {k: v for k, v in fields.items() if v is not None}
+            if status == "canceled":
+                fields["canceled_at"] = now
+            fields["updated_at"] = now
+            cols = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(f"UPDATE subscribers SET {cols} WHERE id = ?", (*fields.values(), row["id"]))
+            return int(row["id"]), False
+
+    def get_subscriber(self, subscription_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM subscribers WHERE subscription_id = ?", (subscription_id,))
+
+    def list_subscribers(self, status: str | tuple[str, ...] | None = None, niche: str | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM subscribers WHERE 1=1", []
+        if status:
+            statuses = (status,) if isinstance(status, str) else status
+            sql += f" AND subscription_status IN ({','.join('?' * len(statuses))})"
+            args += list(statuses)
+        if niche:
+            sql += " AND niche = ?"
+            args.append(niche)
+        return self._all(sql + " ORDER BY id", tuple(args))
+
+    def record_subscription_delivery(self, subscriber_id: int, period_key: str, status: str,
+                                     delta_count: int = 0, detail: str = "") -> None:
+        self._exec(
+            "INSERT INTO subscription_deliveries (subscriber_id, period_key, status, delta_count, detail, created_at) "
+            "VALUES (?,?,?,?,?,?) ON CONFLICT(subscriber_id, period_key) DO UPDATE SET status = excluded.status, "
+            "delta_count = excluded.delta_count, detail = excluded.detail, created_at = excluded.created_at",
+            (subscriber_id, period_key, status, delta_count, detail[:500], self.now()),
+        )
+        if status == "delivered":
+            self._exec("UPDATE subscribers SET last_delivered_at = ? WHERE id = ?", (self.now(), subscriber_id))
+
+    def subscription_delivery(self, subscriber_id: int, period_key: str) -> dict[str, Any] | None:
+        return self._one(
+            "SELECT * FROM subscription_deliveries WHERE subscriber_id = ? AND period_key = ?", (subscriber_id, period_key)
+        )
+
+    def list_subscription_deliveries(self, subscriber_id: int | None = None) -> list[dict[str, Any]]:
+        if subscriber_id is None:
+            return self._all("SELECT * FROM subscription_deliveries ORDER BY id")
+        return self._all("SELECT * FROM subscription_deliveries WHERE subscriber_id = ? ORDER BY id", (subscriber_id,))
 
     # -- durability ---------------------------------------------------------------
     def checkpoint(self) -> None:

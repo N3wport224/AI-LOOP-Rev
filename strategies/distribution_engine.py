@@ -20,6 +20,7 @@ from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
 from strategies.digital_asset_packager import ASSET_KIND
+from tools.attribution import add_utm, checkout_link
 from tools.storefront import Listing
 from tools.storefront.stripe_pages_publisher import PagesDeployer, _cell
 
@@ -58,11 +59,12 @@ def render_showcase_md(listing: Listing, checkout_url: str, lander_url: str = ""
         lines.append("| " + " | ".join(_cell(r.get(c)).replace("|", "\\|") for c in cols) + " |")
     lines.append("")
     if checkout_url:
-        lines.append(f"**[Get the complete dataset (${listing.price_cents / 100:.2f})]({checkout_url})**")
+        buy = checkout_link(checkout_url, "github", f"showcase_{listing.niche}")
+        lines.append(f"**[Get the complete dataset (${listing.price_cents / 100:.2f})]({buy})**")
     else:
         lines.append("_Complete dataset coming soon._")
     if lander_url:
-        lines += ["", f"More details: {lander_url}"]
+        lines += ["", f"More details: {add_utm(lander_url, 'github', 'showcase', listing.niche)}"]
     return "\n".join(lines) + "\n"
 
 

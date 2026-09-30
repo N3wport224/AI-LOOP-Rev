@@ -145,13 +145,17 @@ def test_site_builder_writes_and_publishes_to_pages_branch(config, toolkit, tran
     transport.add("https://api.github.com/repos/me/me.github.io/contents/", [Response(404, "u"), Response(201, "u", b"{}")])
     b = SiteBuilder(config, toolkit.files, toolkit.github)
     out = b.build([page()], [], NOW)
-    assert set(out) == {"python-remote/index.html", "index.html", "sitemap.xml", "robots.txt", "feeds/radar.xml"}
+    config.og_images = False  # PNG cards are covered in test_seo_assets
+    out = b.build([page()], [], NOW)
+    assert set(out) == {"python-remote/index.html", "index.html", "sitemap.xml", "robots.txt", "feeds/radar.xml",
+                        "python-remote/radar-badge.svg", "python-remote/og.svg", "radar-badge.svg"}
     assert toolkit.files.exists("site/feeds/radar.xml")
     assert "Sitemap: https://me.github.io/sitemap.xml" in out["robots.txt"]
-    assert b.publish(out) == 5
+    assert b.publish(out) == 8
     puts = transport.calls_to("https://api.github.com/repos/me/me.github.io/contents/", "PUT")
     paths = sorted(c["url"].split("/contents/")[1] for c in puts)
-    assert paths == ["feeds/radar.xml", "index.html", "python-remote/index.html", "robots.txt", "sitemap.xml"]
+    assert paths == ["feeds/radar.xml", "index.html", "python-remote/index.html", "python-remote/og.svg",
+                     "python-remote/radar-badge.svg", "radar-badge.svg", "robots.txt", "sitemap.xml"]
     assert all(json.loads(c["body"])["branch"] == "gh-pages" for c in puts)
 
 
@@ -169,14 +173,18 @@ def records(n=12):
 def test_article_headline_follows_data_and_links_back():
     a = build_article("python-remote", "Python Remote", records(), NOW, lander_url="https://me.github.io/python-remote/",
                       showcase_url="https://github.com/me/showcase", checkout_url="https://buy.stripe.com/t", price_cents=900)
-    assert a.title == "Weekly Tech Radar: Top 5 Python Companies Planning Migrations (PostgreSQL Leads Their Stacks)"
+    # 5 companies migrate; all 5 list PostgreSQL or AWS: the headline number is computed, not invented
+    assert a.title == "State of Python Migrations Q3 2026: 5 Companies Hiring for PostgreSQL & AWS"
     assert a.guid == "radar-python-remote-2026-w40"
     assert "never@leak.example" not in a.markdown and "@" not in a.markdown.replace("https://", "")
-    assert "Originally published at https://me.github.io/python-remote/" in a.markdown
-    assert "https://buy.stripe.com/t" in a.markdown and "$9.00" in a.markdown
+    dev = a.for_channel("devto")
+    assert "Originally published at [https://me.github.io/python-remote/](https://me.github.io/python-remote/?utm_source=devto" in dev.markdown
+    assert "https://buy.stripe.com/t?client_reference_id=am--devto--radar_python_remote_2026_w40" in dev.markdown
+    assert "$9.00" in dev.markdown and "\u27e6" not in dev.markdown and "⟦" not in dev.markdown
+    assert dev.canonical_url == "https://me.github.io/python-remote/"  # canonical stays clean
     assert len(a.tags) <= 4 and all(re.fullmatch(r"[a-z0-9]+", t) for t in a.tags)
     plain = build_article("x", "X", [dict(r, intent_signals=[]) for r in records()], NOW)
-    assert plain.title.startswith("Weekly Tech Radar: 10 X Companies Hiring Now")
+    assert plain.title == "State of X Hiring Q3 2026: 12 Companies Hiring for PostgreSQL & AWS"
 
 
 def test_platform_payloads():
@@ -258,4 +266,4 @@ def test_inbound_tasks_end_to_end(toolkit, config, make_hypothesis, state):
     html_text = toolkit.files.read_text("site/python-remote/index.html")
     assert json.loads(parse(html_text).jsonld[0])["@type"] == "Product"
     feed = ET.fromstring(toolkit.files.read_text("site/feeds/radar.xml"))
-    assert feed.find("channel/item/title").text.startswith("Weekly Tech Radar")
+    assert feed.find("channel/item/title").text.startswith("State of Python Hiring Q3 2026")

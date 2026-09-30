@@ -17,7 +17,7 @@ from typing import Any
 from strategies.base import Strategy, TaskContext, TaskResult
 from strategies.digital_asset_packager import ASSET_KIND, niche_title
 from tools.page_builder import FeedItem, ProductPage, SiteBuilder
-from tools.syndicator import DevToPublisher, GitHubDiscussionsPublisher, HashnodePublisher, Syndicator, build_article
+from tools.syndication import DevToPublisher, GitHubDiscussionsPublisher, HashnodePublisher, Syndicator, build_article
 
 
 def intel_metrics(files, niche: str, high_urgency: int = 60) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -33,15 +33,44 @@ def intel_metrics(files, niche: str, high_urgency: int = 60) -> tuple[list[dict[
     }
 
 
+def social_proof(tools, niche: str, hypothesis_id: int | None) -> dict[str, Any]:
+    """Real, current numbers only: nothing here is estimated or padded."""
+    from datetime import timedelta
+
+    from strategies.tech_stack_intel import _norm_company
+
+    now = tools.state.clock()
+    week_ago = (now - timedelta(days=7)).isoformat(timespec="seconds")
+    leads = tools.state.leads_for_niche(niche)
+    first: dict[str, str] = {}
+    for lead in leads:
+        key = _norm_company(lead.get("company", ""))
+        first[key] = min(first.get(key, lead["first_seen"]), lead["first_seen"])
+    records, _ = intel_metrics(tools.files, niche)
+    return {
+        "data_updated_at": tools.state.niche_last_seen(niche) or "",
+        "profiles_added_7d": sum(1 for v in first.values() if v >= week_ago),
+        "verified_profiles": sum(1 for r in records if r.get("careers_url_verified")),
+        "purchases_7d": tools.state.orders_since(hypothesis_id, now - timedelta(days=7)) if hypothesis_id else 0,
+    }
+
+
 def site_pages(tools) -> list[ProductPage]:
-    """One page per (niche, kind): the newest version of every packaged dataset, bundle and add-on."""
+    """One page per (niche, kind): the newest version of every packaged dataset, bundle and add-on.
+    The subscription tier isn't a page of its own: it's offered on its niche's dataset page."""
+    import json as _json
+
     cfg = tools.config
     seen: set[tuple[str, str]] = set()
     pages = []
+    subs = {}
+    for a in tools.state.list_assets():
+        if a["kind"] == "subscription" and a.get("checkout_url") and a.get("niche") not in subs:
+            subs[a["niche"]] = a
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
-        if not niche or (niche, kind) in seen:
+        if not niche or kind == "subscription" or (niche, kind) in seen:
             continue
         seen.add((niche, kind))
         base = f"assets/{niche}/v{asset['version']}" if kind == "dataset" else f"assets/{niche}/{kind}-v{asset['version']}"
@@ -54,6 +83,10 @@ def site_pages(tools) -> list[ProductPage]:
                 price_cents=asset["price_cents"], currency=cfg.currency, checkout_url=asset.get("checkout_url") or "",
                 sample_columns=sample.get("fields", []), sample_rows=sample.get("rows", []), metrics=metrics,
                 updated_at=asset["created_at"], sku=f"asset-{asset['id']}", kind=kind,
+                **social_proof(tools, niche, asset.get("hypothesis_id")),
+                **({"subscription_url": subs[niche]["checkout_url"], "subscription_price_cents": subs[niche]["price_cents"],
+                    "subscription_interval": _json.loads(subs[niche].get("kind_meta") or "{}").get("interval", "month")}
+                   if kind == "dataset" and niche in subs else {}),
             )
         )
     return pages
@@ -61,7 +94,7 @@ def site_pages(tools) -> list[ProductPage]:
 
 class InboundSyndicator(Strategy):
     name = "inbound_syndicator"
-    tasks = ("syndicate", "build_site")
+    tasks = ("syndicate", "build_site", "track_hn")
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         return getattr(self, task)(ctx)
@@ -84,10 +117,12 @@ class InboundSyndicator(Strategy):
         asset = tools.state.latest_asset(ctx.hypothesis["id"], ASSET_KIND) or {}
         lander = f"{cfg.pages_base_url.rstrip('/')}/{ctx.niche}/" if cfg.pages_base_url else (asset.get("lander_url") or "")
         now = tools.state.clock()
+        sample_path = f"assets/{ctx.niche}/v{asset['version']}/sample.json" if asset else ""
+        sample = tools.files.read_json(sample_path) if sample_path and tools.files.exists(sample_path) else None
         article = build_article(
             ctx.niche, niche_title(ctx.niche), records, now, lander_url=lander,
             showcase_url=asset.get("showcase_url") or "", checkout_url=asset.get("checkout_url") or "",
-            price_cents=asset.get("price_cents") or 0,
+            price_cents=asset.get("price_cents") or 0, sample=sample,
         )
         results = Syndicator(cfg, tools.state, tools.files, self.publishers(tools)).syndicate(article, now)
         posted = [p for p, r in results.items() if p not in ("rss", "substack") and r.startswith("http")]
@@ -97,6 +132,16 @@ class InboundSyndicator(Strategy):
             True, f"'{article.title}': " + ", ".join(f"{k}={v}" for k, v in results.items()),
             {"syndicated": True, "guid": article.guid, "results": results, "posted": len(posted)},
         )
+
+    def track_hn(self, ctx: TaskContext) -> TaskResult:
+        if not ctx.tools.config.hn_tracker_enabled:
+            return TaskResult(True, "HN tracker disabled", {})
+        from tools.syndication.hn_algolia_tracker import HNHiringTracker
+
+        res = HNHiringTracker(ctx.tools).run()
+        if res.get("status") == "published":
+            ctx.tools.state.add_metric(ctx.hypothesis["id"], "impressions", "hn_gist", 1)
+        return TaskResult(True, "HN tracker: " + ", ".join(f"{k}={v}" for k, v in res.items()), res)
 
     def build_site(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools

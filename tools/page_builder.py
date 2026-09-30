@@ -23,11 +23,20 @@ from datetime import datetime, timezone
 from email.utils import format_datetime
 from typing import TYPE_CHECKING, Any
 
+from tools.attribution import LANDER_ATTRIBUTION_JS as ATTRIBUTION_JS
+from tools.seo_assets import badge_for, render_badge_svg, render_og_png, render_og_svg
+
 if TYPE_CHECKING:  # pragma: no cover
     from agent.config import Config
     from tools.storefront.github import GitHubClient
 
 FEED_PATH = "feeds/radar.xml"
+
+# "Updated 2 hours ago", computed in the visitor's browser so a static page never shows a stale
+# relative time. Without JS the absolute timestamp stays visible.
+RELATIVE_TIME_JS = """document.querySelectorAll('time.ago').forEach(function(t){var s=(Date.now()-Date.parse(t.getAttribute('datetime')))/1e3;
+if(!(s>=0))return;var u=[[86400,'day'],[3600,'hour'],[60,'minute']];for(var i=0;i<u.length;i++){var n=Math.floor(s/u[i][0]);
+if(n>=1){t.textContent=n+' '+u[i][1]+(n>1?'s':'')+' ago';return;}}t.textContent='just now';});"""
 
 
 @dataclass
@@ -44,6 +53,14 @@ class ProductPage:
     updated_at: str = ""
     sku: str = ""
     kind: str = "dataset"  # dataset | bundle | premium
+    subscription_url: str = ""
+    subscription_price_cents: int = 0
+    subscription_interval: str = "month"
+    # Social proof, all computed from real data; a zero/empty field is simply not shown.
+    data_updated_at: str = ""      # newest lead refresh (ISO)
+    profiles_added_7d: int = 0     # companies first seen in the last 7 days
+    verified_profiles: int = 0     # companies with a live-verified careers page
+    purchases_7d: int = 0
 
     @property
     def slug(self) -> str:
@@ -80,8 +97,26 @@ def product_jsonld(page: ProductPage, url: str, brand: str) -> dict[str, Any]:
     }
     if url.startswith("http"):
         data["url"] = url
+        data["image"] = f"{url}og.png"
     if page.updated_at:
         data["offers"]["priceValidUntil"] = page.updated_at[:4] + "-12-31"
+    if page.subscription_url and page.subscription_price_cents:
+        sub_offer = {
+            "@type": "Offer",
+            "name": f"{page.subscription_interval.title()}ly updates",
+            "price": f"{page.subscription_price_cents / 100:.2f}",
+            "priceCurrency": page.currency.upper(),
+            "availability": "https://schema.org/InStock",
+            "url": page.subscription_url,
+            "priceSpecification": {
+                "@type": "UnitPriceSpecification",
+                "price": f"{page.subscription_price_cents / 100:.2f}",
+                "priceCurrency": page.currency.upper(),
+                "billingDuration": {"week": "P1W", "month": "P1M", "year": "P1Y"}.get(page.subscription_interval, "P1M"),
+                "unitText": page.subscription_interval,
+            },
+        }
+        data["offers"] = [data["offers"], sub_offer]
     return data
 
 
@@ -98,7 +133,7 @@ h1{font-size:1.9rem;margin-bottom:.3rem}.lede{color:#444;font-size:1.1rem}
 .kpi b{display:block;font-size:1.4rem}.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}
 td,th{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-align:top}th{text-transform:capitalize}
 .cta{display:inline-block;background:#111;color:#fff;padding:.8rem 1.2rem;border-radius:8px;text-decoration:none;font-weight:600;margin:1rem 0}
-.muted{color:#666;font-size:.9rem}a{color:inherit}
+.muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.cta.alt{background:#2e7d32}
 @media (prefers-color-scheme: dark){body{background:#111;color:#eee}.lede{color:#bbb}td,th,.kpi{border-color:#333}.cta{background:#eee;color:#111}.muted{color:#999}}"""
 
 
@@ -126,9 +161,24 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
         for r in page.sample_rows
     )
     cta = (
-        f'<a class="cta" href="{html.escape(page.checkout_url)}" rel="noopener">Buy the full dataset: {price}</a>'
+        f'<a class="cta" data-checkout href="{html.escape(page.checkout_url)}" rel="noopener">Buy the full dataset: {price}</a>'
         if page.checkout_url else "<p><em>Checkout opens soon.</em></p>"
     )
+    if page.subscription_url and page.subscription_price_cents:
+        cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.subscription_url)}" rel="noopener">'
+                f"Weekly updates: ${page.subscription_price_cents / 100:.2f}/{html.escape(page.subscription_interval)}</a>")
+    proof = []
+    if page.data_updated_at:
+        proof.append(f'Updated <time class="ago" datetime="{html.escape(page.data_updated_at)}">'
+                     f"{html.escape(page.data_updated_at[:16].replace('T', ' '))} UTC</time>")
+    if page.profiles_added_7d:
+        proof.append(f"{page.profiles_added_7d} company profiles added this week")
+    if page.verified_profiles:
+        proof.append(f"{page.verified_profiles} verified careers pages")
+    if page.purchases_7d:
+        proof.append(f"{page.purchases_7d} purchase{'s' if page.purchases_7d != 1 else ''} in the last 7 days")
+    proof_html = f'<p class="proof">{" · ".join(proof)}</p>' if proof else ""
+    og_image = f"{url}og.png" if url.startswith("http") else "og.png"
     canonical = f'<link rel="canonical" href="{html.escape(url)}">' if url.startswith("http") else ""
     feed_href = f"{base_url.rstrip('/')}/{FEED_PATH}" if base_url else f"../{FEED_PATH}"
     feed = f'<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="{html.escape(feed_href)}">'
@@ -140,6 +190,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {feed}
 <meta property="og:type" content="product"><meta property="og:title" content="{title}"><meta property="og:description" content="{desc}">
 {f'<meta property="og:url" content="{html.escape(url)}">' if url.startswith("http") else ""}
+<meta property="og:image" content="{html.escape(og_image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{desc}"><meta name="twitter:image" content="{html.escape(og_image)}">
 <meta property="product:price:amount" content="{page.price_cents / 100:.2f}"><meta property="product:price:currency" content="{html.escape(page.currency.upper())}">
 <script type="application/ld+json">
 {_jsonld_script(product_jsonld(page, url, brand))}
@@ -147,6 +199,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 <style>{CSS}</style></head><body>
 <h1>{title}</h1>
 <p class="lede">{html.escape(page.summary)}</p>
+{proof_html}
+<p><img src="radar-badge.svg" alt="{html.escape(str((page.metrics or {}).get("roles") or 0))} hiring signals tracked" height="20"></p>
 <div class="kpis">{kpi_html}</div>
 {signals_html}
 {cta}
@@ -156,6 +210,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
 <p class="muted"><a href="../">All datasets</a> · <a href="../feeds/radar.xml">RSS</a></p>
+<script>{ATTRIBUTION_JS}
+{RELATIVE_TIME_JS}</script>
 </body></html>
 """
 
@@ -242,20 +298,32 @@ class SiteBuilder:
     def base_url(self) -> str:
         return self.config.pages_base_url.rstrip("/")
 
-    def build(self, pages: list[ProductPage], feed_items: list[FeedItem], now: datetime) -> dict[str, str]:
+    def build(self, pages: list[ProductPage], feed_items: list[FeedItem], now: datetime) -> dict[str, str | bytes]:
         cfg = self.config
-        out: dict[str, str] = {}
+        out: dict[str, str | bytes] = {}
         for p in pages:
             out[f"{p.slug}/index.html"] = render_product_page(p, self.base_url, cfg.site_title)
+            label = f"{p.niche.split('-')[0]} radar"
+            out[f"{p.slug}/radar-badge.svg"] = badge_for(label, p.metrics or {})
+            price = f"${p.price_cents / 100:.2f}"
+            out[f"{p.slug}/og.svg"] = render_og_svg(p.title, p.metrics or {}, price)
+            png = render_og_png(p.title, p.metrics or {}, price) if cfg.og_images else None
+            if png:
+                out[f"{p.slug}/og.png"] = png
+        total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")
+        out["radar-badge.svg"] = render_badge_svg("tech radar", f"{total_roles} hiring signals tracked")
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title)
         out["sitemap.xml"] = render_sitemap(pages, self.base_url)
         out["robots.txt"] = "User-agent: *\nAllow: /\n" + (f"Sitemap: {self.base_url}/sitemap.xml\n" if self.base_url else "")
         out[FEED_PATH] = render_rss(feed_items, self.base_url, cfg.site_title, now)
         for rel, content in out.items():
-            self.files.write_text(f"site/{rel}", content)
+            if isinstance(content, bytes):
+                self.files.write_bytes(f"site/{rel}", content)
+            else:
+                self.files.write_text(f"site/{rel}", content)
         return out
 
-    def publish(self, out: dict[str, str]) -> int:
+    def publish(self, out: dict[str, str | bytes]) -> int:
         """Commit changed files to the Pages branch/dir. Returns how many files changed."""
         cfg = self.config
         if not (self.github and self.github.configured() and cfg.github_pages_repo):

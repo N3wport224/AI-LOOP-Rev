@@ -373,17 +373,26 @@ class Dispatcher:
         return report
 
     def deliver(self, order: dict[str, Any], title: str, zip_path: Path) -> str:
-        """Email a purchased dataset. Returns ``delivered``, ``dry_run`` or ``failed``."""
+        """Email a purchased dataset. Returns ``delivered`` or ``dry_run``; raises on send failure."""
         content = zip_path.read_bytes()
         if len(content) > MAX_ATTACHMENT_BYTES:
             raise ValueError(f"{zip_path.name} is too large to attach ({len(content)} bytes)")
         email = self.compose_delivery(order["email"], title, zip_path.name, content, order)
+        return self.send_transactional(email, audit_key=f"order:{order['id']}")
+
+    def send_transactional(self, email: Email, audit_key: str) -> str:
+        """Send (or, in dry run, audit once per ``audit_key``) a transactional email: deliveries,
+        subscription welcomes and weekly updates. Returns ``delivered`` or ``dry_run``."""
+        for a in email.attachments:
+            if len(a.content) > MAX_ATTACHMENT_BYTES:
+                raise ValueError(f"{a.filename} is too large to attach ({len(a.content)} bytes)")
         backend = self.backend_for("delivery")
         if not self.live or backend is None:
-            logged = set(self.state.get("delivery_dry_run_logged", []))
-            if order["id"] not in logged:
+            logged = set(map(str, self.state.get("delivery_dry_run_logged", [])))
+            legacy = audit_key.split(":", 1)[1] if audit_key.startswith("order:") else None
+            if audit_key not in logged and legacy not in logged:
                 self._audit(email, "dry_run", "not_sent", "dry_run on or no email backend", backend.name if backend else "")
-                self.state.set("delivery_dry_run_logged", sorted(logged | {order["id"]}))
+                self.state.set("delivery_dry_run_logged", sorted(logged | {audit_key})[-2000:])
             return "dry_run"
         try:
             message_id = backend.send(email, self.config.sender_email, self.config.sender_name)

@@ -31,7 +31,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 16
+    max_actions_per_cycle: int = 20
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3
@@ -77,7 +77,7 @@ class Config:
 
     # Storefronts ("auto" = stripe if a key is set, else lemonsqueezy if configured, else gumroad staging)
     storefront_provider: str = "auto"
-    price_tiers: list[list[int]] = field(default_factory=lambda: [[0, 500], [25, 900], [75, 1500]])
+    price_tiers: list[list[int]] = field(default_factory=lambda: [[0, 900], [25, 1400], [75, 1900]])
     currency: str = "usd"
     stripe_secret_key: str = ""
     stripe_payment_links: dict[str, str] = field(default_factory=dict)  # niche -> pre-made Payment Link URL
@@ -139,7 +139,7 @@ class Config:
     shutdown_timeout_seconds: float = 60.0
 
     # Pricing engine
-    price_matrix: list[int] = field(default_factory=lambda: [500, 900, 1400, 1900])
+    price_matrix: list[int] = field(default_factory=lambda: [900, 1400, 1900])
     pricing_min_views: int = 20
     pricing_window_hours: int = 48
     demand_sales_threshold: int = 3          # sales in 24h that count as strong demand (>2)
@@ -156,8 +156,18 @@ class Config:
     github_discussions_repo: str = ""        # owner/repo with Discussions enabled
     github_discussions_category: str = "Announcements"
     syndication_publish: bool = True         # False = create drafts only (Dev.to) / skip live posting
-    syndication_interval_days: int = 7
+    syndication_interval_days: int = 5      # hard floor of 5 days per platform, whatever is configured
     syndication_min_companies: int = 10
+    hn_tracker_enabled: bool = True
+    hn_gist_refresh_hours: int = 24
+    og_images: bool = True                   # PNG OpenGraph cards (needs Pillow); SVG badges always
+
+    # Recurring subscriptions (Stripe)
+    subscription_price_cents: int = 1000     # 0 disables the subscription tier
+    subscription_interval: str = "month"     # month | week
+    subscription_delivery_weekday: int = 0   # 0 = Monday
+    subscription_delivery_hour: int = 8
+    subscription_timezone: str = "UTC"
 
     @property
     def db_path(self) -> Path:

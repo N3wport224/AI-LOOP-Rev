@@ -57,7 +57,7 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
         "revenue_history": revenue.history(7),
         "actions_total": state.count_actions(),
         "actions_failed": state.count_actions("failed"),
-        "recent_actions": state.recent_actions(14),
+        "recent_actions": state.recent_actions(20),
         "recent_errors": [
             {k: e[k] for k in ("created_at", "source", "kind", "message")} for e in state.recent_errors(6)
         ],
@@ -112,4 +112,18 @@ def _distribution(state: StateStore, config: Config) -> dict[str, Any]:
         "feed_items": len(state.get("feed_items", []) or []),
         "offline_since": state.get("offline_since"),
         "last_shutdown": state.get("last_shutdown"),
+        "recurring": _recurring(state),
+    }
+
+
+def _recurring(state: StateStore) -> dict[str, Any]:
+    from dashboard.analytics import monthly_amount
+
+    subs = state.list_subscribers()
+    live = [s for s in subs if s["subscription_status"] in ("active", "trialing")]
+    return {
+        "active": len(live),
+        "past_due": sum(1 for s in subs if s["subscription_status"] == "past_due"),
+        "canceled": sum(1 for s in subs if s["subscription_status"] == "canceled"),
+        "mrr_cents": round(sum(monthly_amount(s["price_cents"], s["interval"]) for s in live)),
     }

@@ -114,6 +114,10 @@ def _distribution_panel(snap: dict[str, Any]) -> Panel:
     sale = d.get("last_sale")
     if sale:
         t.add_row("Last sale", f"+${sale['net_cents'] / 100:.2f} net at {sale['at'][11:19]} (today ${sale['today_net_cents'] / 100:.2f})")
+    rec = snap.get("recurring") or {}
+    if rec.get("active") or rec.get("canceled"):
+        t.add_row("Recurring", f"MRR ${rec['mrr_cents'] / 100:,.2f} ({rec['mrr_cents'] * 12 / 365 / 100:,.2f}/day) · "
+                  f"{rec['active']} active · {rec['past_due']} past due · {rec['canceled']} canceled")
     for e in d.get("pricing", [])[:3]:
         t.add_row("Pricing", f"asset #{e['asset_id']} at ${e['price_cents'] / 100:.2f} ({e['status']}) · "
                   f"{e['views']} views · {e['initiations']} checkouts started")

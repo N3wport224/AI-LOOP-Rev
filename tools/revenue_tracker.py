@@ -185,10 +185,12 @@ class RevenueTracker:
             if not inserted:
                 report.skipped += 1
                 continue
+            status = getattr(order, "status", None) or ("paid" if asset and order.email else "needs_manual_delivery")
             self.state.record_order(
                 order.provider, order.order_id, order.email, order.gross_cents, order.product_ref,
                 asset["id"] if asset else None, hypothesis_id, order.occurred_at or None,
-                status="paid" if asset and order.email else "needs_manual_delivery",
+                status=status, channel=getattr(order, "channel", None), campaign=getattr(order, "campaign", None),
+                kind=getattr(order, "kind", "one_off"),
             )
             report.new += 1
             report.net_cents_added += order.gross_cents - fee

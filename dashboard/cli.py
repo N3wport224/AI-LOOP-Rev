@@ -32,7 +32,7 @@ interval_seconds = 3600          # one cycle per hour
 pivot_after_iterations = 24      # cycles with zero verified revenue before a pivot
 signal_window_iterations = 12    # cycles with zero views AND zero sales before a pivot (needs GitHub traffic)
 daily_target_cents = 1000        # $10.00/day
-max_actions_per_cycle = 16
+max_actions_per_cycle = 20
 max_api_calls_per_cycle = 60
 max_consecutive_errors = 5
 http_rate_per_minute = 20
@@ -42,7 +42,7 @@ lead_sources = ["remoteok", "arbeitnow", "hn_hiring"]
 
 # Storefront: "auto" = Stripe if configured, else Lemon Squeezy, else Gumroad staging.
 storefront_provider = "auto"
-price_tiers = [[0, 500], [25, 900], [75, 1500]]   # [companies >=, price in cents], clamped to $5-$15
+price_tiers = [[0, 900], [25, 1400], [75, 1900]]  # starting one-off price: [companies >=, cents]
 # lemonsqueezy_store_id = ""
 # lemonsqueezy_variant_id = ""                     # shared "dataset" variant created once in the dashboard
 # [automonetize.lemonsqueezy_variant_map]          # optional: one variant per niche (exact attribution)
@@ -82,7 +82,7 @@ webhook_path = "/webhook"
 network_check_hosts = ["api.stripe.com:443", "api.github.com:443"]  # [] disables the offline check
 
 # Pricing engine: price experiments across these tiers (cents)
-price_matrix = [500, 900, 1400, 1900]
+price_matrix = [900, 1400, 1900]  # one-off tiers the pricing engine tests ($9 / $14 / $19)
 pricing_min_views = 20           # views without a sale before stepping down...
 pricing_window_hours = 48        # ...once an experiment is this old
 demand_sales_threshold = 3       # sales in 24h that trigger deeper scraping + a premium add-on
@@ -95,7 +95,16 @@ site_title = "Tech Stack Intel"
 # hashnode_publication_id = ""
 # github_discussions_repo = "you/datasets"
 syndication_publish = true       # false = Dev.to drafts only
-syndication_interval_days = 7
+syndication_interval_days = 5   # never less than 5 days per platform
+hn_tracker_enabled = true        # monthly HN "Who is hiring?" stack breakdown as a public gist
+og_images = true                 # PNG OpenGraph cards (pip install '.[images]'); SVG badges always
+
+# Recurring tier: weekly delta updates every Monday
+subscription_price_cents = 1000  # $10/month; 0 disables
+subscription_interval = "month"
+subscription_delivery_weekday = 0   # Monday
+subscription_delivery_hour = 8
+subscription_timezone = "UTC"
 syndication_min_companies = 10
 
 sender_skills = ["python", "django", "aws"]
@@ -514,6 +523,42 @@ def cmd_pricing(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_analytics(args: argparse.Namespace, console: Console) -> int:
+    from dashboard.analytics import compute, render
+
+    config, state = _open(args)
+    try:
+        report = compute(state, config, args.period)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+    else:
+        console.print(render(report))
+    return 0
+
+
+def cmd_subscriptions(args: argparse.Namespace, console: Console) -> int:
+    config, state = _open(args)
+    if args.subs_cmd == "deliver":
+        from strategies.base import TaskContext
+        from strategies.subscription_engine import SubscriptionEngine
+
+        engine = Engine(config, state=state)
+        hyp = state.active_hypothesis() or {"id": 0, "params": {"niche": ""}, "iterations": 0}
+        res = SubscriptionEngine().deliver_subscriptions(TaskContext(engine.tools, hyp, {}))
+        console.print(res.summary)
+        return 0
+    t = Table("id", "subscription", "email", "niche", "price", "status", "channel", "started", "last delivery")
+    for s in state.list_subscribers(args.status):
+        t.add_row(str(s["id"]), s["subscription_id"], s["email"] or "-", s["niche"] or "-",
+                  f"${s['price_cents'] / 100:.2f}/{s['interval']}", s["subscription_status"], s["channel"] or "-",
+                  s["started_at"][:10], (s["last_delivered_at"] or "-")[:16])
+    console.print(t)
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="automonetize", description="Autonomous zero-capital revenue agent")
@@ -629,6 +674,18 @@ def build_parser() -> argparse.ArgumentParser:
     psub.add_parser("status")
     psub.add_parser("run", help="evaluate pricing now")
     pr.set_defaults(func=cmd_pricing)
+
+    an = sub.add_parser("analytics", help="revenue by niche, pricing tier and channel; MRR, churn, net/day vs goal")
+    an.add_argument("--period", default="30d", help="7d, 30d, 12w, 3m, 1y or all (default 30d)")
+    an.add_argument("--json", action="store_true")
+    an.set_defaults(func=cmd_analytics)
+
+    sb = sub.add_parser("subscriptions", help="recurring subscribers")
+    sbs = sb.add_subparsers(dest="subs_cmd", required=True)
+    sl = sbs.add_parser("list")
+    sl.add_argument("--status", help="active, past_due, canceled...")
+    sbs.add_parser("deliver", help="run this week's delivery now (respects dry_run; only if the Monday window has opened)")
+    sb.set_defaults(func=cmd_subscriptions)
 
     sv = sub.add_parser("serve", help="serve data/site landers locally")
     sv.add_argument("--port", type=int, default=8000)

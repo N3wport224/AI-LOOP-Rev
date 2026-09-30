@@ -154,6 +154,9 @@ def config(tmp_path: Path) -> Config:
             {"name": "rust-systems", "keywords": ["rust"]},
         ],
         network_check_hosts=[],
+        # Phase 1-3 tests were written against this price grid; Phase 4 defaults are tested separately.
+        price_tiers=[[0, 500], [25, 900], [75, 1500]],
+        price_matrix=[500, 900, 1400, 1900],
     )
 
 

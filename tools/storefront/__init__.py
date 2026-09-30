@@ -59,6 +59,10 @@ class Order:
     refunded: bool = False
     product_name: str = ""
     asset_id: int | None = None  # explicit attribution hint (e.g. from checkout metadata)
+    channel: str | None = None   # acquisition channel decoded from client_reference_id
+    campaign: str | None = None
+    kind: str = "one_off"        # one_off | subscription (an invoice)
+    status: str | None = None    # override the fulfilment status (subscription invoices aren't "delivered")
 
 
 class Storefront(Protocol):

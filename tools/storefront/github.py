@@ -42,9 +42,10 @@ class GitHubClient:
                 return None
             raise
 
-    def put_file(self, repo: str, path: str, content: str, message: str, branch: str) -> dict[str, Any]:
-        """Create or update a file. No-op (no commit) when the content is unchanged."""
-        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    def put_file(self, repo: str, path: str, content: str | bytes, message: str, branch: str) -> dict[str, Any]:
+        """Create or update a file (text or binary). No-op (no commit) when the content is unchanged."""
+        raw = content if isinstance(content, bytes) else content.encode("utf-8")
+        encoded = base64.b64encode(raw).decode("ascii")
         current = self.get_file(repo, path, branch)
         if current and (current.get("content") or "").replace("\n", "") == encoded:
             return {"changed": False, "html_url": current.get("html_url", "")}

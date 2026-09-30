@@ -23,6 +23,12 @@ Events handled:
 * ``payment_intent.succeeded``: completes a pending session with that payment intent. A
   PaymentIntent on its own has no Payment Link, email or dataset, so it never creates an order.
 * ``checkout.session.expired``: an abandoned checkout, counted for drop-off metrics.
+* Subscriptions: a completed session in ``mode=subscription`` activates the subscriber and sends
+  the welcome dataset; ``invoice.paid`` records each billing period's revenue;
+  ``customer.subscription.updated/deleted`` keep ``subscription_status`` current.
+
+Every session's ``client_reference_id`` is decoded into an acquisition channel (see
+``tools/attribution.py``) and stored with the session and the order.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable
 
+from tools.attribution import decode_ref
 from tools.storefront import Order
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -62,6 +69,9 @@ HANDLED = {
     "checkout.session.async_payment_succeeded",
     "checkout.session.expired",
     "payment_intent.succeeded",
+    "invoice.paid",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
 }
 
 
@@ -122,6 +132,7 @@ class WebhookOutcome:
     status: int
     body: dict[str, Any]
     fulfil: list[dict[str, Any]] = field(default_factory=list)  # orders to deliver after responding
+    after: list[Callable[[], Any]] = field(default_factory=list)  # other jobs to run after responding
 
 
 def _iso(ts: Any) -> str:
@@ -162,22 +173,43 @@ class WebhookProcessor:
             return WebhookOutcome(200, {"received": True, "ignored": event_type})
         if not state.claim_webhook_event(event_id, event_type):
             return WebhookOutcome(200, {"received": True, "duplicate": True})
+        after: list[Callable[[], Any]] = []  # per call: handle() runs concurrently in executor threads
         try:
             obj = (event.get("data") or {}).get("object") or {}
-            status, detail, fulfil = self._dispatch(event_type, obj)
+            status, detail, fulfil = self._dispatch(event_type, obj, after)
         except Exception as exc:  # noqa: BLE001 - let Stripe retry: un-claim and answer 500
             state.release_webhook_event(event_id)
             state.log_error("webhook", f"{event_type} {event_id} failed: {exc!r}")
             return WebhookOutcome(500, {"error": "processing failed"})
         state.finish_webhook_event(event_id, status, detail)
         state.set("webhook_last_event", {"id": event_id, "type": event_type, "at": state.now(), "status": status})
-        return WebhookOutcome(200, {"received": True, "status": status, "detail": detail}, fulfil)
+        return WebhookOutcome(200, {"received": True, "status": status, "detail": detail}, fulfil, after)
 
     # -- event handlers -------------------------------------------------------------
-    def _dispatch(self, event_type: str, obj: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]]]:
+    def _dispatch(self, event_type: str, obj: dict[str, Any],
+                  after: list[Callable[[], Any]]) -> tuple[str, str, list[dict[str, Any]]]:
         if event_type == "payment_intent.succeeded":
             return self._payment_intent_succeeded(obj)
+        if event_type == "invoice.paid":
+            from strategies.subscription_engine import record_invoice
+
+            new = record_invoice(self.tools, obj)
+            return ("processed" if new else "ignored"), f"invoice {obj.get('id')} {'recorded' if new else 'already recorded or not a subscription'}", []
+        if event_type.startswith("customer.subscription."):
+            from strategies.subscription_engine import apply_subscription_update
+
+            if event_type.endswith("deleted"):
+                obj = {**obj, "status": "canceled"}
+            sid = apply_subscription_update(self.tools, obj)
+            return ("processed" if sid else "ignored"), f"subscription {obj.get('id')} → {obj.get('status')}", []
         self._remember_session(obj)
+        if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
+            from strategies.subscription_engine import activate_from_session, send_welcome
+
+            sid, created = activate_from_session(self.tools, obj)
+            if sid and created:
+                after.append(lambda: send_welcome(self.tools, sid))
+            return "processed", f"subscriber {obj.get('subscription')} {'activated' if created else 'updated'}", []
         if event_type == "checkout.session.expired":
             return "processed", "checkout abandoned", []
         if event_type == "checkout.session.completed" and obj.get("payment_status") not in ("paid", "no_payment_required"):
@@ -185,6 +217,7 @@ class WebhookProcessor:
         return self._record_paid(obj)
 
     def _remember_session(self, s: dict[str, Any]) -> None:
+        channel, campaign = decode_ref(s.get("client_reference_id"))
         self.tools.state.upsert_checkout_session(
             session_id=str(s.get("id")),
             product_ref=s.get("payment_link"),
@@ -193,6 +226,7 @@ class WebhookProcessor:
             payment_status=s.get("payment_status"),
             email=(s.get("customer_details") or {}).get("email") or s.get("customer_email"),
             amount_cents=s.get("amount_total"),
+            channel=channel, campaign=campaign, mode=s.get("mode"),
         )
 
     def _payment_intent_succeeded(self, pi: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]]]:
@@ -208,6 +242,8 @@ class WebhookProcessor:
             "amount_total": session["amount_cents"] or pi.get("amount_received") or 0,
             "created": pi.get("created"),
             "metadata": pi.get("metadata") or {},
+            "client_reference_id": None,
+            "_channel": session.get("channel"), "_campaign": session.get("campaign"),
         })
 
     def _record_paid(self, s: dict[str, Any]) -> tuple[str, str, list[dict[str, Any]]]:
@@ -215,6 +251,9 @@ class WebhookProcessor:
         session_id = str(s.get("id"))
         meta = s.get("metadata") or {}
         asset_hint = int(meta["asset_id"]) if str(meta.get("asset_id", "")).isdigit() else None
+        channel, campaign = decode_ref(s.get("client_reference_id"))
+        if s.get("_channel"):
+            channel, campaign = s["_channel"], s.get("_campaign") or ""
         order = Order(
             provider="stripe",
             order_id=session_id,
@@ -222,7 +261,7 @@ class WebhookProcessor:
             gross_cents=int(s.get("amount_total") or 0),
             product_ref=s.get("payment_link"),
             occurred_at=_iso(s.get("created")) or tools.state.now(),
-            asset_id=asset_hint,
+            asset_id=asset_hint, channel=channel, campaign=campaign,
         )
         stripe_sf = next((sf for sf in tools.storefronts if sf.name == "stripe"), None)
         fee_pct = stripe_sf.fee_pct if stripe_sf else tools.config.stripe_fee_pct
@@ -259,8 +298,9 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         payload = await request.read()
         loop = asyncio.get_running_loop()
         outcome = await loop.run_in_executor(executor, processor.handle, payload, request.headers.get("Stripe-Signature"))
-        for order in outcome.fulfil:
-            fut = loop.run_in_executor(executor, fulfil, order)
+        jobs = [lambda order=order: fulfil(order) for order in outcome.fulfil] + list(outcome.after)
+        for job in jobs:
+            fut = loop.run_in_executor(executor, job)
             pending.add(fut)
             fut.add_done_callback(pending.discard)
         return web.json_response(outcome.body, status=outcome.status)

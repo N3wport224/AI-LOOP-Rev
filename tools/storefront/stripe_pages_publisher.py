@@ -18,6 +18,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from tools.attribution import decode_ref
 from tools.storefront import Listing, Order, PublishResult
 from tools.storefront.github import GitHubClient
 
@@ -68,19 +69,39 @@ class StripeClient:
     def create_product(self, name: str, description: str, metadata: dict[str, str], key: str) -> dict[str, Any]:
         return self._post("/products", {"name": name, "description": description[:500], "metadata": metadata}, key)
 
-    def create_price(self, product_id: str, unit_amount: int, currency: str, key: str) -> dict[str, Any]:
-        return self._post("/prices", {"product": product_id, "unit_amount": unit_amount, "currency": currency}, key)
+    def create_price(self, product_id: str, unit_amount: int, currency: str, key: str,
+                     recurring: dict[str, str] | None = None) -> dict[str, Any]:
+        data: dict[str, Any] = {"product": product_id, "unit_amount": unit_amount, "currency": currency}
+        if recurring:
+            data["recurring"] = recurring  # e.g. {"interval": "month"}
+        return self._post("/prices", data, key)
 
-    def create_payment_link(self, price_id: str, metadata: dict[str, str], message: str, key: str) -> dict[str, Any]:
-        return self._post(
-            "/payment_links",
-            {
-                "line_items": [{"price": price_id, "quantity": 1}],
-                "metadata": metadata,
-                "after_completion": {"type": "hosted_confirmation", "hosted_confirmation": {"custom_message": message}},
-            },
-            key,
-        )
+    def create_payment_link(self, price_id: str, metadata: dict[str, str], message: str, key: str,
+                            subscription_metadata: dict[str, str] | None = None) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "metadata": metadata,
+            "after_completion": {"type": "hosted_confirmation", "hosted_confirmation": {"custom_message": message}},
+        }
+        if subscription_metadata:
+            # Copied onto the Subscription object, so subscription events carry the niche/asset.
+            data["subscription_data"] = {"metadata": subscription_metadata}
+        return self._post("/payment_links", data, key)
+
+    def get_subscription(self, subscription_id: str) -> dict[str, Any]:
+        return self.http.get_json(f"{STRIPE_API}/subscriptions/{subscription_id}", headers=self._headers(), check_robots=False)
+
+    def paid_invoices(self, subscription_id: str, max_pages: int = 5) -> list[dict[str, Any]]:
+        invoices: list[dict[str, Any]] = []
+        params: dict[str, Any] = {"subscription": subscription_id, "status": "paid", "limit": 100}
+        for _ in range(max_pages):
+            page = self.http.get_json(f"{STRIPE_API}/invoices", params=params, headers=self._headers(), check_robots=False)
+            data = page.get("data", [])
+            invoices.extend(data)
+            if not page.get("has_more") or not data:
+                break
+            params = {**params, "starting_after": data[-1]["id"]}
+        return invoices
 
     def deactivate_payment_link(self, link_id: str) -> None:
         self._post(f"/payment_links/{link_id}", {"active": False}, f"deactivate-{link_id}")
@@ -156,6 +177,22 @@ class StripeStorefront:
         )
         return link["id"], link["url"], product["id"]
 
+    def create_subscription_link(self, title: str, summary: str, price_cents: int, interval: str,
+                                 meta: dict[str, str]) -> tuple[str, str, str]:
+        """Product → recurring Price → Payment Link. Returns (payment_link_id, url, price_id)."""
+        if interval not in ("day", "week", "month", "year"):
+            raise ValueError(f"invalid Stripe recurring interval {interval!r}")
+        key = f"automonetize-sub-{meta.get('niche', '')}-{price_cents}-{interval}-{meta.get('version', '1')}"
+        product = self.client.create_product(title, summary, {**meta, "kind": "subscription"}, key + "-product")
+        price = self.client.create_price(product["id"], price_cents, self.config.currency, key + "-price",
+                                         recurring={"interval": interval})
+        link = self.client.create_payment_link(
+            price["id"], {**meta, "kind": "subscription"},
+            f"You're subscribed! The current dataset arrives by email now, then fresh updates every {interval}.",
+            key + "-link", subscription_metadata={**meta, "kind": "subscription"},
+        )
+        return link["id"], link["url"], price["id"]
+
     def deactivate(self, link_id: str) -> None:
         try:
             self.client.deactivate_payment_link(link_id)
@@ -174,8 +211,9 @@ class StripeStorefront:
         orders = []
         for ref in sorted({r for r in product_refs if r and r.startswith("plink_")}):
             for s in self.client.completed_sessions(ref, int(since.timestamp())):
-                if s.get("payment_status") != "paid":
-                    continue
+                if s.get("payment_status") != "paid" or s.get("mode") == "subscription":
+                    continue  # subscription revenue is recorded per paid invoice, not per session
+                channel, campaign = decode_ref(s.get("client_reference_id"))
                 orders.append(
                     Order(
                         provider=self.name,
@@ -184,6 +222,7 @@ class StripeStorefront:
                         gross_cents=int(s.get("amount_total") or 0),
                         product_ref=ref,
                         occurred_at=datetime.fromtimestamp(int(s.get("created", 0)), tz=timezone.utc).isoformat(timespec="seconds"),
+                        channel=channel, campaign=campaign,
                     )
                 )
         return orders

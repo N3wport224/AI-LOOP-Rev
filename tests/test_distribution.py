@@ -374,5 +374,7 @@ def test_closed_loop_through_engine(config, state, breaker, transport, smtp):
     assert state.order_counts() == {"delivered": 1}
     delivery = [m for m in smtp.sent if m["To"] == "buyer@acme.example"]
     assert len(delivery) == 1 and list(delivery[0].iter_attachments())
-    # only one Payment Link was ever created
-    assert len(transport.calls_to("https://api.stripe.com/v1/payment_links", "POST")) == 1
+    # only one one-off Payment Link was ever created (the other is the $10/month subscription offer)
+    links = transport.calls_to("https://api.stripe.com/v1/payment_links", "POST")
+    one_off = [c for c in links if b"subscription_data" not in c["body"]]
+    assert len(one_off) == 1 and len(links) - len(one_off) == 1
