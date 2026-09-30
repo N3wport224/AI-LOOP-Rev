@@ -45,8 +45,11 @@ from __future__ import annotations
 import hashlib
 import math
 import random
+import json
 import re
+import string
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 SLOTS: dict[str, dict[str, dict[str, str]]] = {
@@ -62,6 +65,42 @@ SLOTS: dict[str, dict[str, dict[str, str]]] = {
     },
 }
 CONTROL = {"headline": "hiring_stack", "cta": "instant_feed"}
+
+# Extra headline arms the agent wrote itself when revenue plateaued (agent/evolution). The file is
+# evolvable data; this loader is not, and it drops anything that could make a false claim: unknown
+# placeholders, a claim without its ``requires`` fact, clashing names or codes, overlong text.
+SEED_FILE = Path(__file__).resolve().parents[1] / "seeds" / "copy_variants.json"
+SAFE_PLACEHOLDERS = {"label", "companies", "hot", "verified", "price"}
+REQUIRABLE = {"hot", "verified"}
+
+
+def evolved_arms(path: Path = SEED_FILE) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError, ValueError):
+        return {}
+    used = {a["code"] for a in SLOTS["headline"].values()}
+    out: dict[str, dict[str, Any]] = {}
+    for name, arm in sorted(((data.get("headline") or {}) if isinstance(data, dict) else {}).items()):
+        if not (isinstance(arm, dict) and re.fullmatch(r"[a-z][a-z0-9_]{2,40}", str(name)) and name not in SLOTS["headline"]):
+            continue
+        code, text, requires = arm.get("code"), arm.get("text"), arm.get("requires") or []
+        if not (isinstance(code, str) and re.fullmatch(r"[a-z]", code) and code not in used):
+            continue
+        if not (isinstance(text, str) and 10 <= len(text) <= 140 and isinstance(requires, list) and set(requires) <= REQUIRABLE):
+            continue
+        try:
+            fields = {f for _, f, _, _ in string.Formatter().parse(text) if f is not None}
+        except ValueError:
+            continue
+        if not fields <= SAFE_PLACEHOLDERS or (fields & REQUIRABLE) - set(requires):
+            continue  # every number it states must be a fact the page has
+        used.add(code)
+        out[name] = {"code": code, "text": text, "requires": list(requires), "evolved": True}
+    return out
+
+
+SLOTS["headline"].update(evolved_arms())
 EVENTS = ("view", "click", "signup", "purchase")
 REWARD_EVENTS = ("signup", "purchase")
 PRIOR_VIEWS = 50
@@ -266,6 +305,8 @@ def render_copy(slot: str, variant: str, facts: dict[str, Any]) -> str | None:
     if slot == "cta" and variant == "developer_api" and not facts.get("api_url"):
         return None
     if slot == "cta" and variant == "instant_feed" and not facts.get("checkout_url"):
+        return None
+    if any(not facts.get(r) for r in SLOTS[slot][variant].get("requires", ())):
         return None
     return SLOTS[slot][variant]["text"].format(**{k: v for k, v in facts.items() if v is not None})
 

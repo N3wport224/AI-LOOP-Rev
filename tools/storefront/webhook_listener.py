@@ -464,6 +464,7 @@ class WebhookServer:
         self.processor = WebhookProcessor(tools)
         self.started = threading.Event()
         self.bound_port: int | None = None
+        self.sock: Any = None  # a listening socket owned by the supervisor (kept open across reloads)
 
     def run(self, stop_event: threading.Event) -> None:
         asyncio.run(self._serve(stop_event))
@@ -473,7 +474,9 @@ class WebhookServer:
 
         runner = web.AppRunner(build_app(self.processor, self.path, power=self.power), access_log=None)
         await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
+        # A dup of the supervisor's socket: closing it on shutdown leaves the original listening,
+        # so a reload never closes the port.
+        site = web.SockSite(runner, self.sock.dup()) if self.sock is not None else web.TCPSite(runner, self.host, self.port)
         await site.start()
         sockets = getattr(site._server, "sockets", None) or []  # noqa: SLF001 - to report an ephemeral port
         self.bound_port = sockets[0].getsockname()[1] if sockets else self.port

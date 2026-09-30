@@ -235,6 +235,32 @@ def _growth_panel(snap: dict[str, Any]) -> Panel | None:
                        niches, sources), title="Developer API & Growth Engine", border_style="cyan")
 
 
+def _evolution_panel(snap: dict[str, Any]) -> Panel | None:
+    ev = snap.get("evolution")
+    if not ev or "attempted" not in ev:
+        return None
+    state = Text("ON", style="bold green") if ev["enabled"] else Text("OFF", style="bold yellow")
+    counts = Text.assemble(("Self-evolution ", "bold"), state,
+                           (f" · {ev['attempted']} attempted · {ev['merged']} merged · {ev['rolled_back']} rolled back · "
+                            f"{ev['failed']} failed · {ev['rejected']} rejected", ""))
+    last = ev.get("last_commit")
+    last_line = Text("Last evolution: " + (f"{last['commit_sha'][:12]} {last['title']}" if last else "none yet"), style="cyan")
+    canary = ev.get("canary") or {}
+    health_style = {"monitoring": "yellow", "passed": "green", "rolled_back": "red", "rollback_failed": "bold red"}.get(canary.get("status"), "dim")
+    health = Text(f"Rollback health: {canary.get('status', 'no canary')}"
+                  + (f" ({canary.get('reason') or 'until ' + str(canary.get('until'))})" if canary else ""), style=health_style)
+    mins = ev["cooldown_seconds"] // 60
+    cooldown = Text(f"Cooldown: {mins // 60}h {mins % 60:02d}m left ({ev['cooldown_reason']})" if ev["cooldown_until"]
+                    else "Cooldown: none", style="yellow" if ev["cooldown_until"] else "dim")
+    lines = [counts, last_line, health, cooldown]
+    if ev.get("halted"):
+        lines.append(Text(f"HALTED: {ev['halted']}", style="bold red"))
+    diag = ev.get("diagnosis") or {}
+    for f in diag.get("findings", [])[:3]:
+        lines.append(Text(f"  {f['severity']} · {f['kind']}: {f['summary']}", style="dim"))
+    return Panel(Group(*lines), title="Autonomous Code Evolution", border_style="green" if ev["enabled"] else "dim")
+
+
 def render_dashboard(snap: dict[str, Any]) -> Group:
     runtime = Table.grid(expand=True, padding=(0, 2))
     runtime.add_column(ratio=1)
@@ -250,6 +276,7 @@ def render_dashboard(snap: dict[str, Any]) -> Group:
         _distribution_panel(snap),
         _revenue_panel(snap),
         *([p] if (p := _growth_panel(snap)) else []),
+        *([p] if (p := _evolution_panel(snap)) else []),
         _health_panel(snap),
         _actions_panel(snap),
     )

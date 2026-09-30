@@ -71,7 +71,22 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
             "quarantine": _quarantine(state),
         },
         "growth": growth(state, config),
+        "evolution": evolution(state, config),
     }
+
+
+def evolution(state: StateStore, config: Config) -> dict[str, Any]:
+    """Self-evolution telemetry from data/evolution_log.db (empty counters before the first run)."""
+    from agent.evolution.hot_reload import evolution_log
+
+    try:
+        summ = evolution_log(config, state.clock).summary()
+    except Exception as exc:  # noqa: BLE001 - a dashboard must render even if the log is unreadable
+        return {"enabled": config.enable_autonomous_code_evolution, "error": repr(exc)}
+    diag = summ.pop("last_diagnosis") or {}
+    return {**summ, "enabled": config.enable_autonomous_code_evolution,
+            "diagnosis": {"at": diag.get("at"), "ready": diag.get("ready", 0),
+                          "findings": [{k: f.get(k) for k in ("kind", "severity", "summary")} for f in diag.get("findings", [])[:5]]}}
 
 
 def growth(state: StateStore, config: Config) -> dict[str, Any]:

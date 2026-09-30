@@ -19,6 +19,34 @@ from tools.http_client import Response  # noqa: E402
 NOW = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
 
 
+def pytest_configure(config: Any) -> None:
+    config.addinivalue_line("markers", "evolved_data: run against the live self-evolved heuristics, not the built-in ones")
+
+
+@pytest.fixture(autouse=True)
+def pristine_evolved_data(request: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests run against the built-in heuristics: whatever the agent has learned (agent/evolution)
+    must not change what the existing assertions mean, or every evolution would fail the suite.
+    The live evolved data has its own contract tests (``@pytest.mark.evolved_data``)."""
+    if request.node.get_closest_marker("evolved_data"):
+        return
+    import strategies.b2b_lead_aggregator as agg
+    import strategies.tech_stack_intel as intel
+    from tools import copy_bandit
+
+    monkeypatch.setattr(agg, "FIELD_ALIASES", {})
+    if "other" in intel.FINGERPRINTS:
+        learned = set(intel.FINGERPRINTS["other"])
+        monkeypatch.delitem(intel.FINGERPRINTS, "other")
+        monkeypatch.setattr(intel, "_COMPILED", {k: v for k, v in intel._COMPILED.items() if k != "other"})
+        monkeypatch.setattr(intel, "_FULL_COMPILED", {k: v for k, v in intel._FULL_COMPILED.items() if k not in learned})
+    evolved = {name for name, arm in copy_bandit.SLOTS["headline"].items() if arm.get("evolved")}
+    if evolved:
+        monkeypatch.setitem(copy_bandit.SLOTS, "headline", {k: v for k, v in copy_bandit.SLOTS["headline"].items() if k not in evolved})
+        monkeypatch.setattr(copy_bandit, "CODE_TO_VARIANT", {slot: {c: n for c, n in codes.items() if n not in evolved}
+                                                            for slot, codes in copy_bandit.CODE_TO_VARIANT.items()})
+
+
 class FrozenClock:
     def __init__(self, now: datetime = NOW):
         self.now = now

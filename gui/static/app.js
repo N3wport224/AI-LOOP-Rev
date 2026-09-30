@@ -90,6 +90,7 @@
     $("#k-leads-sub").textContent = `${leads.active || 0} confirmed · ${leads.pending || 0} pending · ${leads.unsubscribed || 0} left`;
     $("#engine-reason").textContent = s.engine.reason ? "Engine " + s.engine.state + ": " + s.engine.reason : "";
     renderGrowth(s.growth || {});
+    renderEvolution(s.evolution || {});
     const paused = s.engine.flag === "paused";
     $("#btn-pause").hidden = paused;
     $("#btn-resume").hidden = !paused;
@@ -120,6 +121,26 @@
       : "Single niche (no satellites yet).";
     const src = g.sources || {};
     $("#source-counts").textContent = `Discovered job sources: ${src.active || 0} active · ${src.trial || 0} in trial · ${src.candidate || 0} candidates · ${src.rejected || 0} rejected`;
+  }
+
+  function renderEvolution(ev) {
+    $("#evo-state").textContent = ev.enabled ? "· ON" : "· off";
+    $("#evo-counts").textContent = `${ev.attempted || 0} attempted · ${ev.merged || 0} merged · ${ev.rolled_back || 0} rolled back · `
+      + `${ev.failed || 0} failed · ${ev.rejected || 0} rejected`;
+    const last = ev.last_commit;
+    $("#evo-last").textContent = "Last evolution: " + (last ? `${last.commit_sha.slice(0, 12)} ${last.title}` : "none yet");
+    const c = ev.canary || {};
+    const health = $("#evo-health");
+    health.textContent = "Rollback health: " + (c.status ? c.status + (c.reason ? ` (${c.reason})` : c.until ? ` until ${shortTime(c.until)} UTC` : "")
+      : "no canary running") + (ev.halted ? " · HALTED: " + ev.halted : "");
+    health.className = ev.halted || c.status === "rolled_back" || c.status === "rollback_failed" ? "status-bad"
+      : (c.status === "monitoring" ? "status-warn" : "");
+    const secs = ev.cooldown_seconds || 0;
+    $("#evo-cooldown").textContent = secs > 0
+      ? `Cooldown: ${Math.floor(secs / 3600)}h ${String(Math.floor((secs % 3600) / 60)).padStart(2, "0")}m left (${ev.cooldown_reason || ""})`
+      : "Cooldown: none";
+    const findings = ((ev.diagnosis || {}).findings || []);
+    $("#evo-findings").replaceChildren(...findings.map((f) => el("li", { text: `${f.severity} · ${f.kind}: ${f.summary}` })));
   }
 
   async function control(action) {

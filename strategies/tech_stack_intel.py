@@ -72,6 +72,15 @@ FINGERPRINTS: dict[str, dict[str, list[str]]] = {
     },
 }
 
+# Technologies the agent learned from posting tags it couldn't classify (agent/evolution/diagnostics.py).
+# Only this literal changes when it evolves; entries whose name is already known above are ignored.
+# <evolved:FINGERPRINTS> auto-evolution may rewrite this block (one literal assignment)
+EVOLVED_FINGERPRINTS: dict[str, list[str]] = {}
+# </evolved:FINGERPRINTS>
+_KNOWN_TECH = {name for names in FINGERPRINTS.values() for name in names}
+if EVOLVED_FINGERPRINTS:
+    FINGERPRINTS["other"] = {name: pats for name, pats in EVOLVED_FINGERPRINTS.items() if name not in _KNOWN_TECH}
+
 # label -> (weight, regex)
 INTENT_TRIGGERS: dict[str, tuple[int, str]] = {
     "migration": (20, r"migrat(e|es|ing|ion)"),

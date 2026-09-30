@@ -108,6 +108,8 @@ GROUPS = [
     ("syndication", "Syndication & publishing", "Dev.to, Hashnode and GitHub (showcase, Pages site)."),
     ("tunnel", "Cloudflare Tunnel", "The permanent public hostname Stripe and the lead form reach."),
     ("compliance", "Compliance (CAN-SPAM)", "Required in every marketing email."),
+    ("evolution", "Autonomous code evolution", "Lets the agent patch its own heuristics (parsers, tech vocabulary, copy) after "
+                  "the full test suite and simulator pass in a sandbox. Every change is a local git commit you can revert."),
 ]
 
 FIELDS: list[Field] = [
@@ -143,6 +145,10 @@ FIELDS: list[Field] = [
           placeholder="123 Main St, Springfield, IL 62701, USA"),
     Field("CAN_SPAM_UNSUBSCRIBE_EMAIL", "Unsubscribe mailbox", "compliance", "unsubscribe_email", kind="email",
           validate=_v_email),
+    Field("ENABLE_AUTONOMOUS_CODE_EVOLUTION", "Enable autonomous code evolution", "evolution", "enable_autonomous_code_evolution",
+          kind="bool", options=["false", "true"], validate=_v_choice("true", "false"),
+          help="Off by default. Needs a clean git checkout; changes are committed locally, never pushed. "
+               "Inspect with `automonetize evolution log`."),
 ]
 BY_KEY = {f.key: f for f in FIELDS}
 

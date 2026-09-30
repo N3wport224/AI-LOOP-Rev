@@ -13,6 +13,10 @@
   cycle and any in-flight fulfilment finish (up to ``shutdown_timeout_seconds``), flush the SQLite
   WAL into the database (``PRAGMA wal_checkpoint(TRUNCATE)``), write an operational checkpoint
   to state, and release the process lock.
+* SIGUSR1, or ``agent.evolution.hot_reload.request_reload()`` (after a self-evolution merge or a
+  rollback), requests a **graceful reload**: the same drain, then the process re-executes itself
+  with the webhook's listening socket inherited, so the port never closes (``agent.evolution.hot_reload``).
+* Every 30 s the supervisor also checks the post-evolution canary (rollback on regressions).
 """
 
 from __future__ import annotations
@@ -28,10 +32,13 @@ from typing import Any, Callable
 
 from agent.config import Config
 from agent.engine import CycleReport, Engine, ProcessLock
+from agent.evolution import hot_reload
 
 log = logging.getLogger("automonetize.supervisor")
 
 SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+RELOAD_SIGNALS = (signal.SIGUSR1,)
+CANARY_EVERY_SECONDS = 30.0
 
 
 @dataclass
@@ -60,6 +67,7 @@ class Supervisor:
         monotonic: Callable[[], float] = time.monotonic,
         backoff_base: float = 1.0,
         poll_seconds: float = 0.2,
+        exec_fn: Callable[..., Any] | None = None,
     ):
         self.config = config
         self.engine = engine or Engine(config)
@@ -70,6 +78,10 @@ class Supervisor:
         self.backoff_base = backoff_base
         self.poll_seconds = poll_seconds
         self.stop_reason = ""
+        self.reloading = False
+        self.exec_fn = exec_fn  # None = os.execve; tests pass a fake
+        self.listen_socket: Any = None
+        self._next_canary = 0.0
         self.lock = ProcessLock(config.data_dir / "agent.lock")
         self._previous_handlers: dict[int, Any] = {}
         self.workers: list[Worker] = [
@@ -88,13 +100,16 @@ class Supervisor:
     # -- signals -----------------------------------------------------------------------
     def _on_signal(self, signum: int, _frame: Any) -> None:
         # Only set flags here: the main loop does the actual shutdown work.
+        if signum in RELOAD_SIGNALS:
+            hot_reload.request_reload(signal.Signals(signum).name)
+            return
         self.stop_reason = self.stop_reason or signal.Signals(signum).name
         self.stop_event.set()
 
     def install_signal_handlers(self) -> None:
         if threading.current_thread() is not threading.main_thread():
             return
-        for sig in SIGNALS:
+        for sig in SIGNALS + RELOAD_SIGNALS:
             self._previous_handlers[sig] = signal.signal(sig, self._on_signal)
 
     def restore_signal_handlers(self) -> None:
@@ -152,11 +167,31 @@ class Supervisor:
         self.stop_reason = self.stop_reason or reason
         self.stop_event.set()
 
+    def request_reload(self, reason: str) -> None:
+        """Drain like a stop, then re-execute with the new code (``run`` does the exec)."""
+        self.reloading = True
+        self.request_stop(f"reload: {reason}")
+
+    def _tick_canary(self) -> None:
+        now = self.monotonic()
+        if now < self._next_canary:
+            return
+        self._next_canary = now + CANARY_EVERY_SECONDS
+        try:
+            hot_reload.canary_tick(self.state, self.config)
+        except Exception as exc:  # noqa: BLE001 - the watchdog must not take the supervisor down
+            self.state.log_error("evolution", f"canary check failed: {exc!r}")
+
     def start(self) -> None:
         if not self.lock.acquire():
             raise RuntimeError(f"another agent instance holds {self.lock.path}")
         self.state.set("supervisor", {"pid": os.getpid(), "started_at": self.state.now(),
                                       "workers": [w.name for w in self.workers]})
+        hot_reload.RELOAD.clear()
+        if getattr(self, "webhook_server", None) is not None:
+            # Created here (not per worker start) so it survives worker restarts and reloads.
+            self.listen_socket = hot_reload.listening_socket(self.webhook_server.host, self.webhook_server.port)
+            self.webhook_server.sock = self.listen_socket
         self.install_signal_handlers()
         for w in self.workers:
             self._start(w)
@@ -166,11 +201,21 @@ class Supervisor:
         self.start()
         try:
             while not self.stop_event.is_set():
+                if hot_reload.RELOAD.is_set():
+                    self.request_reload(hot_reload.reload_reason())
+                    break
                 for w in self.workers:
                     self._check(w)
+                self._tick_canary()
                 self.stop_event.wait(self.poll_seconds)
         finally:
             self.shutdown()
+        if self.reloading:
+            hot_reload.RELOAD.clear()
+            self.state.log_action(int(self.state.get("iteration", 0)), None, "supervisor:reload", "ok", self.stop_reason)
+            hot_reload.reexec(self.listen_socket, self.exec_fn or os.execve)  # doesn't return (unless a test fakes it)
+        elif self.listen_socket is not None:
+            self.listen_socket.close()
         return self.stop_reason
 
     def shutdown(self) -> None:

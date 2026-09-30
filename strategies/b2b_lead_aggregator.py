@@ -100,6 +100,55 @@ def _ts(value: Any) -> str:
         return ""
 
 
+# When a feed renames a field (say "position" becomes "title"), the agent learns the new name from
+# the payload shape and adds it here (agent/evolution/diagnostics.py): {source: {field: [aliases]}}.
+# <evolved:FIELD_ALIASES> auto-evolution may rewrite this block (one literal assignment)
+FIELD_ALIASES: dict[str, dict[str, list[str]]] = {}
+# </evolved:FIELD_ALIASES>
+
+# What each parser saw last time: {source: {"items", "parsed", "keys": {key: kind}}}. Read (and
+# cleared) by the aggregator after each fetch; kinds only, never values.
+LAST_SHAPE: dict[str, dict[str, Any]] = {}
+
+
+def _field(item: dict[str, Any], source: str, name: str, default: Any = None) -> Any:
+    if item.get(name) not in (None, ""):
+        return item[name]
+    for alias in FIELD_ALIASES.get(source, {}).get(name, []):
+        if item.get(alias) not in (None, ""):
+            return item[alias]
+    return item.get(name, default)
+
+
+def _kind(value: Any) -> str:
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, (int, float)):
+        return "epoch" if value > 10**9 else "number"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, dict):
+        return "object"
+    text = str(value or "").strip()
+    if not text:
+        return "empty"
+    if text.startswith(("http://", "https://")):
+        return "url"
+    if re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return "date"
+    return "text" if len(text) > 80 else "short_text"
+
+
+def _note_shape(source: str, items: list[Any], parsed: int) -> None:
+    dicts = [i for i in items if isinstance(i, dict)]
+    keys: dict[str, str] = {}
+    for item in dicts[:25]:
+        for k, v in item.items():
+            if isinstance(k, str) and len(k) <= 40 and (keys.get(k) in (None, "empty")):
+                keys[k] = _kind(v)
+    LAST_SHAPE[source] = {"items": len(dicts), "parsed": parsed, "keys": dict(sorted(keys.items())[:60])}
+
+
 def _int_or_none(value: Any) -> int | None:
     try:
         n = int(value)
@@ -110,27 +159,29 @@ def _int_or_none(value: Any) -> int | None:
 
 def parse_remoteok(payload: Any) -> list[Lead]:
     leads = []
-    for item in payload if isinstance(payload, list) else []:
-        if not isinstance(item, dict) or "position" not in item:
+    items = payload if isinstance(payload, list) else []
+    for item in items:
+        if not isinstance(item, dict) or not _field(item, "remoteok", "position"):
             continue  # first element is the API legal notice
-        desc = _clean(item.get("description"))
+        f = lambda name, default=None: _field(item, "remoteok", name, default)  # noqa: E731
         leads.append(
             Lead(
                 source="remoteok",
-                source_id=str(item.get("id", "")),
-                company=_clean(item.get("company")),
-                title=_clean(item.get("position")),
-                url=str(item.get("url") or ""),
-                apply_url=str(item.get("apply_url") or ""),
-                location=_clean(item.get("location")) or "Remote",
+                source_id=str(f("id", "")),
+                company=_clean(f("company")),
+                title=_clean(f("position")),
+                url=str(f("url") or ""),
+                apply_url=str(f("apply_url") or ""),
+                location=_clean(f("location")) or "Remote",
                 remote=True,
-                tags=[str(t).lower() for t in item.get("tags") or []],
-                description=desc,
-                posted_at=_ts(item.get("date") or item.get("epoch")),
-                salary_min=_int_or_none(item.get("salary_min")),
-                salary_max=_int_or_none(item.get("salary_max")),
+                tags=[str(t).lower() for t in f("tags") or []],
+                description=_clean(f("description")),
+                posted_at=_ts(f("date") or f("epoch")),
+                salary_min=_int_or_none(f("salary_min")),
+                salary_max=_int_or_none(f("salary_max")),
             )
         )
+    _note_shape("remoteok", items, len(leads))
     return leads
 
 
@@ -140,20 +191,22 @@ def parse_arbeitnow(payload: Any) -> list[Lead]:
     for item in data:
         if not isinstance(item, dict):
             continue
+        f = lambda name, default=None: _field(item, "arbeitnow", name, default)  # noqa: E731
         leads.append(
             Lead(
                 source="arbeitnow",
-                source_id=str(item.get("slug", "")),
-                company=_clean(item.get("company_name")),
-                title=_clean(item.get("title")),
-                url=str(item.get("url") or ""),
-                location=_clean(item.get("location")),
-                remote=bool(item.get("remote")),
-                tags=[str(t).lower() for t in (item.get("tags") or []) + (item.get("job_types") or [])],
-                description=_clean(item.get("description")),
-                posted_at=_ts(item.get("created_at")),
+                source_id=str(f("slug", "")),
+                company=_clean(f("company_name")),
+                title=_clean(f("title")),
+                url=str(f("url") or ""),
+                location=_clean(f("location")),
+                remote=bool(f("remote")),
+                tags=[str(t).lower() for t in (f("tags") or []) + (f("job_types") or [])],
+                description=_clean(f("description")),
+                posted_at=_ts(f("created_at")),
             )
         )
+    _note_shape("arbeitnow", data if isinstance(data, list) else [], sum(1 for lead in leads if lead.title and lead.company))
     return leads
 
 
@@ -288,6 +341,17 @@ def fetch_hn_hiring(http, depth: int = 1, max_comments: int = 400) -> list[Lead]
     return leads
 
 
+PARSE_HISTORY = 10
+
+
+def record_parse(state: Any, source: str, leads: int, shape: dict[str, Any] | None, error: str = "") -> None:
+    """Per-source parser health (kv ``parser_health:<source>``, last 10 runs) for self-diagnosis."""
+    runs = (state.get(f"parser_health:{source}") or [])[-(PARSE_HISTORY - 1):]
+    runs.append({"at": state.now(), "leads": leads, "items": (shape or {}).get("items"), "parsed": (shape or {}).get("parsed"),
+                 "keys": (shape or {}).get("keys") or {}, "error": error[:300]})
+    state.set(f"parser_health:{source}", runs)
+
+
 FETCHERS: dict[str, Callable[[Any], list[Lead]]] = {
     "remoteok": fetch_remoteok,
     "arbeitnow": fetch_arbeitnow,
@@ -313,15 +377,19 @@ class LeadAggregator(Strategy):
         raw: list[Lead] = []
         failed_sources: list[str] = []
         for source in sources:
+            LAST_SHAPE.pop(source, None)
             try:
                 depth = int(ctx.params.get("depth", 1))
                 fetch = self.fetchers[source]
-                raw.extend(fetch(tools.http, depth=depth) if depth > 1 else fetch(tools.http))
+                got = fetch(tools.http, depth=depth) if depth > 1 else fetch(tools.http)
+                raw.extend(got)
+                record_parse(tools.state, source, len(got), LAST_SHAPE.pop(source, None))
             except CircuitOpenError:
                 raise  # budget exhausted: stop the whole task, don't blame the source
             except Exception as exc:  # noqa: BLE001 - one bad source must not sink the others
                 failed_sources.append(source)
                 tools.state.log_error(f"lead_source:{source}", repr(exc))
+                record_parse(tools.state, source, 0, LAST_SHAPE.pop(source, None), error=repr(exc))
         ctx.payload["failed_sources"] = failed_sources
         if sources and len(failed_sources) == len(sources):
             raise RuntimeError(f"all lead sources failed: {failed_sources}")

@@ -666,6 +666,87 @@ def cmd_setup_autonomous(args: argparse.Namespace, console: Console) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_evolution(args: argparse.Namespace, console: Console) -> int:
+    from agent.evolution.hot_reload import evolution_log, repo_root
+
+    config, state = _open(args)
+    elog = evolution_log(config, state.clock)
+    sub = args.evolution_cmd
+    if sub == "log":
+        rows = elog.recent(args.limit)
+        if args.json:
+            print(json.dumps([{k: v for k, v in r.items() if k not in ("diff", "output")} for r in rows], indent=2))
+            return 0
+        t = Table(title="Evolution attempts (data/evolution_log.db)")
+        for col in ("id", "when", "status", "kind", "title", "commit", "detail"):
+            t.add_column(col, overflow="fold")
+        colour = {"merged": "green", "failed": "red", "rejected": "red", "rolled_back": "yellow", "aborted": "dim"}
+        for r in rows:
+            t.add_row(str(r["id"]), r["created_at"][:16], f"[{colour.get(r['status'], 'white')}]{r['status']}[/]", r["kind"],
+                      r["title"], (r["commit_sha"] or "")[:12], (r["detail"] or "")[:160])
+        console.print(t)
+        return 0
+    if sub == "show":
+        r = elog.get(args.id)
+        if r is None:
+            console.print(f"[red]no attempt {args.id}[/]")
+            return 1
+        console.print(f"[bold]#{r['id']} {r['title']}[/] · {r['status']} · {r['created_at']} → {r['finished_at'] or '…'}")
+        console.print(f"branch {r['branch'] or '-'} · base {(r['base_sha'] or '')[:12]} · commit {(r['commit_sha'] or '-')[:12]} · "
+                      f"fingerprint {r['fingerprint']}")
+        console.print(f"{r['metric']}: {r['baseline']} → expected {r['expected']}\n{r['rationale']}\n\n{r['detail']}\n")
+        console.print(r["diff"] or "(no diff)", markup=False, highlight=False)
+        if args.output:
+            console.print(r["output"] or "(no output)", markup=False, highlight=False)
+        return 0
+    if sub == "diagnose":
+        from agent.evolution.diagnostics import diagnose
+
+        findings = diagnose(state, config, repo_root(config), log=elog)
+        if args.json:
+            print(json.dumps([f.to_dict() for f in findings], indent=2, default=str))
+            return 0
+        if not findings:
+            console.print("[green]no bottlenecks found[/]")
+        for f in findings:
+            console.print(f"[bold]{f.severity.upper()}[/] {f.kind}: {f.summary}")
+            if f.hypothesis:
+                h = f.hypothesis
+                seen = " [dim](already tried)[/]" if elog.tried(h.fingerprint) else ""
+                console.print(f"  patch: [cyan]{h.title}[/]{seen} · {h.metric}: {h.baseline:g} → {h.expected:g}")
+                if args.diff:
+                    console.print(h.diff(), markup=False, highlight=False)
+        return 0
+    if sub == "resume":
+        elog.set_kv("halted", None)
+        elog.set_kv("cooldown_until", None)
+        console.print("[green]evolution un-halted and cooldown cleared[/]")
+        return 0
+    from agent.evolution.task import blocked
+
+    summ = elog.summary()
+    if args.json:
+        print(json.dumps({**summ, "enabled": config.enable_autonomous_code_evolution, "blocked": blocked(config, elog, state)},
+                         indent=2, default=str))
+        return 0
+    console.print(f"Autonomous code evolution: {'[green]ON[/]' if config.enable_autonomous_code_evolution else '[yellow]OFF[/]'}"
+                  f" · repo {repo_root(config)}")
+    console.print(f"attempted {summ['attempted']} · merged {summ['merged']} · rolled back {summ['rolled_back']} · failed "
+                  f"{summ['failed']} · rejected {summ['rejected']} · blacklisted patches {summ['blacklisted']}")
+    last = summ["last_commit"]
+    console.print("last evolution: " + (f"{last['commit_sha'][:12]} {last['title']}" if last else "none"))
+    canary = summ["canary"] or {}
+    console.print(f"canary: {canary.get('status', 'none')}" + (f" ({canary.get('reason') or canary.get('until')})" if canary else ""))
+    console.print("cooldown: " + (f"until {summ['cooldown_until']} ({summ['cooldown_reason']})" if summ["cooldown_until"] else "none"))
+    if summ["halted"]:
+        console.print(f"[red]HALTED[/]: {summ['halted']}")
+    console.print(f"now: {blocked(config, elog, state) or 'ready to attempt at the next cycle'}")
+    diag = summ["last_diagnosis"] or {}
+    for f in diag.get("findings", [])[:10]:
+        console.print(f"  • {f['severity']} {f['kind']}: {f['summary']}")
+    return 0
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -800,6 +881,22 @@ def build_parser() -> argparse.ArgumentParser:
     sa.add_argument("--skip-handshake", action="store_true")
     sa.add_argument("--json", action="store_true")
     sa.set_defaults(func=cmd_setup_autonomous)
+
+    ev = sub.add_parser("evolution", help="autonomous code evolution: status, audit log, diagnosis")
+    evs = ev.add_subparsers(dest="evolution_cmd")
+    e = evs.add_parser("status", help="counts, last commit, canary, cooldown (default)")
+    e.add_argument("--json", action="store_true")
+    e = evs.add_parser("log", help="every attempt, newest first")
+    e.add_argument("--limit", type=int, default=20)
+    e.add_argument("--json", action="store_true")
+    e = evs.add_parser("show", help="one attempt: rationale, diff, test output")
+    e.add_argument("id", type=int)
+    e.add_argument("--output", action="store_true", help="include the captured lint/pytest/simulator output")
+    e = evs.add_parser("diagnose", help="run the diagnostics now (read-only)")
+    e.add_argument("--diff", action="store_true")
+    e.add_argument("--json", action="store_true")
+    evs.add_parser("resume", help="clear a halt (after a failed rollback) and the cooldown")
+    ev.set_defaults(func=cmd_evolution, evolution_cmd="status", json=False)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")

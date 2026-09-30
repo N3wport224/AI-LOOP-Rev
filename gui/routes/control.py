@@ -84,6 +84,7 @@ def build_status(gctx) -> dict[str, Any]:
         "mrr_cents": recurring.get("mrr_cents", 0), "subscribers": recurring.get("active", 0),
         "leads": state.free_subscriber_counts(),
         "growth": snap.get("growth", {}),
+        "evolution": snap.get("evolution", {}),
         "dry_run": cfg.dry_run,
     }
 

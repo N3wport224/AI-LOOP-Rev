@@ -554,5 +554,7 @@ def run(keep: bool = False, use_curl: bool = True, color: bool | None = None, ou
     return 0 if ok else 1
 
 
-if __name__ == "__main__":  # pragma: no cover
-    sys.exit(run(keep="--keep" in sys.argv))
+if __name__ == "__main__":  # pragma: no cover - `python -m cli.test_loop` (used by the evolution worktree checks)
+    args = sys.argv[1:]
+    sys.exit(run(keep="--keep" in args, use_curl="--no-curl" not in args, color=False if "--no-color" in args else None,
+                 json_out="--json" in args))

@@ -249,6 +249,17 @@ class Config:
     satellite_min_share: float = 0.15        # every niche keeps at least this share of capacity
     satellite_max_days_without_revenue: int = 21
 
+    # Autonomous code evolution (agent/evolution): off until explicitly switched on
+    enable_autonomous_code_evolution: bool = False
+    evolution_repo: str = ""                 # git checkout to evolve; "" = the one this code runs from
+    evolution_interval_hours: float = 6.0    # at most one attempt per interval
+    evolution_cooldown_hours: float = 24.0   # after a failed attempt or a rollback
+    evolution_canary_minutes: int = 60       # post-merge watch window
+    evolution_check_timeout_seconds: int = 1200
+    evolution_run_simulator: bool = True     # also run `test-full-loop` in the worktree
+    evolution_min_tag_postings: int = 5      # an unknown tag must appear this often to be learned
+    evolution_plateau_cycles: int = 5        # cycles without a checkout before copy is mutated
+
     @property
     def lead_capture_base(self) -> str:
         """Public origin that serves /lead-magnet/* (the tunnel hostname), or "" when not set up."""
@@ -317,6 +328,7 @@ _PLAIN_ENV = {
     "DEVTO_API_KEY": "devto_api_key",
     "HASHNODE_TOKEN": "hashnode_token",
     "PUBLIC_WEBHOOK_URL": "public_webhook_url",
+    "ENABLE_AUTONOMOUS_CODE_EVOLUTION": "enable_autonomous_code_evolution",
     # Aliases accepted for hand-edited .env files (and the names the GUI shows).
     "STRIPE_API_KEY": "stripe_secret_key",
     "SMTP_HOST": "smtp_host",

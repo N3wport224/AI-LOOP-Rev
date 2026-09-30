@@ -32,7 +32,8 @@ from tools.pdf_writer import PDFDocument
 LEGACY = {"Oracle", "SQL Server", "DB2", "Teradata", "Netezza", "Sybase", "Hadoop", "Mainframe", "Heroku", "VMware",
           "On-prem", "Monolith", "Informatica", "SAS", "PHP", "Perl", "AngularJS"}
 CATEGORY_LABELS = {"languages": "Languages", "frameworks": "Frameworks", "databases": "Databases", "data_platform": "Data platform",
-                   "cloud": "Cloud", "infrastructure": "Infrastructure", "observability": "Observability", "ai_ml": "AI / ML"}
+                   "cloud": "Cloud", "infrastructure": "Infrastructure", "observability": "Observability", "ai_ml": "AI / ML",
+                   "other": "Other technologies"}
 DEPARTMENTS = [
     ("Platform & Infrastructure", r"platform|infra|devops|sre|site reliability|cloud|kubernetes|systems"),
     ("Data", r"data|analytics|etl|warehouse|bi\b"),

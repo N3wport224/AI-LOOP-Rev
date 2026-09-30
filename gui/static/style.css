@@ -45,6 +45,7 @@ th { position: sticky; top: 0; background: var(--card); color: var(--muted); fon
 tr.winner td { font-weight: 700; } tr.retired td { color: var(--muted); text-decoration: line-through; }
 td.status-ok { color: var(--ok); font-weight: 600; } td.status-failed, td.status-fail { color: var(--bad); font-weight: 600; }
 td.status-warn, td.status-skipped, td.status-skip { color: var(--warn); font-weight: 600; }
+p.status-bad { color: var(--bad); font-weight: 600; } p.status-warn { color: var(--warn); font-weight: 600; }
 pre.log { max-height: 420px; overflow: auto; background: var(--bg); padding: .75rem; border-radius: 8px; font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
 fieldset { border: 0; padding: 0; margin: 0; }
 .group h2 { margin-bottom: .1rem; } .group > p { margin: 0 0 .8rem; }

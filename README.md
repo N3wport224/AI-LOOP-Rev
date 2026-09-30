@@ -36,7 +36,11 @@ revenue** with zero startup capital. Every cycle it:
    period at 50 API requests/day), churn is logged by reason, and buyers can recover lost
    downloads and keys themselves at `POST /v1/orders/recover`;
 14. **sells high-ticket**: a $49 Executive Migration Dossier (PDF) on any company with urgency or
-   intent above 75, offered from the API and the Weekly Tech Pulse and delivered instantly.
+   intent above 75, offered from the API and the Weekly Tech Pulse and delivered instantly;
+15. **evolves its own heuristics** (opt-in, off by default): repairs parsers when a job feed
+   renames fields, learns new technology tags, and tries new landing-page headlines when revenue
+   stalls. Each change goes through the full test suite and the simulator in a sandboxed git
+   worktree, is merged as a local commit, and is reverted automatically if the next cycle regresses.
 
 It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
 survives crashes, reboots, sleep and network drops, and shuts down cleanly on SIGTERM.
@@ -149,7 +153,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 555 tests, ~35 s, no network
+pytest                     # 610 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -824,6 +828,109 @@ imap_host = "imap.fastmail.com"   # IMAP_PASSWORD in .env; unsubscribe replies a
 
 Check before going live: `automonetize dispatch --check` lists any missing requirement.
 
+## Autonomous code evolution (`agent/evolution/`, opt-in)
+
+The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to
+fix them, without a human, but only inside tight boundaries. **It is off until you switch it
+on**: `ENABLE_AUTONOMOUS_CODE_EVOLUTION=true` in `.env`, or Settings → *Autonomous code evolution*
+in `automonetize gui`. While it's off, the diagnosis still runs every cycle and is shown on the
+dashboards, so you can see what it would change first (`automonetize evolution diagnose --diff`).
+
+### What it diagnoses (`diagnostics.py`)
+
+| Bottleneck | Evidence (from `data/agent_state.db`) | Patch |
+|---|---|---|
+| **Failing job-board parser** | A source produced 0 leads in 3 runs while its feed still returned objects. The aggregator records each run's payload *shape*: key names and value kinds, never values | Teaches the parser the renamed fields (e.g. `position` → `title`) in `FIELD_ALIASES`, `strategies/b2b_lead_aggregator.py`. An unreachable feed is reported, not patched: no code change fixes an outage |
+| **Unrecognised technology tags** | Tags on ≥ 5 postings from ≥ 3 companies in 14 days, mostly next to known technologies, that don't match everyday prose. This screens out "marketing" or "go" | Adds them to `EVOLVED_FINGERPRINTS`, `strategies/tech_stack_intel.py`, so stacks, radars, the API and dossiers count them |
+| **Revenue plateau** | 5 engine cycles in a row with no checkout while a product is on sale | One new factual headline in `seeds/copy_variants.json`. The copy bandit tests it against the control and retires it if it loses. At most one a week |
+
+Each proposal is an *evolution hypothesis*: target file, full diff, the metric it should move
+(e.g. "remoteok leads parsed per fetch: 0 → 97"), and the evidence.
+
+### Safety boundaries (`evolver.py`)
+
+* **Scope.** A patch may touch only `strategies/`, `tools/syndication/`, `tools/page_builder.py`
+  and `seeds/*.json`. The following are never touched, and a patch touching them is rejected
+  before anything runs:
+  * `agent/supervisor.py`, `tools/storefront/webhook_listener.py` and `agent/recovery.py`;
+  * every test (`tests/`, `test_*.py`, `conftest.py`);
+  * `agent/evolution/` itself, so the agent can't loosen its own gate.
+* **Data, not code.** Inside an allowed Python file, only an *evolvable block* can change: the
+  lines between `# <evolved:NAME>` and `# </evolved:NAME>`. The block must stay one assignment of
+  a pure literal (checked with `ast.literal_eval`), and everything outside it must be
+  byte-identical. Imports, control flow and new modules can't be introduced; the code that uses
+  the tables is written and reviewed by people. Seeds must be valid JSON, and the copy loader
+  drops any headline that states a number the page doesn't have.
+* **Your work comes first.** The agent never evolves when:
+  * the checkout has uncommitted changes to tracked files, or HEAD is detached;
+  * the patch was computed against an older version of the file;
+  * the checkout moved while the checks ran.
+
+  It never pushes; every change is a local commit.
+
+### The shadow-branch workflow
+
+1. `git worktree add -b auto/evolution-<timestamp>` in a temporary directory, at HEAD.
+2. Apply the patch there.
+3. Lint: syntax, pyflakes, and ruff when installed.
+4. Run `pytest -v -W error` and `automonetize test-full-loop` inside the worktree, with secrets and
+   `AUTOMONETIZE_*` overrides stripped from the environment. The suite runs against the built-in
+   heuristics; a contract test and the simulator exercise the evolved values.
+5. **Any failure** (lint, a test, the simulator, a timeout): the worktree and branch are deleted,
+   the output and traceback are stored in `data/evolution_log.db`, the patch is blacklisted, and
+   evolution cools down for 24 h.
+6. **All green**: the patch is committed as `AutoMonetize Agent` with the subject
+   `[Auto-Evolution] Improved parser heuristics for remoteok` and a body carrying the rationale,
+   metric, attempt id and patch fingerprint. It is then fast-forward merged into the active branch.
+
+At most one attempt per `evolution_interval_hours` (6), and `evolve_code` is the last task of a
+cycle.
+
+### Hot reload and automatic rollback (`hot_reload.py`)
+
+After a merge, the supervisor reloads gracefully:
+
+1. The engine finishes its cycle.
+2. The webhook listener stops accepting and waits for in-flight fulfilment; the WAL is
+   checkpointed.
+3. The process re-executes itself (same PID, same arguments). The webhook's **listening socket is
+   inherited** across the exec, so the port never closes: requests arriving during the switch
+   queue in the kernel and are answered by the new code. The Cloudflare tunnel is a separate
+   process and isn't touched. In a live test, 30 of 30 requests fired during a reload got `200`.
+
+`kill -USR1 <pid>` triggers the same reload by hand. `SIGHUP`, `SIGTERM` and `SIGINT` still stop
+gracefully.
+
+The first hour after a merge is a **canary**. Rollback happens when any of these occurs:
+
+* an engine cycle crash or a worker crash;
+* a *new* operational failure (a task that was already failing before the merge doesn't count);
+* any exception whose traceback runs through an evolved file.
+
+The rollback runs `git revert` on the evolution commit (`[Auto-Evolution] Rollback: …`),
+blacklists the patch, starts the 24 h cooldown and reloads. The canary passes once the hour is
+over and at least one full cycle has run on the new code. If the revert can't be applied (you
+edited the file meanwhile), evolution **halts itself** and raises an alert.
+`automonetize evolution resume` clears the halt once you've sorted it out.
+
+### Inspecting it
+
+```bash
+automonetize evolution                    # on/off, attempted vs merged, last commit, canary, cooldown
+automonetize evolution log                # every attempt: status, title, commit, detail
+automonetize evolution show 7 --output    # rationale, metric, full diff, captured lint/pytest/simulator output
+automonetize evolution diagnose --diff    # what it would do right now (read-only)
+git log --author="AutoMonetize Agent"     # the commits themselves; `git revert <sha>` works as usual
+sqlite3 data/evolution_log.db "SELECT id, created_at, status, title, commit_sha FROM attempts ORDER BY id DESC"
+```
+
+`automonetize dashboard` and the GUI control panel show the same thing:
+* attempts vs merges;
+* the last evolution commit and its description;
+* rollback health (the canary's state);
+* the cooldown timer;
+* the latest findings.
+
 ## Headless production launch
 
 ```bash
@@ -966,7 +1073,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 24-task plan) |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 25-task plan) |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
 | `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
 | `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |
@@ -999,6 +1106,10 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `dunning_grace_days` / `dunning_reminder_days` | `7` / `[0,3,6]` | Grace period before API keys are suspended; reminder schedule |
 | `recovery_per_ip_hour` / `recovery_per_email_day` | `3` / `3` | Order-recovery limits |
 | `dossier_price_cents` / `dossier_min_score` / `dossier_pulse_min_intent` | `4900` / `75` / `80` | Dossier price (0 disables), eligibility, Pulse button cutoff |
+| `enable_autonomous_code_evolution` (`ENABLE_AUTONOMOUS_CODE_EVOLUTION`) | `false` | Master switch for self-modification |
+| `evolution_interval_hours` / `evolution_cooldown_hours` / `evolution_canary_minutes` | `6` / `24` / `60` | Attempt spacing, cooldown after a failure or rollback, post-merge watch window |
+| `evolution_check_timeout_seconds` / `evolution_run_simulator` / `evolution_repo` | `1200` / `true` / this checkout | Worktree checks and the repository to evolve |
+| `evolution_min_tag_postings` / `evolution_plateau_cycles` | `5` / `5` | Diagnosis thresholds |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
 | `blocked_recipient_tlds` | EU/EEA/UK/CH | Recipients never emailed |
@@ -1009,6 +1120,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 
 ```
 automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
+automonetize evolution [status|log|show ID [--output]|diagnose [--diff]|resume]   # self-evolution audit
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
 automonetize api keys | usage [--days N] | reissue SUBSCRIBER_ID | revoke KEY_ID
 automonetize pause [--reason R] | resume            # skip cycles; webhook and lead capture stay up
@@ -1057,7 +1169,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 555 tests, ~35 s, no network
+pytest     # 610 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -1065,6 +1177,40 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phase 11 adds 55 tests in `tests/test_evolution.py`:
+
+* **Boundaries:**
+  * every immutable-core, test and out-of-scope path is refused;
+  * a forbidden patch is rejected before any git or test command runs;
+  * the literal-only rule for evolvable blocks (code, imports, renames and edits outside a block
+    are all rejected).
+* **The worktree workflow on a real git repo:**
+  * a passing patch is fast-forwarded as an agent commit and the worktree and branch are removed;
+  * a failing test, a timeout, a dirty checkout, a stale patch or a checkout that moves mid-check
+    each leave `main` untouched, with the outcome logged, blacklisted and cooled down as
+    appropriate.
+* **The canary:**
+  * rollback on an exception in evolved code, an engine crash or a new operational failure (but
+    not an old one);
+  * a pass after the window and a clean cycle;
+  * self-halt when the revert can't apply, and `resume`.
+* **Hot reload:**
+  * socket inheritance across exec;
+  * a supervisor that drains and re-execs while a request queued on the port is answered by the
+    "new process";
+  * SIGUSR1 reloads while SIGHUP stops.
+* **Diagnostics:**
+  * a renamed feed field → the parser alias that fixes it;
+  * outages without a patch;
+  * technology tags learned while everyday words aren't;
+  * a plateau → one factual headline, and the copy loader dropping unsafe arms.
+* **The task gates:** off by default, canary, interval, no repeats.
+* **The dashboard, GUI and CLI telemetry.**
+* **A contract test on whatever the agent has learned so far.**
+
+An autouse fixture in `tests/conftest.py` runs every other test against the built-in heuristics, so
+learned data never changes what existing assertions mean.
 
 Phases 8 to 10 add 31 tests:
 

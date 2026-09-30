@@ -67,6 +67,7 @@ PLAN: list[tuple[str, int]] = [
     ("collect_metrics", 55),
     ("run_satellites", 58),
     ("optimize_pricing", 60),
+    ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
 ]
 BUILTIN_TASKS = {"sync_revenue"}
 
@@ -118,6 +119,11 @@ class Engine:
         for strategy in strategies if strategies is not None else default_strategies():
             for task in strategy.tasks:
                 self.handlers[task] = strategy
+        if strategies is None:
+            # Self-evolution is registered here, not in strategies/, which evolution may edit.
+            from agent.evolution.task import EvolutionStrategy
+
+            self.handlers["evolve_code"] = EvolutionStrategy()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online
@@ -443,6 +449,7 @@ class Engine:
                     self.on_breaker_trip(self.breaker.trip_reason)
                 self._save_breaker()
                 report = CycleReport(self.current_cycle(), "crashed", message=repr(exc))
+            self._canary(report.cycle if report.status != "crashed" else None)
             if on_cycle is not None:
                 on_cycle(report)
             ran += 1
@@ -453,6 +460,15 @@ class Engine:
         self.state.set("stopped_at", self.state.now())
         return ran
 
+
+    def _canary(self, cycle_done: int | None) -> None:
+        """After an evolution merge, watch the next cycle(s); roll back on a regression."""
+        try:
+            from agent.evolution.hot_reload import canary_tick
+
+            canary_tick(self.state, self.config, cycle_done=cycle_done)
+        except Exception as exc:  # noqa: BLE001 - never let the watchdog take the loop down
+            self.state.log_error("evolution", f"canary check failed: {exc!r}")
 
     def idle_wait(self, interval: float, slice_seconds: float = 30.0) -> None:
         """Wait ``interval`` seconds of *wall-clock* time between cycles, holding no power assertion.
