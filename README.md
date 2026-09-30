@@ -13,20 +13,24 @@ revenue** with zero startup capital. Every cycle it:
 4. **captures leads**: visitors who aren't ready to buy get a free 10-record sample by email,
    then (once they confirm) a Monday "Weekly Tech Pulse" with 3 fresh buying signals and
    1-click upgrade buttons;
-5. **distributes** it inbound, with no approval needed: value-first "State of…" breakdowns
+5. **sells API access**: a metered REST API over the same signals ($29/month), with keys issued,
+   degraded and revoked automatically from Stripe events;
+6. **tunes itself**: discovers and trials new public job feeds, A/B-tests its landing-page copy
+   with a multi-armed bandit, and works up to 3 niches at once, giving capacity to whichever earns;
+7. **distributes** it inbound, with no approval needed: value-first "State of…" breakdowns
    syndicated to Dev.to, Hashnode, GitHub Discussions and RSS (at most one post per platform
    every 5 days), plus a free monthly Hacker News "Who is hiring?" stack gist. Every link carries
    UTM tags. (Cold outreach still exists, but only sends drafts a human approved.)
-6. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
+8. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
    emails the buyer their zip plus a receipt seconds after payment; polling reconciles anything missed;
-7. **sells recurring**: a $10/month subscription next to the one-off $9/$14/$19 price; Monday
+9. **sells recurring**: a $10/month subscription next to the one-off $9/$14/$19 price; Monday
    morning delta packages go to every active subscriber, and each paid invoice is verified revenue;
-8. **optimizes price**: experiments across the one-off tiers per dataset, steps down or bundles
+10. **optimizes price**: experiments across the one-off tiers per dataset, steps down or bundles
    2-for-1 when traffic doesn't convert, steps up and converges when it does, and on strong
    demand scrapes deeper and ships a $19 premium deep-dive add-on;
-9. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
+11. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
    MRR, churn and net revenue per day against the $10 goal (`automonetize analytics`);
-10. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
+12. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
    cluster when it isn't converting.
 
 It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
@@ -109,7 +113,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 455 tests, ~21 s, no network
+pytest                     # 524 tests, ~28 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -152,7 +156,12 @@ it (Ctrl-C) leaves the agent running. For a dock-launchable shortcut, save
 
 **Control tab**: live badges (supervisor, webhook health, engine state, dry run vs live email),
 today's net revenue against the $10 target, MRR and paying subscribers, the active niche,
-uptime, and free leads (confirmed / pending), refreshed every few seconds. Actions:
+uptime, free leads (confirmed / pending), **API requests today** (per endpoint, 7-day total),
+**API subscribers** (active and past-due keys), and the **copy bandit** table (views, clicks,
+signups, purchases, conversion and traffic share per variant, winner starred, retired arms
+struck through), plus niche capacity shares and discovered-source counts, refreshed every few
+seconds. `automonetize dashboard` shows the same in a "Developer API & Growth Engine" panel.
+Actions:
 
 | Button | Effect |
 |---|---|
@@ -469,6 +478,154 @@ Renewals: Stripe sends `invoice.paid` each period (Stripe *test clocks* can fast
 billing for subscriptions you create in the Dashboard). The polling sweep (`sync_subscriptions`)
 also pulls `/v1/invoices?subscription=…&status=paid`, so a missed webhook never loses a renewal.
 
+## Developer API (`api/`, $29/month)
+
+The same company-level signals as the datasets, as a metered REST API. Served by the public
+listener under `/v1/` through the Cloudflare Tunnel; documentation at
+**`https://<your tunnel host>/docs/api`** (reference plus a "Try it" console), machine-readable
+**OpenAPI 3.1** at `https://<your tunnel host>/openapi.json` (import into Postman, Insomnia or a
+client generator).
+
+```bash
+export AM_KEY=am_live_...      # from the welcome email
+export API=https://hooks.yourdomain.com
+
+# Companies running Kubernetes that are mid cloud migration, urgent hires, newest first by intent
+curl -H "Authorization: Bearer $AM_KEY" \
+  "$API/v1/signals?tech=kubernetes&intent_tag=Cloud%20Migration&min_urgency=60&since=2026-09-01&limit=25"
+
+# Next page: pass pagination.next_cursor back
+curl -H "Authorization: Bearer $AM_KEY" "$API/v1/signals?tech=kubernetes&intent_tag=Cloud%20Migration&min_urgency=60&since=2026-09-01&limit=25&cursor=eyJv..."
+
+# One company: technology footprint, migration history, postings still live in the feeds
+curl -H "Authorization: Bearer $AM_KEY" "$API/v1/companies/acme.com"
+
+# Plan, status and today's usage
+curl -H "Authorization: Bearer $AM_KEY" "$API/v1/me"
+
+# Rotate the key: the response holds the new one; the old one stops working immediately
+curl -X POST -H "Authorization: Bearer $AM_KEY" "$API/v1/auth/rotate"
+```
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/signals` | Filters `tech`, `intent_tag` (substring of tag/level/signal, e.g. `SOC 2`, `High`), `min_urgency`, `min_intent`, `since`; `limit` ≤ 100; stable order (intent score, urgency, company id); `pagination.next_cursor`. A cursor is bound to its filters and to the dataset version (`cursor_expired` after a data refresh) |
+| `GET /v1/companies/{domain}` | Domain or `company_id`. Stack, niches, intent tag and score, migration path, `history` (each change of intent tag/path/stack by date), `active_postings` (title, location, dates, public listing URL; no descriptions or contact details) |
+| `GET /v1/me` | Key prefix, status, plan, daily quota, used today |
+| `POST /v1/auth/rotate` | New key (shown once), old one revoked |
+
+Every response is deterministic JSON (sorted keys) with `X-RateLimit-Limit`,
+`X-RateLimit-Remaining`, `X-RateLimit-Reset` and `X-Request-Id`. Errors are always
+`{"error": {"code", "message", "status", "param", "doc_url", "request_id"}}`; switch on `code`:
+`missing_api_key`, `invalid_api_key`, `key_revoked`, `insufficient_permission`, `rate_limited`,
+`quota_exceeded`, `too_many_auth_failures`, `invalid_parameter`, `invalid_cursor`,
+`cursor_expired`, `not_found`, `method_not_allowed`, `internal_error`. Every 429 has
+`Retry-After`.
+
+**Keys and limits.** Keys are `am_live_` + 48 hex characters. Only a SHA-256 is stored, so the
+database can't be used to call the API. Send them as `Authorization: Bearer` or `X-API-Key`,
+never in a URL (a key in a query string is ignored and counts as a failed attempt). Each key
+has a token bucket (`api_burst` 10, refilled at `api_rate_per_second` 2) and a daily quota
+(`api_daily_quota` 500, reset 00:00 UTC, persisted so restarts don't reset it). A client with
+30 failed authentications in an hour is blocked for the rest of the hour.
+
+**Stripe lifecycle** (webhooks, and the polling sweep as a safety net):
+
+| Event | Key |
+|---|---|
+| `checkout.session.completed` for the API product | Issued (once per subscriber) and emailed with curl quickstart and doc links |
+| `invoice.payment_failed` | Degraded at once to `api_degraded_quota` (50/day) while Stripe retries the card; responses carry `X-API-Key-Status: past_due` |
+| `invoice.paid` / status back to active | Restored |
+| `customer.subscription.deleted`, `unpaid`, `incomplete_expired` | Revoked: `401 key_revoked` from the next request |
+
+The product itself ("Developer API: Hiring & Buying-Intent Signals", $29/month recurring Payment
+Link with `tier=api` metadata) is created by the `publish_api_tier` task once Stripe, the tunnel
+and email delivery all work. API subscribers count toward MRR and revenue like any subscriber;
+they don't get dataset emails. With `DRY_RUN` on, a key issued at checkout can't be emailed:
+the agent raises an alert, and `automonetize api reissue <subscriber_id>` sends a fresh key once
+you're live. `automonetize api keys | usage | revoke <id>` covers the rest.
+
+**If you set up the tunnel before this release**, re-run `deploy/tunnel/setup_tunnel.sh
+<hostname>`: the ingress rules now also forward `/v1/*`, `/openapi.json`, `/docs/api` and the
+copy-telemetry beacon `/t/e` (still nothing else).
+
+## Self-evolving growth engine
+
+### Source discovery (`agent/source_discovery.py`)
+
+The lead aggregator no longer depends only on the three built-in job APIs. Once a day, the
+`discover_sources` task collects candidate feeds:
+
+* **Company ATS boards found in the agent's own data.** Every careers URL it verifies and every
+  apply link it collects is checked for Greenhouse, Lever and Ashby. All three publish a public
+  JSON API of the company's open roles. A company that already showed buying intent is exactly
+  the one worth watching.
+* **RSS/Atom autodiscovery** (`<link rel="alternate">`) on job-site pages the leads point to.
+* **A seed catalogue** of public job feeds, plus your own `source_seed_feeds`.
+
+(GitHub trending isn't used: it lists repositories, not jobs.) Every candidate goes through a
+sandbox before it can feed the pipeline:
+
+* **SSRF guard.** Public HTTPS hosts only. IP literals, internal names, and hosts resolving to
+  private, loopback, link-local or metadata addresses are refused, because these URLs come from
+  scraped data.
+* **Politeness and safety.** robots.txt must allow the URL. One polite GET per source per day
+  while on trial; a 429 or `Retry-After` counts as a failure. Responses ≤ 2 MB. JSON shape or
+  RSS/Atom structure must match (DOCTYPE/ENTITY declarations refused).
+* **Measured yield.** The share of items that become valid leads, how many carry a recognisable
+  stack, and how many carry a buying-intent signal.
+
+A source becomes **active** after healthy probes on 3 separate days (error rate ≤ 20%, ≥ 60%
+valid items, at least one buying-intent signal), up to 20 active. From then on the aggregator
+ingests it every cycle, read from SQLite, so nothing restarts. Robots disallow or 3 failures
+in a row reject a source. An active source failing most of its recent runs is suspended and
+re-trialled a week later. **Terms:** robots.txt says what may be fetched, not what may be
+resold. ATS board APIs exist for republishing a company's own openings; review the terms of
+any aggregator feed before relying on it (`source_seed_feeds`, or disable discovery).
+
+### Landing-page copy bandit (`tools/copy_bandit.py`)
+
+Two slots are tested on every dataset lander, each as its own bandit:
+
+| Slot | Variants (control first) |
+|---|---|
+| Headline | `hiring_stack` "Python hiring & stack intelligence: 42 companies, updated daily" · `migration_urgency` "7 Python companies are migrating or hiring urgently right now" · `verified_leads` "12 verified Python developer leads with live careers pages" |
+| Call to action | `instant_feed` "Get instant access: $9.00" · `free_sample` "Download the free sample" · `developer_api` "Query the Developer API: $29.00/month" |
+
+* **Honest copy.** Numbers are computed from the page's data, and a variant whose claim isn't true
+  for that page (no verified careers pages, no API tier yet) isn't offered there.
+* **Reward.** Conversions per view: free-sample signups plus purchases. Clicks are recorded and
+  shown but not rewarded, because the CTAs lead to different places and optimising clicks would
+  just learn that free things get clicked.
+* **Allocation.** Epsilon-greedy by default: the arm with the best posterior mean gets 80% of
+  traffic and the rest share 20%. Or `copy_bandit_algorithm = "thompson"` (traffic in proportion
+  to the probability of being best). The prior is empirical Bayes: the slot's pooled rate worth 50
+  views, so an untested arm isn't mistaken for a winner.
+* **Retirement.** After 200 views, an arm 2 standard errors below the **control** (two-proportion
+  z-test) is retired. The control, the winner and the last arm are never retired, so exploration
+  never stops.
+* **Serving.** The site is static, so each visitor's arms are picked in their browser from the
+  allocation baked into the page, and stay the same until the policy changes. Views and clicks
+  are beaconed to `/t/e` through the tunnel (validated, one per visitor, page, event and day,
+  per-IP limited). Signups carry the variant in a hidden form field. Purchases carry it in
+  Stripe's `client_reference_id` (`am--devto--w40--hm_cs`), alongside the channel attribution.
+  Crawlers and no-JS visitors see the current winner. The `<h1>` (product title) never varies,
+  so search rankings aren't affected.
+* The `tune_copy` task recomputes the policy each cycle. Pages are only rebuilt when an allocation
+  moves ≥ 5 points or an arm is retired.
+
+### Satellite niches (`strategies/satellite_orchestrator.py`)
+
+Up to `max_active_niches` (3) niches at once: the engine's primary hypothesis runs as before,
+and up to 2 satellites run a lighter pipeline (collect, radar, package, checkout). Each niche's
+**capacity share** is proportional to its verified net revenue over the last 14 days, with a 15%
+floor so a new niche gets a chance, and equal shares while nothing has sold. Shares drive how
+often each satellite is refreshed, which niche the next syndicated article covers (the one
+furthest below its share), and how the SEO page budget (`seo_max_pages`) is split. A satellite
+with no revenue and no subscribers after 21 days is retired and replaced by the next untried,
+demand-ranked niche. Satellites share the per-cycle API budget and stop for the cycle when it's
+spent.
+
 ## Acquisition analytics
 
 Every outbound link is tagged: lander and showcase links get `utm_source` (devto, hashnode,
@@ -720,6 +877,12 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `seo_matrix_enabled` / `seo_min_companies` / `seo_min_migrations` / `seo_max_pages` | `true` / `5` / `3` / `60` | Search-intent pages |
 | `indexnow_enabled` / `indexnow_key` | `true` / generated | IndexNow submission of changed pages |
 | `gui_host` / `gui_port` | `127.0.0.1` / `8080` | Control panel (loopback only) |
+| `api_enabled` / `api_price_cents` / `api_daily_quota` / `api_degraded_quota` | `true` / `2900` / `500` / `50` | Developer API tier |
+| `api_burst` / `api_rate_per_second` / `api_max_page_size` / `api_auth_failures_per_ip_hour` | `10` / `2.0` / `100` / `30` | API throttling |
+| `source_discovery_enabled` / `source_discovery_interval_hours` / `source_trial_days` | `true` / `24` / `3` | Source discovery |
+| `source_min_valid_ratio` / `source_max_error_rate` / `source_max_active` / `source_probes_per_run` / `source_seed_feeds` | `0.6` / `0.2` / `20` / `5` / `[]` | Source trial rules |
+| `copy_bandit_enabled` / `copy_bandit_algorithm` / `copy_bandit_epsilon` / `copy_bandit_min_views` / `copy_bandit_deprecate_sd` | `true` / `epsilon_greedy` / `0.2` / `200` / `2.0` | Copy bandit |
+| `max_active_niches` / `satellite_window_days` / `satellite_min_share` / `satellite_max_days_without_revenue` | `3` / `14` / `0.15` / `21` | Satellite niches |
 | `quarantine_hours` / `quarantine_max_hours` / `alert_notifications` | `2` / `24` / `true` | Self-healing cooldown after a breaker trip (`0` = stop for a human) |
 | `public_webhook_url` (`PUBLIC_WEBHOOK_URL`) | empty | Set by `setup_tunnel.sh`; used by `setup-autonomous` |
 | `power_assertions` / `schedule_wake` | `true` / `true` | Stay awake while working; `pmset` wake for the next cycle (needs the sudoers line) |
@@ -738,6 +901,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 
 ```
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
+automonetize api keys | usage [--days N] | reissue SUBSCRIBER_ID | revoke KEY_ID
 automonetize pause [--reason R] | resume            # skip cycles; webhook and lead capture stay up
 automonetize setup-autonomous [--live] [--daemon] [--json] [--skip-register|--skip-launchd|--skip-handshake]
 automonetize supervise [--no-webhook] [--headless]   # daemon: engine + webhook listener
@@ -784,7 +948,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 455 tests, ~21 s, no network
+pytest     # 524 tests, ~28 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -792,6 +956,23 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phases 6 and 7 add 69 tests. `tests/test_api.py`: key randomness and hash-only storage, auth
+errors and the failed-auth brake, filters and cross-niche merging, OpenAPI conformance of every
+response shape (validated against the published schema), cursor pagination (complete, no
+duplicates, bound to filters, expiring on refresh), burst limit then daily quota (surviving a
+restart, resetting at midnight UTC), rotation, routing/docs/OpenAPI, and the Stripe lifecycle
+(checkout provisioning and email, idempotency, payment failure degrading, recovery, cancellation
+revoking, the polling sweep, dry-run reissue, the $29 product). `tests/test_bandit.py`: 80/20
+allocation, posterior winner and priors, Thompson sampling, the deprecation z-test, simulated
+convergence and revenue lift for both algorithms, versioning, telemetry validation and dedupe,
+purchase and signup attribution, honest-copy gating, and the lander script itself, run in Node
+against a stub DOM. `tests/test_source_discovery.py`: the SSRF guard, ATS and RSS discovery, every
+adapter (including RFC 2822 dates and refused DOCTYPEs), sandbox probes (robots, 429, size,
+structure), the three-day lifecycle, live ingestion without a restart, rejection, suspension and
+the active cap. `tests/test_satellites.py`: revenue shares with a floor, quota and deficit maths,
+satellite start and refresh, revenue-driven refresh frequency, retirement and replacement, budget
+exhaustion, and syndication and SEO capacity following the shares.
 
 Phase 5 adds 91 tests. `tests/test_gui.py` covers loopback-only binding, sign-in (token, one-time
 launch links, brute-force throttle), DNS-rebinding, CSRF and cross-origin refusals, the CSP,

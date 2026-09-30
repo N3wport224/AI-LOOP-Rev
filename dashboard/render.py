@@ -205,6 +205,36 @@ def _actions_panel(snap: dict[str, Any]) -> Panel:
     return Panel(t, title="Recent Actions", border_style="blue")
 
 
+def _growth_panel(snap: dict[str, Any]) -> Panel | None:
+    g = snap.get("growth")
+    if not g:
+        return None
+    api = g["api"]
+    head = Text.assemble(
+        ("Developer API ", "bold"),
+        (f"{api['requests_today']} requests today", "cyan"), (f" · {api['requests_7d']} in 7 days", ""),
+        (f" · {api['subscribers']} subscriber{'s' if api['subscribers'] != 1 else ''}", "green" if api["subscribers"] else "dim"),
+        (f" · {api['active_keys']} active / {api['degraded_keys']} past-due keys", "dim"),
+    )
+    spark = Text("  " + " ".join(f"{v['day'][5:]}:{v['requests']}" for v in api["volume_7d"]) or "", style="dim")
+    arms = Table(show_header=True, header_style="bold", box=None, padding=(0, 1), expand=True)
+    for col in ("slot", "variant", "views", "clicks", "signups", "purchases", "conv.", "traffic", "state"):
+        arms.add_column(col, justify="right" if col not in ("slot", "variant", "state") else "left")
+    for r in g["copy"]["arms"]:
+        style = "bold green" if g["copy"]["winners"].get(r["slot"]) == r["variant"] else ("dim" if r["state"] == "deprecated" else "")
+        arms.add_row(r["slot"], r["variant"] + (" (control)" if r["control"] else ""), str(r["views"]), str(r["clicks"]),
+                     str(r["signups"]), str(r["purchases"]), f"{r['conversion_rate']:.1%}", f"{r['allocation']:.0%}", r["state"],
+                     style=style)
+    shares = g["niches"]["shares"]
+    niches = Text("Niches: " + (" · ".join(f"{n} {s:.0%} (${g['niches']['revenue_cents'].get(n, 0) / 100:.2f})"
+                                            for n, s in shares.items()) or "single niche"), style="magenta")
+    src = g["sources"]
+    sources = Text(f"Discovered sources: {src['active']} active · {src['trial']} in trial · {src['candidate']} candidates · "
+                   f"{src['rejected']} rejected", style="dim")
+    return Panel(Group(head, spark, Text(f"Copy bandit v{g['copy']['version']} ({g['copy']['algorithm']})", style="bold"), arms,
+                       niches, sources), title="Developer API & Growth Engine", border_style="cyan")
+
+
 def render_dashboard(snap: dict[str, Any]) -> Group:
     runtime = Table.grid(expand=True, padding=(0, 2))
     runtime.add_column(ratio=1)
@@ -219,6 +249,7 @@ def render_dashboard(snap: dict[str, Any]) -> Group:
         runtime,
         _distribution_panel(snap),
         _revenue_panel(snap),
+        *([p] if (p := _growth_panel(snap)) else []),
         _health_panel(snap),
         _actions_panel(snap),
     )

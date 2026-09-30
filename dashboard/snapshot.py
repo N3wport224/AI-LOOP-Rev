@@ -70,6 +70,39 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
             "emergency_stop": (emergency or {}).get("reason") or ("stop file present" if stop_file else ""),
             "quarantine": _quarantine(state),
         },
+        "growth": growth(state, config),
+    }
+
+
+def growth(state: StateStore, config: Config) -> dict[str, Any]:
+    """Developer API usage, copy-bandit arms, niche capacity shares and discovered sources."""
+    from api.auth import ApiKeys, api_asset
+    from agent.source_discovery import SourceRegistry
+    from tools.copy_bandit import report
+
+    now = state.clock()
+    keys = ApiKeys(state, config)
+    live = keys.list(("active", "degraded"))
+    volume = keys.volume(7, now)
+    today = now.date().isoformat()
+    policy = state.get("copy_policy") or {}
+    alloc = state.get("niche_allocation") or {}
+    registry = SourceRegistry(state, config)
+    return {
+        "api": {
+            "enabled": config.api_enabled, "checkout_url": (api_asset(state) or {}).get("checkout_url"),
+            "requests_today": next((v["requests"] for v in volume if v["day"] == today), 0),
+            "requests_7d": sum(v["requests"] for v in volume), "volume_7d": volume, "by_endpoint": keys.by_endpoint(now),
+            "active_keys": sum(1 for k in live if k["status"] == "active"),
+            "degraded_keys": sum(1 for k in live if k["status"] == "degraded"),
+            "subscribers": len({k["subscriber_id"] for k in live if k["subscriber_id"]}),
+        },
+        "copy": {"version": policy.get("version", 0), "algorithm": policy.get("algorithm", config.copy_bandit_algorithm),
+                 "winners": policy.get("winners", {}), "arms": report(state, now)},
+        "niches": {"shares": alloc.get("shares", {}), "revenue_cents": alloc.get("revenue_cents", {}),
+                   "window_days": alloc.get("window_days", config.satellite_window_days),
+                   "satellites": [h["params"].get("niche") for h in state.list_hypotheses() if h["status"] == "satellite"]},
+        "sources": {s: len(registry.by_status(s)) for s in ("candidate", "trial", "active", "suspended", "rejected")},
     }
 
 

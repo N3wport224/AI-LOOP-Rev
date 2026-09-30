@@ -397,3 +397,52 @@ def test_cli_gui_refuses_public_hosts(capsys):
 
     assert cli.main(["gui", "--host", "0.0.0.0", "--no-browser"], console=SimpleNamespace(print=print)) == 2
     assert "refusing" in capsys.readouterr().out
+
+
+def test_status_reports_api_volume_subscribers_and_bandit(gui, state, config):
+    from api.auth import ApiKeys
+    from tools.copy_bandit import record_event, tune
+
+    keys = ApiKeys(state, config)
+    _, row = keys.issue(11, "dev@example.com")
+    _, past_due = keys.issue(12, "late@example.com")
+    keys.set_status(past_due["id"], "degraded")
+    for _ in range(3):
+        keys.consume(row, "signals", state.clock())
+    keys.consume(row, "companies", state.clock())
+    record_event(state, "cta", "free_sample", "view", state.clock(), 50)
+    record_event(state, "cta", "free_sample", "signup", state.clock(), 5)
+    record_event(state, "cta", "instant_feed", "view", state.clock(), 50)  # the control, converting worse
+    record_event(state, "cta", "instant_feed", "signup", state.clock(), 1)
+    tune(state, config, state.clock())
+
+    async def s(client):
+        await login(client)
+        g = (await (await client.get("/api/status")).json())["growth"]
+        assert g["api"]["requests_today"] == 4 and g["api"]["by_endpoint"] == {"signals": 3, "companies": 1}
+        assert (g["api"]["subscribers"], g["api"]["active_keys"], g["api"]["degraded_keys"]) == (2, 1, 1)
+        free = next(r for r in g["copy"]["arms"] if r["variant"] == "free_sample")
+        assert (free["views"], free["signups"], free["conversion_rate"]) == (50, 5, 0.1)
+        assert g["copy"]["winners"]["cta"] == "free_sample" and free["allocation"] == 0.8
+        assert set(g["sources"]) == {"candidate", "trial", "active", "suspended", "rejected"}
+    run(gui, s)
+    index = (Path(__file__).resolve().parents[1] / "gui" / "static" / "index.html").read_text()
+    assert 'id="k-api"' in index and 'id="copy-arms"' in index and 'id="k-api-subs"' in index
+
+
+def test_dashboard_renders_the_growth_panel(config, state):
+    from rich.console import Console
+
+    from api.auth import ApiKeys
+    from dashboard.render import render_dashboard
+    from dashboard.snapshot import collect_snapshot
+
+    keys = ApiKeys(state, config)
+    _, row = keys.issue(1, "d@example.com")
+    keys.consume(row, "signals", state.clock())
+    state.set("niche_allocation", {"shares": {"python-remote": 0.7, "devops-sre": 0.3}, "revenue_cents": {"python-remote": 2900}})
+    console = Console(record=True, width=160)
+    console.print(render_dashboard(collect_snapshot(state, config)))
+    out = console.export_text()
+    assert "Developer API & Growth Engine" in out and "1 requests today" in out and "1 subscriber" in out
+    assert "instant_feed (control)" in out and "python-remote 70% ($29.00)" in out and "Discovered sources" in out

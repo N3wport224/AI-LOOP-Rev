@@ -89,9 +89,37 @@
     $("#k-leads").textContent = String((leads.active || 0) + (leads.pending || 0));
     $("#k-leads-sub").textContent = `${leads.active || 0} confirmed · ${leads.pending || 0} pending · ${leads.unsubscribed || 0} left`;
     $("#engine-reason").textContent = s.engine.reason ? "Engine " + s.engine.state + ": " + s.engine.reason : "";
+    renderGrowth(s.growth || {});
     const paused = s.engine.flag === "paused";
     $("#btn-pause").hidden = paused;
     $("#btn-resume").hidden = !paused;
+  }
+
+  function renderGrowth(g) {
+    const api = g.api || {};
+    $("#k-api").textContent = String(api.requests_today || 0);
+    $("#k-api-sub").textContent = `${api.requests_7d || 0} in 7 days` + (api.by_endpoint && Object.keys(api.by_endpoint).length
+      ? " · " + Object.entries(api.by_endpoint).map(([k, v]) => `${k} ${v}`).join(", ") : "");
+    $("#k-api-subs").textContent = String(api.subscribers || 0);
+    $("#k-api-keys").textContent = api.enabled === false ? "API tier disabled"
+      : `${api.active_keys || 0} active · ${api.degraded_keys || 0} past-due keys` + (api.checkout_url ? "" : " · not on sale yet");
+    const copy = g.copy || {};
+    $("#copy-meta").textContent = copy.version ? `v${copy.version} · ${copy.algorithm}` : "(no data yet)";
+    $("#copy-arms tbody").replaceChildren(...(copy.arms || []).map((r) => {
+      const win = (copy.winners || {})[r.slot] === r.variant;
+      return el("tr", { class: win ? "winner" : (r.state === "deprecated" ? "retired" : "") },
+        el("td", { text: r.slot }), el("td", { text: r.variant + (r.control ? " (control)" : "") + (win ? " ★" : "") }),
+        el("td", { text: String(r.views) }), el("td", { text: String(r.clicks) }), el("td", { text: String(r.signups) }),
+        el("td", { text: String(r.purchases) }), el("td", { text: (100 * r.conversion_rate).toFixed(1) + "%" }),
+        el("td", { text: Math.round(100 * r.allocation) + "%" }), el("td", { class: "status-" + (r.state === "active" ? "ok" : "skip"), text: r.state }));
+    }));
+    const n = g.niches || {};
+    const shares = Object.entries(n.shares || {});
+    $("#niche-shares").textContent = shares.length
+      ? "Niche capacity (last " + n.window_days + " days of verified revenue): " + shares.map(([k, v]) => `${k} ${Math.round(100 * v)}% ($${(((n.revenue_cents || {})[k] || 0) / 100).toFixed(2)})`).join(" · ")
+      : "Single niche (no satellites yet).";
+    const src = g.sources || {};
+    $("#source-counts").textContent = `Discovered job sources: ${src.active || 0} active · ${src.trial || 0} in trial · ${src.candidate || 0} candidates · ${src.rejected || 0} rejected`;
   }
 
   async function control(action) {
