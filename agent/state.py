@@ -198,6 +198,78 @@ CREATE TABLE IF NOT EXISTS subscribers (
     last_delivered_at TEXT,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash TEXT NOT NULL UNIQUE,             -- sha256 of the key; the key itself is never stored
+    prefix TEXT NOT NULL,                      -- first characters, to recognise a key in lists and logs
+    subscriber_id INTEGER,
+    email TEXT,
+    status TEXT NOT NULL DEFAULT 'active',     -- active | degraded | revoked | rotated
+    plan TEXT NOT NULL DEFAULT 'developer',
+    daily_quota INTEGER NOT NULL,
+    permissions TEXT NOT NULL DEFAULT '["signals:read","companies:read"]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    revoked_at TEXT,
+    last_used_at TEXT,
+    rotated_from INTEGER,
+    status_reason TEXT
+);
+CREATE TABLE IF NOT EXISTS api_usage (
+    key_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (key_id, day, endpoint)
+);
+CREATE TABLE IF NOT EXISTS company_history (
+    company_id TEXT NOT NULL,
+    observed_on TEXT NOT NULL,                 -- YYYY-MM-DD
+    company TEXT NOT NULL,
+    domain TEXT,
+    intent_tag TEXT,
+    intent_score INTEGER,
+    migration_path TEXT,
+    stack TEXT,
+    PRIMARY KEY (company_id, observed_on)
+);
+CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    kind TEXT NOT NULL,                        -- greenhouse | lever | ashby | rss | json
+    url TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'candidate',  -- candidate | trial | active | suspended | rejected
+    discovered_from TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_checked_at TEXT,
+    last_error TEXT,
+    notes TEXT
+);
+CREATE TABLE IF NOT EXISTS source_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    at TEXT NOT NULL,
+    mode TEXT NOT NULL,                        -- probe | ingest
+    ok INTEGER NOT NULL,
+    items INTEGER NOT NULL DEFAULT 0,
+    valid INTEGER NOT NULL DEFAULT 0,
+    signals INTEGER NOT NULL DEFAULT 0,
+    latency_ms INTEGER,
+    error TEXT
+);
+CREATE TABLE IF NOT EXISTS copy_events (
+    day TEXT NOT NULL,
+    slot TEXT NOT NULL,                        -- headline | cta
+    variant TEXT NOT NULL,
+    event TEXT NOT NULL,                       -- view | click | signup | purchase
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, slot, variant, event)
+);
+CREATE TABLE IF NOT EXISTS telemetry_seen (
+    key TEXT PRIMARY KEY,
+    day TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS subscription_deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     subscriber_id INTEGER NOT NULL,
@@ -220,6 +292,10 @@ CREATE INDEX IF NOT EXISTS idx_assets_hyp_kind ON assets (hypothesis_id, kind, v
 CREATE INDEX IF NOT EXISTS idx_hypotheses_status ON hypotheses (status);
 CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers (subscription_status, niche);
 CREATE INDEX IF NOT EXISTS idx_subscribers_tier ON subscribers (tier, subscription_status);
+CREATE INDEX IF NOT EXISTS idx_api_keys_sub ON api_keys (subscriber_id, status);
+CREATE INDEX IF NOT EXISTS idx_company_history_domain ON company_history (domain, observed_on);
+CREATE INDEX IF NOT EXISTS idx_source_runs ON source_runs (source_id, at);
+CREATE INDEX IF NOT EXISTS idx_telemetry_seen_day ON telemetry_seen (day);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers (token) WHERE token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sessions_pi ON checkout_sessions (payment_intent);
 CREATE INDEX IF NOT EXISTS idx_sessions_ref ON checkout_sessions (product_ref, updated_at);

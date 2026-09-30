@@ -104,12 +104,32 @@ def apply_subscription_update(tools, sub: dict[str, Any]) -> int | None:
     period_end = sub.get("current_period_end") or items[0].get("current_period_end")
     niche = meta.get("niche")
     asset = subscription_asset(tools.state, niche) if niche else None
+    if (meta.get("tier") == "api" or meta.get("niche") == "api") and asset is None:
+        from api.auth import api_asset
+
+        asset, niche = api_asset(tools.state), None
     sid, _ = tools.state.upsert_subscriber(
         "stripe", sub["id"], customer_id=_id(sub.get("customer")), niche=niche,
         asset_id=(asset or {}).get("id"), hypothesis_id=(asset or {}).get("hypothesis_id"),
         status=status, current_period_end=_ts(period_end),
     )
+    from api.auth import is_api_subscriber, sync_from_stripe_status
+
+    if is_api_subscriber(tools.state, tools.state.subscriber(sid)):
+        sync_from_stripe_status(tools, sid, status)  # webhook or polling: keys follow the subscription
     return sid
+
+
+def restore_api_access(tools, inv: dict[str, Any]) -> int:
+    """A paid invoice ends a payment-failure degradation at once (Stripe's own status update may
+    arrive later)."""
+    from api.auth import ApiKeys, is_api_subscriber
+
+    sub_id = invoice_subscription_id(inv)
+    sub = tools.state.get_subscriber(sub_id) if sub_id else None
+    if not sub or not is_api_subscriber(tools.state, sub):
+        return 0
+    return ApiKeys(tools.state, tools.config).sync_subscriber(sub["id"], "active", f"invoice {inv.get('id')} paid")
 
 
 def invoice_subscription_id(inv: dict[str, Any]) -> str | None:
@@ -242,7 +262,7 @@ def delivery_moment(now: datetime, weekday: int, hour: int, tz: str) -> tuple[da
 
 class SubscriptionEngine(Strategy):
     name = "subscription_engine"
-    tasks = ("publish_subscription", "sync_subscriptions", "deliver_subscriptions")
+    tasks = ("publish_subscription", "publish_api_tier", "sync_subscriptions", "deliver_subscriptions")
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         return getattr(self, task)(ctx)
@@ -276,6 +296,39 @@ class SubscriptionEngine(Strategy):
         return TaskResult(True, f"subscription live at ${cfg.subscription_price_cents / 100:.2f}/{interval}: {url}",
                           {"published": True, "checkout_url": url})
 
+    def publish_api_tier(self, ctx: TaskContext) -> TaskResult:
+        """The Developer API product: $29/month recurring Payment Link, one per account."""
+        from api.auth import API_KIND, api_asset
+
+        tools, cfg = ctx.tools, ctx.tools.config
+        if not cfg.api_enabled or cfg.api_price_cents <= 0:
+            return TaskResult(True, "API tier disabled", {"published": False})
+        existing = api_asset(tools.state)
+        if existing:
+            return TaskResult(True, f"API tier live: {existing['checkout_url']}", {"published": False, "live": True})
+        sf = stripe_storefront(tools)
+        if sf is None:
+            return TaskResult(True, "the API tier needs a Stripe secret key", {"published": False})
+        if not cfg.lead_capture_base:
+            return TaskResult(True, "not selling API access until the API is publicly reachable (tunnel)",
+                              {"published": False, "blocked": "tunnel"})
+        if not (tools.dispatcher.can_deliver() or cfg.allow_manual_fulfillment):
+            return TaskResult(True, "not selling API access until keys can be emailed", {"published": False, "blocked": "email"})
+        if not tools.files.exists(f"exports/intel/{ctx.niche}/tech_radar.json"):
+            return TaskResult(True, "no data to serve yet", {"published": False})
+        title = "Developer API: Hiring & Buying-Intent Signals"
+        summary = (f"REST API: every company hiring in the tracked niches with its tech stack, buying-intent tag, migration "
+                   f"history and active postings. {cfg.api_daily_quota} requests/day. "
+                   f"${cfg.api_price_cents / 100:.2f}/month, cancel any time. Key delivered by email instantly.")
+        meta = {"niche": "api", "tier": "api", "hypothesis_id": str(ctx.hypothesis["id"])}
+        ref, url, price_id = sf.create_subscription_link(title, summary, cfg.api_price_cents, "month", meta)
+        aid = tools.state.add_asset(ctx.hypothesis["id"], API_KIND, title, f"{cfg.lead_capture_base}/docs/api", 1, 0,
+                                    cfg.api_price_cents, product_ref=ref)
+        tools.state.update_asset(aid, provider="stripe", checkout_url=url, status="published",
+                                 kind_meta=json.dumps({"interval": "month", "price_id": price_id, "tier": "api"}))
+        return TaskResult(True, f"API tier live at ${cfg.api_price_cents / 100:.2f}/month: {url}",
+                          {"published": True, "checkout_url": url})
+
     # ------------------------------------------------------------------ reconciliation
     def sync_subscriptions(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
@@ -283,7 +336,9 @@ class SubscriptionEngine(Strategy):
         if sf is None:
             return TaskResult(True, "no Stripe key: subscriptions not synced", {})
         new_subs = invoices = welcomes = 0
-        for asset in [a for a in tools.state.list_assets() if a["kind"] == SUB_KIND and a.get("product_ref")]:
+        from api.auth import API_KIND
+
+        for asset in [a for a in tools.state.list_assets() if a["kind"] in (SUB_KIND, API_KIND) and a.get("product_ref")]:
             created = int(datetime.fromisoformat(asset["created_at"]).timestamp())
             for s in sf.client.completed_sessions(asset["product_ref"], created):
                 if s.get("mode") == "subscription":

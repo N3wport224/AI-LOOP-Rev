@@ -73,6 +73,7 @@ HANDLED = {
     "customer.subscription.updated",
     "customer.subscription.deleted",
     "automonetize.handshake",
+    "invoice.payment_failed",
 }
 # Sent by ``automonetize setup-autonomous`` through the public tunnel URL, signed with the webhook
 # secret: proves the path Stripe → Cloudflare → tunnel → this listener works end to end.
@@ -198,10 +199,18 @@ class WebhookProcessor:
             return "processed", f"handshake {nonce}", []
         if event_type == "payment_intent.succeeded":
             return self._payment_intent_succeeded(obj)
+        if event_type == "invoice.payment_failed":
+            from api.auth import payment_failed
+            from strategies.subscription_engine import invoice_subscription_id
+
+            sub_id = invoice_subscription_id(obj)
+            n = payment_failed(self.tools, sub_id, str(obj.get("id", ""))) if sub_id else 0
+            return ("processed" if n else "ignored"), f"invoice {obj.get('id')} failed: {n} API key(s) degraded", []
         if event_type == "invoice.paid":
-            from strategies.subscription_engine import record_invoice
+            from strategies.subscription_engine import record_invoice, restore_api_access
 
             new = record_invoice(self.tools, obj)
+            restore_api_access(self.tools, obj)
             return ("processed" if new else "ignored"), f"invoice {obj.get('id')} {'recorded' if new else 'already recorded or not a subscription'}", []
         if event_type.startswith("customer.subscription."):
             from strategies.subscription_engine import apply_subscription_update
@@ -214,8 +223,12 @@ class WebhookProcessor:
         if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
             from strategies.subscription_engine import activate_from_session, send_welcome
 
+            from api.auth import is_api_subscriber, provision
+
             sid, created = activate_from_session(self.tools, obj)
-            if sid and created:
+            if sid and is_api_subscriber(self.tools.state, self.tools.state.subscriber(sid)):
+                after.append(lambda: provision(self.tools, sid))  # idempotent: one key per subscriber
+            elif sid and created:
                 after.append(lambda: send_welcome(self.tools, sid))
             return "processed", f"subscriber {obj.get('subscription')} {'activated' if created else 'updated'}", []
         if event_type == "checkout.session.expired":
@@ -304,7 +317,7 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         with power.hold("webhook"):
             return fn(*args)
 
-    executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="webhook")
+    executor = executor or ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
     fulfil = fulfil or (lambda order: fulfil_order(processor.tools, order))
     pending: set[asyncio.Future] = set()
 
@@ -388,6 +401,10 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         for action in ("confirm", "unsubscribe"):
             app.router.add_route("GET", f"/lead-magnet/{action}", lead_action(action))
             app.router.add_route("POST", f"/lead-magnet/{action}", lead_action(action))
+    if processor.tools.config.api_enabled:
+        from api.server import mount
+
+        mount(app, processor.tools, executor, held, client_ip)
     app.on_shutdown.append(drain)
     app.on_cleanup.append(release_executor)
     app[pending_key()] = pending

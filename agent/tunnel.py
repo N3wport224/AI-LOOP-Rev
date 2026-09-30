@@ -30,7 +30,9 @@ from pathlib import Path
 from typing import Any, Iterable
 
 DEFAULT_TUNNEL_NAME = "automonetize"
-EXPOSED_PATHS = ("/webhook", "/healthz", "/lead-magnet/capture", "/lead-magnet/confirm", "/lead-magnet/unsubscribe")
+# A trailing "/*" exposes everything under that prefix.
+EXPOSED_PATHS = ("/webhook", "/healthz", "/lead-magnet/capture", "/lead-magnet/confirm", "/lead-magnet/unsubscribe",
+                 "/v1/*", "/openapi.json", "/docs/api", "/docs/api/console.js", "/t/e")
 ENV_KEY_URL = "PUBLIC_WEBHOOK_URL"
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -82,7 +84,9 @@ def render_config(tunnel_id: str, credentials_file: str, hostname: str, service:
         "ingress:",
     ]
     for path in paths:
-        lines += [f"  - hostname: {host}", f"    path: ^{re.escape('/' + path.lstrip('/'))}$", f"    service: {service}"]
+        clean = "/" + path.lstrip("/")
+        rx = f"^{re.escape(clean[:-1])}.*$" if clean.endswith("/*") else f"^{re.escape(clean)}$"
+        lines += [f"  - hostname: {host}", f"    path: {rx}", f"    service: {service}"]
     lines.append("  - service: http_status:404")
     return "\n".join(lines) + "\n"
 

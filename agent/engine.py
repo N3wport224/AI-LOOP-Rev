@@ -52,6 +52,7 @@ PLAN: list[tuple[str, int]] = [
     ("build_site", 32),
     ("track_hn", 33),
     ("publish_subscription", 34),
+    ("publish_api_tier", 36),
     ("stage_outreach", 35),
     ("dispatch_outreach", 40),
     ("sync_revenue", 45),

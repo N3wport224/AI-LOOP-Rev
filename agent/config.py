@@ -205,6 +205,39 @@ class Config:
     gui_host: str = "127.0.0.1"
     gui_port: int = 8080
 
+    # Developer API tier (metered REST API on the public listener, /v1/...)
+    api_enabled: bool = True
+    api_price_cents: int = 2900              # per month; 0 disables the tier
+    api_daily_quota: int = 500
+    api_degraded_quota: int = 50             # while an invoice is failing (Stripe is retrying)
+    api_burst: int = 10                      # token bucket: burst size...
+    api_rate_per_second: float = 2.0         # ...and sustained rate per key
+    api_max_page_size: int = 100
+    api_auth_failures_per_ip_hour: int = 30  # brakes on key guessing
+
+    # Autonomous source discovery
+    source_discovery_enabled: bool = True
+    source_discovery_interval_hours: int = 24
+    source_trial_days: int = 3               # healthy probes on this many separate days before activation
+    source_min_valid_ratio: float = 0.6
+    source_max_error_rate: float = 0.2
+    source_max_active: int = 20
+    source_probes_per_run: int = 5
+    source_seed_feeds: list[str] = field(default_factory=list)  # extra RSS/JSON feed URLs to evaluate
+
+    # Landing-page copy bandit
+    copy_bandit_enabled: bool = True
+    copy_bandit_algorithm: str = "epsilon_greedy"   # epsilon_greedy | thompson
+    copy_bandit_epsilon: float = 0.2                # 80% to the winner, 20% exploring
+    copy_bandit_min_views: int = 200                # per variant before it can be deprecated
+    copy_bandit_deprecate_sd: float = 2.0
+
+    # Satellite niches (run alongside the primary hypothesis)
+    max_active_niches: int = 3               # primary + satellites
+    satellite_window_days: int = 14          # revenue window for capacity allocation
+    satellite_min_share: float = 0.15        # every niche keeps at least this share of capacity
+    satellite_max_days_without_revenue: int = 21
+
     @property
     def lead_capture_base(self) -> str:
         """Public origin that serves /lead-magnet/* (the tunnel hostname), or "" when not set up."""

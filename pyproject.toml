@@ -18,7 +18,7 @@ images = ["Pillow>=10.1"]
 automonetize = "dashboard.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["agent*", "strategies*", "tools*", "dashboard*", "gui*"]
+include = ["agent*", "strategies*", "tools*", "dashboard*", "gui*", "api*"]
 
 [tool.setuptools.package-data]
 gui = ["static/*"]

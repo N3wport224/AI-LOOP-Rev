@@ -447,6 +447,9 @@ class TechStackIntel(Strategy):
 
         base = f"exports/intel/{ctx.niche}"
         tools.files.write_json(f"{base}/tech_radar.json", records)
+        from api.data import record_history
+
+        record_history(tools.state, records, now)  # powers /v1/companies/{domain} history
         tools.files.write_csv(f"{base}/tech_radar.csv", records, INTEL_FIELDS)
         from strategies.digital_asset_packager import niche_title
 

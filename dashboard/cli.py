@@ -263,6 +263,49 @@ def cmd_gui(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_api(args: argparse.Namespace, console: Console) -> int:
+    from api.auth import ApiKeys, send_welcome
+
+    config, state = _open(args)
+    keys = ApiKeys(state, config)
+    if args.api_cmd == "usage":
+        now = state.clock()
+        for row in keys.volume(args.days, now):
+            console.print(f"{row['day']}  {row['requests']:>7} requests")
+        console.print(f"today by endpoint: {keys.by_endpoint(now) or '{}'}")
+        return 0
+    if args.api_cmd == "reissue":
+        sub = state.subscriber(args.subscriber_id)
+        if not sub:
+            console.print(f"[red]no subscriber {args.subscriber_id}[/]")
+            return 1
+        for row in keys.for_subscriber(sub["id"]):
+            keys.set_status(row["id"], "rotated", "reissued by operator")
+        status = "degraded" if sub.get("subscription_status") == "past_due" else "active"
+        from tools import build_toolkit
+        from tools.circuit_breaker import CircuitBreaker
+
+        tools = build_toolkit(config, state, CircuitBreaker(max_actions_per_cycle=100, max_api_calls_per_cycle=100,
+                                                            max_consecutive_errors=100))
+        key, row = keys.issue(sub["id"], sub.get("email"), status)
+        outcome = send_welcome(tools, sub, key, row, rotated=True)
+        console.print(f"new key {row['prefix']}… for subscriber {sub['id']}: email {outcome}")
+        return 0 if outcome in ("delivered", "dry_run") else 1
+    if args.api_cmd == "revoke":
+        keys.set_status(args.key_id, "revoked", "revoked by operator")
+        console.print(f"key {args.key_id} revoked")
+        return 0
+    table = Table(title="API keys")
+    for col in ("id", "prefix", "subscriber", "email", "status", "quota/day", "used today", "last used"):
+        table.add_column(col)
+    now = state.clock()
+    for row in keys.list():
+        table.add_row(str(row["id"]), row["prefix"] + "…", str(row["subscriber_id"] or ""), row["email"] or "",
+                      row["status"], str(row["daily_quota"]), str(keys.used_today(row["id"], now)), row["last_used_at"] or "")
+    console.print(table)
+    return 0
+
+
 def cmd_hypotheses(args: argparse.Namespace, console: Console) -> int:
     _, state = _open(args)
     t = Table("id", "key", "status", "iterations", "revenue", "reason")
@@ -659,6 +702,17 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("pause", help="skip engine cycles (webhook and lead capture stay up) until `resume`")
     s.add_argument("--reason", default="paused from the command line")
     s.set_defaults(func=cmd_pause)
+
+    ap = sub.add_parser("api", help="Developer API keys and usage")
+    apis = ap.add_subparsers(dest="api_cmd")
+    apis.add_parser("keys", help="list keys (default)")
+    au = apis.add_parser("usage", help="requests per day")
+    au.add_argument("--days", type=int, default=14)
+    ar = apis.add_parser("reissue", help="retire a subscriber's keys and email a new one (lost key)")
+    ar.add_argument("subscriber_id", type=int)
+    av = apis.add_parser("revoke", help="revoke one key")
+    av.add_argument("key_id", type=int)
+    ap.set_defaults(func=cmd_api, api_cmd="keys")
 
     g = sub.add_parser("gui", help="local control panel on http://127.0.0.1:8080 (opens your browser)")
     g.add_argument("--port", type=int, help="default: gui_port (8080)")
