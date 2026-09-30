@@ -31,7 +31,12 @@ revenue** with zero startup capital. Every cycle it:
 11. **measures** revenue by niche, tier and acquisition channel, checkout conversion per channel,
    MRR, churn and net revenue per day against the $10 goal (`automonetize analytics`);
 12. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
-   cluster when it isn't converting.
+   cluster when it isn't converting;
+13. **keeps customers**: failed payments trigger dunning (billing-portal reminders, a 7-day grace
+   period at 50 API requests/day), churn is logged by reason, and buyers can recover lost
+   downloads and keys themselves at `POST /v1/orders/recover`;
+14. **sells high-ticket**: a $49 Executive Migration Dossier (PDF) on any company with urgency or
+   intent above 75, offered from the API and the Weekly Tech Pulse and delivered instantly.
 
 It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
 survives crashes, reboots, sleep and network drops, and shuts down cleanly on SIGTERM.
@@ -43,6 +48,37 @@ web control panel: `automonetize gui` (see [Control panel](#control-panel-automo
 > watching. What stays human: one-time account setup, approving any cold email, and exposing
 > the webhook endpoint publicly (a tunnel or host, see below). Only revenue confirmed by a
 > payment provider counts toward the target.
+
+## Tonight's Launch Checklist
+
+```bash
+pip install -e '.[dev]'
+
+# 1. Verify everything locally (about 2 s; sandboxed, no keys, no real email, no real money)
+automonetize test-full-loop
+
+# 2. Open the browser settings: paste your Stripe key, SMTP details and postal address, run preflight
+automonetize gui
+
+# 3. Launch background operation: engine + webhook listener, restarted on crash
+automonetize supervise
+```
+
+1. **`automonetize test-full-loop`** rehearses the whole business in a throwaway sandbox. It
+   seeds 5 cloud-migration postings, ingests them, extracts signals, builds the Executive Tech
+   Radar and the matrix pages (checking JSON-LD validity), then buys every product through a
+   simulated Stripe and real signed webhooks: the $14 dataset (zip delivered), the $10/month
+   subscription (Monday digest staged), the $29/month API (key issued, then a live `curl`
+   query) and the $49 dossier (PDF delivered). It also plays a failed payment, a recovery and a
+   self-service order recovery, then checks that the dashboard shows ≥ $10/day. Each step is
+   printed in colour and the command exits `0` only if every step passes. It never touches
+   `data/`, sends no email and calls no external service.
+2. **`automonetize gui`** opens the local control panel on `127.0.0.1` for your keys (see
+   [Control panel](#control-panel-automonetize-gui)). Email stays in dry-run until you switch it off.
+3. **`automonetize supervise`** runs the engine and webhook listener in the foreground; for
+   start-at-login, use `automonetize setup-autonomous` ([Set-and-forget](#set-and-forget-on-macos)).
+   One Stripe dashboard step is required: **Settings → Billing → Customer portal → Activate**. The
+   dunning emails link to that portal. Until it is activated, they fall back to your lander URL.
 
 ## How it works
 
@@ -113,7 +149,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 524 tests, ~28 s, no network
+pytest                     # 555 tests, ~35 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -534,8 +570,9 @@ has a token bucket (`api_burst` 10, refilled at `api_rate_per_second` 2) and a d
 | Event | Key |
 |---|---|
 | `checkout.session.completed` for the API product | Issued (once per subscriber) and emailed with curl quickstart and doc links |
-| `invoice.payment_failed` | Degraded at once to `api_degraded_quota` (50/day) while Stripe retries the card; responses carry `X-API-Key-Status: past_due` |
-| `invoice.paid` / status back to active | Restored |
+| `invoice.payment_failed`, or status `past_due` | Degraded at once to `api_degraded_quota` (50/day) while Stripe retries the card; responses carry `X-API-Key-Status: past_due` |
+| Still unpaid after `dunning_grace_days` (7) | Suspended: `402 payment_required` (kept, not deleted) |
+| `invoice.paid` / status back to active | Restored to full quota |
 | `customer.subscription.deleted`, `unpaid`, `incomplete_expired` | Revoked: `401 key_revoked` from the next request |
 
 The product itself ("Developer API: Hiring & Buying-Intent Signals", $29/month recurring Payment
@@ -548,6 +585,74 @@ you're live. `automonetize api keys | usage | revoke <id>` covers the rest.
 **If you set up the tunnel before this release**, re-run `deploy/tunnel/setup_tunnel.sh
 <hostname>`: the ingress rules now also forward `/v1/*`, `/openapi.json`, `/docs/api` and the
 copy-telemetry beacon `/t/e` (still nothing else).
+
+## Customer lifecycle (`strategies/retention_engine.py`)
+
+**Dunning.** A failed payment (`invoice.payment_failed`, or the subscription reported as
+`past_due`) opens one *dunning case* per subscriber:
+
+| When | What happens |
+|---|---|
+| Day 0 | API keys drop to 50 requests/day. A polite "your payment didn't go through" email goes out with a one-time **Stripe billing portal** link (`billing_portal.Session`) where the customer can update their card |
+| Days 3 and 6 (`dunning_reminder_days`) | Follow-up reminders from the `run_dunning` task |
+| Day 7 (`dunning_grace_days`) | Keys are suspended (`402 payment_required`). Nothing is deleted, and a later `past_due` status sync can't lift the suspension |
+| Payment succeeds, at any point | The case closes as *recovered* and full access returns |
+| `customer.subscription.deleted` | Subscriber marked `canceled`, keys revoked, case closed; a **churn event** is logged with product, reason (Stripe's `cancellation_details.reason`, or `payment_failed` after dunning), tenure and MRR lost |
+
+Stripe has no `customer.subscription.past_due` event. It reports past-due as
+`customer.subscription.updated` with `status: past_due`, and that is handled here. The webhook
+endpoint registration lists only real event names, because Stripe rejects unknown ones.
+
+**Self-service order recovery.** `POST /v1/orders/recover` takes `{"email": "..."}` (JSON or a
+form field) with no key. Everything bought with that address is re-sent **to that address
+only**: dataset zips, dossier PDFs, and the current dataset for dataset subscribers.
+Anti-abuse measures:
+
+* The response is always the same `202`, and the work happens after responding, so neither the
+  body nor the timing reveals who is a customer.
+* Limits are 3 requests per IP per hour (`429` with `Retry-After`) and 3 recovery emails per
+  address per day.
+* Bad input returns `400 invalid_parameter`.
+
+API keys are stored only as hashes, so they can't be re-sent. Rotating a key because someone
+typed an email into a form would let anyone break a customer's integration. Instead, API
+subscribers get a one-time confirm link (24 h). Opening it (GET) only shows a button, so mail
+scanners that prefetch links do nothing. Clicking it (POST) emails a new key and retires the
+old one.
+
+## Executive Migration Dossier ($49, `tools/dossier_builder.py`)
+
+A one-company briefing for anyone selling into a migration. Only companies with urgency or
+intent above `dossier_min_score` (75) qualify. It covers:
+
+* **Why now**: the intent tag, path, open roles and leadership hires in one line.
+* **Technology footprint** by category, and **legacy systems** in play.
+* **Verified migration path** with detected signals, evidence phrases and signal history.
+* **Hiring activity**: open roles with links, a per-department table with new roles in the last
+  7 and 30 days, and leadership roles being hired. It lists roles only, never people or
+  personal data.
+* **Recommended pitch angles**, derived from the signals (migration delivery, compliance
+  deadline, new technical leadership, platform engineering, capacity).
+
+The PDF comes from a small standard-library writer (`tools/pdf_writer.py`): PDF 1.4, the
+built-in Helvetica fonts, compressed streams and page numbers, with no external binaries. A
+Markdown copy is attached as well.
+
+**Selling it.** `publish_dossier_tier` creates one Stripe Product and a one-off $49 Price once
+Stripe, the tunnel and email work. The flow:
+
+1. `GET /v1/dossiers/{company_id}/buy` creates a Checkout Session for that company and
+   redirects (303) to Stripe.
+2. The `checkout.session.completed` webhook records the order.
+3. The dossier is built from the latest data and emailed within seconds; the files are kept in
+   `data/dossiers/` so order recovery can re-send them.
+
+Ineligible companies get a 404, so a thin dossier is never sold.
+
+**Upsells.** `GET /v1/companies/{domain}` returns `dossier_available`, `dossier_url` and
+`dossier_price_cents`. In the Monday Tech Pulse, every featured company with intent above 80
+(`dossier_pulse_min_intent`) gets a 1-click "Get the executive dossier" button, with the
+reader's email pre-filled at checkout.
 
 ## Self-evolving growth engine
 
@@ -861,7 +966,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 22-task plan) |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 24-task plan) |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
 | `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
 | `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |
@@ -891,6 +996,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `allow_manual_fulfillment` | `false` | Sell even when the agent can't email the file |
 | `intel_max_url_checks` / `high_urgency_threshold` | `15` / `60` | Careers URL checks per cycle; "hot" cutoff |
 | `github_showcase_repo` / `github_showcase_mode` / `github_pages_repo` / `pages_base_url` | empty / `repo` | Publishing targets |
+| `dunning_grace_days` / `dunning_reminder_days` | `7` / `[0,3,6]` | Grace period before API keys are suspended; reminder schedule |
+| `recovery_per_ip_hour` / `recovery_per_email_day` | `3` / `3` | Order-recovery limits |
+| `dossier_price_cents` / `dossier_min_score` / `dossier_pulse_min_intent` | `4900` / `75` / `80` | Dossier price (0 disables), eligibility, Pulse button cutoff |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
 | `blocked_recipient_tlds` | EU/EEA/UK/CH | Recipients never emailed |
@@ -900,6 +1008,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 ## CLI
 
 ```
+automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
 automonetize api keys | usage [--days N] | reissue SUBSCRIBER_ID | revoke KEY_ID
 automonetize pause [--reason R] | resume            # skip cycles; webhook and lead capture stay up
@@ -948,7 +1057,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 524 tests, ~28 s, no network
+pytest     # 555 tests, ~35 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -956,6 +1065,35 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phases 8 to 10 add 31 tests:
+
+* `tests/test_retention.py` covers:
+  * the dunning case, the degraded key and the portal-link email;
+  * no duplicate reminders on Stripe retries, and reminders on days 0, 3 and 6;
+  * grace expiry → suspended → `402`, with the suspension surviving a status sync;
+  * recovery by `invoice.paid` or by the polling sweep, and the past-due polling path;
+  * churn events for voluntary and involuntary cancellation, logged once;
+  * the portal fallback.
+* `tests/test_recovery.py` covers:
+  * validation;
+  * identical responses for strangers;
+  * 3 per IP per hour, then `429` with `Retry-After`;
+  * the per-address daily cap and attachments sent to the buyer only;
+  * the public HTTP route;
+  * the API-key confirm link (GET changes nothing, POST reissues once, expiry after 24 h,
+    stored hashed).
+* `tests/test_dossier.py` covers:
+  * eligibility, every section, the department growth windows and no personal data;
+  * PDF structure: xref offsets, page count, escaping, pagination and "Page n of N";
+  * the one-off $49 price and the tunnel/Stripe gating;
+  * checkout 303 and its metadata;
+  * webhook → delivered PDF;
+  * Stripe outage → 503;
+  * the API upsell fields;
+  * the Pulse button above intent 80.
+* `tests/test_test_loop.py` runs the full simulator with curl and with urllib, in text, JSON and
+  colour, checks that it finishes well under 60 s, and checks that the CLI command is wired.
 
 Phases 6 and 7 add 69 tests. `tests/test_api.py`: key randomness and hash-only storage, auth
 errors and the failed-auth brake, filters and cross-niche merging, OpenAPI conformance of every

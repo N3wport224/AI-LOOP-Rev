@@ -26,6 +26,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+from agent.state import iso
 from strategies.base import Strategy, TaskContext, TaskResult
 from tools.dispatcher import Email
 
@@ -109,8 +110,7 @@ def start_case(tools: Any, subscriber_id: int, invoice_id: str | None, why: str)
     if created:
         now = state.clock()
         state._exec("INSERT INTO dunning_cases (subscriber_id, invoice_id, status, started_at, grace_until, detail) VALUES (?,?,?,?,?,?)",
-                    (subscriber_id, invoice_id, "open", now.isoformat(timespec="seconds"),
-                     (now + timedelta(days=tools.config.dunning_grace_days)).isoformat(timespec="seconds"), why[:200]))
+                    (subscriber_id, invoice_id, "open", iso(now), iso(now + timedelta(days=tools.config.dunning_grace_days)), why[:200]))
         case = open_case(state, subscriber_id)
         state.log_action(int(state.get("iteration", 0)), None, "dunning:open", "ok", f"subscriber {subscriber_id}: {why}")
     if case and case["status"] == "open":
@@ -142,21 +142,27 @@ def on_past_due(tools: Any, subscriber_id: int) -> None:
         reminder(tools, sub, case, 1)
 
 
-def on_paid(tools: Any, inv: dict[str, Any]) -> bool:
+def close_recovered(tools: Any, subscriber_id: int, why: str) -> bool:
+    """Payment came through: close the open (or expired) case and give full access back."""
     from api.auth import ApiKeys
+
+    case = open_case(tools.state, subscriber_id)
+    if not case:
+        return False
+    tools.state._exec("UPDATE dunning_cases SET status = 'recovered', closed_at = ?, detail = ? WHERE id = ?",
+                      (tools.state.now(), f"recovered: {why}"[:200], case["id"]))
+    ApiKeys(tools.state, tools.config).sync_subscriber(subscriber_id, "active", why)
+    tools.state.log_action(int(tools.state.get("iteration", 0)), None, "dunning:recovered", "ok",
+                           f"subscriber {subscriber_id} after {case['reminders_sent']} reminder(s)")
+    return True
+
+
+def on_paid(tools: Any, inv: dict[str, Any]) -> bool:
     from strategies.subscription_engine import invoice_subscription_id
 
     sub_id = invoice_subscription_id(inv)
     sub = tools.state.get_subscriber(sub_id) if sub_id else None
-    case = open_case(tools.state, sub["id"]) if sub else None
-    if not case:
-        return False
-    tools.state._exec("UPDATE dunning_cases SET status = 'recovered', closed_at = ?, detail = ? WHERE id = ?",
-                      (tools.state.now(), f"recovered by invoice {inv.get('id')}", case["id"]))
-    ApiKeys(tools.state, tools.config).sync_subscriber(sub["id"], "active", f"invoice {inv.get('id')} paid")
-    tools.state.log_action(int(tools.state.get("iteration", 0)), None, "dunning:recovered", "ok",
-                           f"subscriber {sub['id']} after {case['reminders_sent']} reminder(s)")
-    return True
+    return bool(sub) and close_recovered(tools, sub["id"], f"invoice {inv.get('id')} paid")
 
 
 def on_canceled(tools: Any, subscription: dict[str, Any]) -> bool:
@@ -204,10 +210,8 @@ class RetentionEngine(Strategy):
         sent = expired = 0
         for case in state._all("SELECT * FROM dunning_cases WHERE status = 'open' ORDER BY id"):
             sub = state.subscriber(case["subscriber_id"])
-            if not sub or sub.get("subscription_status") in ("active", "trialing"):
-                # Paid without us seeing the invoice (polling will catch it): close quietly.
-                state._exec("UPDATE dunning_cases SET status = 'recovered', closed_at = ? WHERE id = ?", (state.now(), case["id"]))
-                ApiKeys(state, cfg).sync_subscriber(case["subscriber_id"], "active", "subscription active again")
+            if not sub:
+                state._exec("UPDATE dunning_cases SET status = 'canceled', closed_at = ? WHERE id = ?", (state.now(), case["id"]))
                 continue
             started = datetime.fromisoformat(case["started_at"])
             if now >= datetime.fromisoformat(case["grace_until"]):

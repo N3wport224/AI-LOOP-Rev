@@ -666,6 +666,12 @@ def cmd_setup_autonomous(args: argparse.Namespace, console: Console) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
+    from cli.test_loop import run
+
+    return run(keep=args.keep, use_curl=not args.no_curl, color=False if args.no_color else None, json_out=args.json)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="automonetize", description="Autonomous zero-capital revenue agent")
     p.add_argument("--config", "-c", help="path to automonetize.toml")
@@ -794,6 +800,14 @@ def build_parser() -> argparse.ArgumentParser:
     sa.add_argument("--skip-handshake", action="store_true")
     sa.add_argument("--json", action="store_true")
     sa.set_defaults(func=cmd_setup_autonomous)
+
+    tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
+                        "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")
+    tl.add_argument("--keep", action="store_true", help="keep the sandbox directory for inspection")
+    tl.add_argument("--no-curl", action="store_true", help="query the API with urllib instead of curl")
+    tl.add_argument("--no-color", action="store_true")
+    tl.add_argument("--json", action="store_true")
+    tl.set_defaults(func=cmd_test_full_loop)
 
     wh = sub.add_parser("webhook", help="run only the Stripe webhook listener")
     wh.add_argument("--port", type=int)

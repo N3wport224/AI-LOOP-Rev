@@ -121,6 +121,10 @@ def apply_subscription_update(tools, sub: dict[str, Any]) -> int | None:
         from strategies.retention_engine import on_past_due
 
         on_past_due(tools, sid)  # dunning opens once, whether we saw the failed invoice or not
+    elif status in DELIVERABLE:
+        from strategies.retention_engine import close_recovered
+
+        close_recovered(tools, sid, f"stripe: {status}")  # paid, whether or not we saw the invoice
     return sid
 
 
