@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from typing import Any
 
 from agent.config import Config
@@ -16,6 +17,31 @@ GENERIC_TAGS = {
     "software", "senior", "junior", "dev", "tech", "digital", "it", "exec", "non tech", "support",
     "mid", "lead", "internship", "english", "freelance", "startup",
 }
+
+
+# Keyword clusters the agent can pivot into, and which clusters sit next to which.
+CLUSTERS: dict[str, list[str]] = {
+    "ai-infrastructure": ["mlops", "llm", "gpu", "inference", "vector database", "pytorch", "ml platform"],
+    "data-engineering": ["snowflake", "dbt", "airflow", "spark", "kafka", "databricks", "data engineer"],
+    "cloud-security": ["security engineer", "appsec", "devsecops", "iam", "soc 2", "cloud security", "zero trust"],
+    "platform-kubernetes": ["kubernetes", "platform engineer", "helm", "terraform", "argo", "k8s"],
+    "rust-systems": ["rust", "systems engineer", "embedded", "low latency", "golang"],
+    "fullstack-typescript": ["typescript", "node", "next.js", "full stack", "fullstack"],
+}
+ADJACENT: dict[str, list[str]] = {
+    "python-remote": ["ai-infrastructure", "data-engineering", "cloud-security"],
+    "ml-ai": ["ai-infrastructure", "data-engineering"],
+    "devops-sre": ["platform-kubernetes", "cloud-security", "ai-infrastructure"],
+    "frontend-react": ["fullstack-typescript"],
+    "rust-go-systems": ["rust-systems", "platform-kubernetes", "cloud-security"],
+    "ai-infrastructure": ["data-engineering", "platform-kubernetes"],
+    "data-engineering": ["ai-infrastructure", "cloud-security"],
+    "cloud-security": ["platform-kubernetes", "ai-infrastructure"],
+    "platform-kubernetes": ["cloud-security", "ai-infrastructure"],
+    "rust-systems": ["platform-kubernetes", "cloud-security"],
+    "fullstack-typescript": ["ai-infrastructure"],
+}
+DEMAND_WINDOW_DAYS = 7
 
 
 def slugify(text: str) -> str:
@@ -39,11 +65,16 @@ def formulate_next(state: StateStore, config: Config) -> dict[str, Any] | None:
     """Return params for the next untried hypothesis, or None when the space is exhausted.
 
     Order of exploration:
-    1. configured niches, in order;
-    2. niches mined from tag frequencies in the leads collected so far (data-driven pivots);
-    3. revisits of deprecated niches with broadened keywords, up to ``max_hypothesis_generations``.
+    1. clusters adjacent to the most recently deprecated niche, highest recent hiring demand first;
+    2. configured niches, in order;
+    3. niches mined from tag frequencies in the leads collected so far (data-driven variants);
+    4. revisits of deprecated niches with broadened keywords, up to ``max_hypothesis_generations``.
     """
     tried = state.hypothesis_keys()
+
+    adjacent = adjacent_candidates(state, tried)
+    if adjacent:
+        return adjacent
 
     for niche in config.niches:
         name = slugify(niche["name"])
@@ -70,6 +101,57 @@ def formulate_next(state: StateStore, config: Config) -> dict[str, Any] | None:
             continue
         keywords = _broaden(h["params"]["keywords"], state)
         return _params(niche, keywords, generation, origin=f"revisit of #{h['id']}")
+    return None
+
+
+def adjacent_candidates(state: StateStore, tried: set[str]) -> dict[str, Any] | None:
+    deprecated = [h for h in state.list_hypotheses() if h["status"] == "deprecated"]
+    if not deprecated:
+        return None
+    last = max(deprecated, key=lambda h: (h["updated_at"], h["id"]))
+    source = last["params"]["niche"]
+    since = state.clock() - timedelta(days=DEMAND_WINDOW_DAYS)
+    ranked = []
+    for i, cluster in enumerate(ADJACENT.get(source, [])):
+        if hypothesis_key(cluster, 1) in tried:
+            continue
+        demand = state.lead_demand(CLUSTERS[cluster], since)
+        ranked.append((-demand, i, cluster, demand))
+    if not ranked:
+        return None
+    _, _, cluster, demand = min(ranked)
+    return _params(cluster, list(CLUSTERS[cluster]), 1, origin=f"adjacent to {source} ({demand} matching roles in {DEMAND_WINDOW_DAYS}d)")
+
+
+def score_hypothesis(state: StateStore, hyp: dict[str, Any]) -> dict[str, Any]:
+    """Funnel metrics and a single comparable score for a hypothesis."""
+    m = state.metrics_for_hypothesis(hyp["id"])
+    views, impressions = m.get("views", 0), m.get("impressions", 0)
+    purchases = max(m.get("purchases", 0), state.purchases_for_hypothesis(hyp["id"]))
+    revenue = state.revenue_for_hypothesis(hyp["id"])
+    cycles = max(1, hyp["iterations"])
+    return {
+        "impressions": impressions,
+        "views": views,
+        "purchases": purchases,
+        "revenue_cents": revenue,
+        "view_rate": round(views / impressions, 4) if impressions else 0.0,
+        "conversion": round(purchases / views, 4) if views else 0.0,
+        "velocity": round(purchases / cycles, 4),  # purchases per cycle
+        "score": round(revenue / 100 * 10 + purchases * 25 + views * 1 + impressions * 0.1, 2),
+    }
+
+
+def pivot_reason(state: StateStore, config: Config, hyp: dict[str, Any]) -> str | None:
+    """Why this hypothesis should be deprecated now, or None to keep going."""
+    s = score_hypothesis(state, hyp)
+    if s["revenue_cents"] > 0 or s["purchases"] > 0:
+        return None
+    n = hyp["iterations"]
+    if state.get("view_tracking") and n >= config.signal_window_iterations and s["views"] == 0:
+        return f"no views or sales after {n} iterations"
+    if n >= config.pivot_after_iterations:
+        return f"zero verified revenue after {n} iterations"
     return None
 
 

@@ -43,6 +43,8 @@ SENIORITY = [
 ]
 JOB_BOARD_DOMAINS = {"remoteok.com", "www.remoteok.com", "arbeitnow.com", "www.arbeitnow.com", "news.ycombinator.com"}
 
+POOL_NICHE = "__all__"
+
 EXPORT_FIELDS = [
     "company", "title", "location", "remote", "seniority", "stack", "tags", "salary_min", "salary_max",
     "company_domain", "contact_email", "url", "posted_at", "source",
@@ -72,7 +74,7 @@ class Lead:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d["description"] = d["description"][:400]
+        d["description"] = d["description"][:1500]
         return d
 
 
@@ -318,6 +320,10 @@ class LeadAggregator(Strategy):
         for lead in raw:
             if not validate_lead(lead):
                 valid.append(enrich_lead(lead))
+        # Pool every valid lead (all niches) so hypothesis scoring can measure demand for
+        # clusters that aren't being worked yet.
+        for key, lead in dedupe(valid):
+            tools.state.upsert_lead(key, POOL_NICHE, lead.to_dict())
         keywords = ctx.params.get("keywords", [])
         matched = [lead for lead in valid if matches_niche(lead, keywords)]
         unique = dedupe(matched)

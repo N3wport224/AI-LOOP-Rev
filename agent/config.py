@@ -31,7 +31,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 8
+    max_actions_per_cycle: int = 12
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3
@@ -68,6 +68,63 @@ class Config:
     outreach_min_score: float = 0.6
     outreach_cooldown_days: int = 30
 
+    # Hypothesis scoring
+    signal_window_iterations: int = 12   # cycles with zero views AND zero sales before a pivot
+    high_urgency_threshold: int = 60
+
+    # Tech stack intel
+    intel_max_url_checks: int = 15
+
+    # Storefronts ("auto" = stripe if a key is set, else lemonsqueezy if configured, else gumroad staging)
+    storefront_provider: str = "auto"
+    price_tiers: list[list[int]] = field(default_factory=lambda: [[0, 500], [25, 900], [75, 1500]])
+    currency: str = "usd"
+    stripe_secret_key: str = ""
+    stripe_payment_links: dict[str, str] = field(default_factory=dict)  # niche -> pre-made Payment Link URL
+    stripe_fee_pct: float = 2.9
+    stripe_fee_fixed_cents: int = 30
+    lemonsqueezy_api_key: str = ""
+    lemonsqueezy_store_id: str = ""
+    lemonsqueezy_variant_id: str = ""                                  # shared "dataset" variant
+    lemonsqueezy_variant_map: dict[str, str] = field(default_factory=dict)  # niche -> dedicated variant id
+    lemonsqueezy_fee_pct: float = 5.0
+    lemonsqueezy_fee_fixed_cents: int = 50
+    allow_manual_fulfillment: bool = False  # publish checkouts even when the agent cannot email the file
+
+    # GitHub (showcase directory, gists, Pages landers, traffic-based view tracking)
+    github_token: str = ""
+    github_showcase_repo: str = ""   # owner/repo; samples go to showcase/<niche>/
+    github_showcase_mode: str = "repo"  # repo | gist
+    github_pages_repo: str = ""      # owner/repo serving GitHub Pages; landers go to docs/<niche>/
+    github_branch: str = "main"
+    pages_base_url: str = ""         # e.g. https://you.github.io/datasets
+
+    # Email dispatch (cold outreach needs approval; everything is dry-run until dry_run = false)
+    dry_run: bool = True
+    email_backend: str = ""          # smtp | sendgrid | postmark
+    outreach_email_backend: str = "smtp"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    sendgrid_api_key: str = ""
+    postmark_server_token: str = ""
+    sender_postal_address: str = ""  # required by CAN-SPAM for live commercial email
+    unsubscribe_email: str = ""
+    unsubscribe_url: str = ""
+    warmup_start_per_day: int = 5
+    warmup_step_per_week: int = 5
+    dispatch_max_per_day: int = 30
+    blocked_recipient_tlds: list[str] = field(
+        default_factory=lambda: [
+            "de", "at", "fr", "it", "es", "nl", "be", "pl", "se", "dk", "fi", "ie", "pt", "cz", "gr", "hu",
+            "ro", "sk", "si", "hr", "bg", "lt", "lv", "ee", "lu", "mt", "cy", "eu", "uk", "ch", "no",
+        ]
+    )
+    imap_host: str = ""
+    imap_username: str = ""
+    imap_password: str = ""
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / self.db_filename
@@ -97,8 +154,9 @@ class Config:
             key = ENV_PREFIX + name.upper()
             if key in env:
                 values[name] = _coerce(env[key], None if f.default is MISSING else f.default, name)
-        if "GUMROAD_ACCESS_TOKEN" in env and "gumroad_access_token" not in values:
-            values["gumroad_access_token"] = env["GUMROAD_ACCESS_TOKEN"]
+        for env_key, name in _PLAIN_ENV.items():
+            if env_key in env and name not in values:
+                values[name] = _coerce(env[env_key], known[name].default, name)
 
         unknown = set(values) - set(known)
         if unknown:
@@ -112,13 +170,27 @@ class Config:
             d.mkdir(parents=True, exist_ok=True)
 
 
-_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills"}
+# Conventional, unprefixed variable names accepted for secrets and the dry-run switch.
+_PLAIN_ENV = {
+    "GUMROAD_ACCESS_TOKEN": "gumroad_access_token",
+    "STRIPE_SECRET_KEY": "stripe_secret_key",
+    "LEMONSQUEEZY_API_KEY": "lemonsqueezy_api_key",
+    "GITHUB_TOKEN": "github_token",
+    "SENDGRID_API_KEY": "sendgrid_api_key",
+    "POSTMARK_SERVER_TOKEN": "postmark_server_token",
+    "SMTP_PASSWORD": "smtp_password",
+    "IMAP_PASSWORD": "imap_password",
+    "DRY_RUN": "dry_run",
+}
+
+_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds"}
+_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map"}
 
 
 def _coerce(raw: str, default: Any, name: str) -> Any:
     if name in _LIST_FIELDS:
         return [s.strip() for s in raw.split(",") if s.strip()]
-    if name == "niches":
+    if name in _JSON_FIELDS:
         return json.loads(raw)
     if name == "data_dir":
         return Path(raw)

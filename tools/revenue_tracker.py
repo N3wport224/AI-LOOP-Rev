@@ -149,6 +149,61 @@ class RevenueTracker:
         )
         return list(payload.get("products", [])) if payload and payload.get("success") else []
 
+    # -- storefront orders (Stripe, Lemon Squeezy) ---------------------------------------
+    def record_orders(self, orders: list[Any], fee_pct: float, fee_fixed_cents: int) -> SyncReport:
+        """Record polled orders as verified revenue and queue them for delivery.
+
+        Orders are attributed to an asset by product ref (Stripe Payment Link id, dedicated
+        Lemon Squeezy variant) or, failing that, by exact product name. Unattributable orders still
+        count as verified revenue but are flagged ``needs_manual_delivery``.
+        """
+        report = SyncReport(source="storefront")
+        for order in orders:
+            report.fetched += 1
+            if order.refunded or not order.order_id:
+                report.skipped += 1
+                continue
+            asset = self.state.asset_for_product(order.product_ref) if order.product_ref else None
+            if asset is None and order.product_name:
+                asset = self.state.asset_by_title(order.product_name)
+            fee = min(order.gross_cents, round(order.gross_cents * fee_pct / 100) + fee_fixed_cents) if order.gross_cents > 0 else 0
+            hypothesis_id = asset["hypothesis_id"] if asset else None
+            inserted = self.state.record_revenue(
+                source=order.provider,
+                external_id=order.order_id,
+                gross_cents=order.gross_cents,
+                fee_cents=fee,
+                net_cents=order.gross_cents - fee,
+                verified=True,
+                occurred_at=order.occurred_at or None,
+                hypothesis_id=hypothesis_id,
+                product_ref=order.product_ref,
+                note=order.product_name or (asset["title"] if asset else ""),
+            )
+            if not inserted:
+                report.skipped += 1
+                continue
+            self.state.record_order(
+                order.provider, order.order_id, order.email, order.gross_cents, order.product_ref,
+                asset["id"] if asset else None, hypothesis_id, order.occurred_at or None,
+                status="paid" if asset and order.email else "needs_manual_delivery",
+            )
+            report.new += 1
+            report.net_cents_added += order.gross_cents - fee
+        return report
+
+    def sync_storefronts(self, storefronts: list[Any], days_back: int = 3) -> list[SyncReport]:
+        since = self.state.clock() - timedelta(days=days_back)
+        refs = [a["product_ref"] for a in self.state.list_assets() if a.get("product_ref")]
+        reports = []
+        for sf in storefronts:
+            if sf.name == "gumroad":
+                continue
+            rep = self.record_orders(sf.fetch_orders(refs, since), sf.fee_pct, sf.fee_fixed_cents)
+            rep.source = sf.name
+            reports.append(rep)
+        return reports
+
     # -- reporting ---------------------------------------------------------------
     def daily_summary(self, day: datetime | None = None) -> dict[str, Any]:
         verified = self.state.revenue_for_day(day, verified_only=True)

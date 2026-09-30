@@ -8,11 +8,20 @@ def _create(state, proposal, status="active"):
     return hid
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolated_niches(config):
+    # Niches without adjacency entries, so these tests exercise the non-adjacent paths.
+    config.niches = [{"name": "alpha-niche", "keywords": ["python"]}, {"name": "beta-niche", "keywords": ["rust"]}]
+
+
 def test_configured_niches_first_in_order(state, config):
     p1 = formulate_next(state, config)
-    assert p1["params"]["niche"] == "python-remote" and p1["params"]["generation"] == 1
+    assert p1["params"]["niche"] == "alpha-niche" and p1["params"]["generation"] == 1
     _create(state, p1, "deprecated")
-    assert formulate_next(state, config)["params"]["niche"] == "rust-systems"
+    assert formulate_next(state, config)["params"]["niche"] == "beta-niche"
 
 
 def test_mines_niches_from_collected_tags(state, config):
@@ -32,8 +41,8 @@ def test_revisits_with_broadened_keywords_then_exhausts(state, config):
     for _ in config.niches:
         _create(state, formulate_next(state, config), "deprecated")
     revisit = formulate_next(state, config)
-    assert revisit["key"] == hypothesis_key("python-remote", 2)
+    assert revisit["key"] == hypothesis_key("alpha-niche", 2)
     assert "graphql" in revisit["params"]["keywords"]
     _create(state, revisit, "deprecated")
-    _create(state, formulate_next(state, config), "deprecated")  # rust-systems g2
+    _create(state, formulate_next(state, config), "deprecated")  # beta-niche g2
     assert formulate_next(state, config) is None

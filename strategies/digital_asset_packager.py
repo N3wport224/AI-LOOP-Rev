@@ -1,20 +1,19 @@
-"""Package a niche's lead dataset into a sellable digital asset plus a public showcase page.
+"""Package a niche's data into a sellable, versioned digital asset.
 
 Produces, per version:
 
-* ``assets/<niche>/v<N>/``: README guide, markdown directory, CSV + JSON data, attribution note
-* ``assets/<niche>/<slug>-v<N>.zip``: the downloadable bundle
-* ``assets/<niche>/v<N>/listing.json``: storefront listing draft (title, description, price)
-* ``site/<niche>/index.html`` + ``index.md``: GitHub Pages showcase with a free sample
+* ``assets/<niche>/v<N>/``: README guide, Executive Tech Radar, company-level ``tech_radar``
+  CSV/JSON (when intel exists), the role directory and ``leads`` CSV/JSON, attribution note
+* ``assets/<niche>/<niche>-intel-v<N>.zip``: the downloadable bundle
+* ``assets/<niche>/v<N>/listing.json``: listing (title, summary, tiered price)
+* ``assets/<niche>/v<N>/sample.json``: 5 sanitized records for the public showcase
 
-Storefront upload stays manual: Gumroad's public API does not create products or upload files.
-Once a product exists whose name equals the listing title, the packager links it automatically
-(via the Gumroad products API) so its sales are attributed to this hypothesis.
+Publishing (checkout + lander + showcase) is handled by ``distribution_engine``. For the Gumroad
+fallback, a product whose name equals the listing title is linked automatically.
 """
 
 from __future__ import annotations
 
-import html
 import io
 import json
 import zipfile
@@ -23,6 +22,10 @@ from typing import Any
 
 from strategies.b2b_lead_aggregator import EXPORT_FIELDS
 from strategies.base import Strategy, TaskContext, TaskResult
+from tools.storefront import price_for
+
+SAMPLE_FIELDS_INTEL = ["company", "domain", "urgency_score", "intent_signals", "stack", "open_positions"]
+SAMPLE_FIELDS_LEADS = ["company", "title", "location", "remote", "stack"]
 
 ASSET_KIND = "lead_directory"
 SAMPLE_SIZE = 5
@@ -33,7 +36,23 @@ def niche_title(niche: str) -> str:
 
 
 def listing_title(niche: str) -> str:
-    return f"{niche_title(niche)} Hiring Directory"
+    return f"{niche_title(niche)} Tech Stack Intel"
+
+
+def sanitized_sample(intel: list[dict[str, Any]], leads: list[dict[str, Any]], size: int = SAMPLE_SIZE) -> tuple[list[dict[str, Any]], list[str]]:
+    """A public preview: no contact details, no descriptions, lists trimmed."""
+    if intel:
+        fields, rows = SAMPLE_FIELDS_INTEL, intel[:size]
+    else:
+        fields, rows = SAMPLE_FIELDS_LEADS, leads[:size]
+    out = []
+    for r in rows:
+        clean = {}
+        for f in fields:
+            v = r.get(f)
+            clean[f] = v[:4] if isinstance(v, list) else v
+        out.append(clean)
+    return out, fields
 
 
 def _stats(leads: list[dict[str, Any]]) -> dict[str, Any]:
@@ -130,36 +149,6 @@ def render_attribution_md(stats: dict[str, Any]) -> str:
     )
 
 
-def render_showcase_html(niche: str, stats: dict[str, Any], sample: list[dict[str, Any]], storefront_url: str, price_cents: int) -> str:
-    rows = "\n".join(
-        f"<tr><td>{html.escape(str(d.get('company', '')))}</td><td>{html.escape(str(d.get('title', '')))}</td>"
-        f"<td>{html.escape(str(d.get('location', '')))}</td><td>{html.escape(', '.join((d.get('stack') or [])[:4]))}</td></tr>"
-        for d in sample
-    )
-    cta = (
-        f'<p><a class="cta" href="{html.escape(storefront_url)}">Get the full directory (${price_cents / 100:.2f})</a></p>'
-        if storefront_url
-        else "<p><em>Full directory coming soon.</em></p>"
-    )
-    title = html.escape(listing_title(niche))
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>body{{font-family:system-ui,sans-serif;max-width:860px;margin:2rem auto;padding:0 1rem;line-height:1.5}}
-table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #ddd;padding:.4rem;text-align:left}}
-.cta{{display:inline-block;background:#111;color:#fff;padding:.6rem 1rem;border-radius:6px;text-decoration:none}}</style>
-</head><body>
-<h1>{title}</h1>
-<p>{stats['count']} roles across {stats['companies']} companies, {stats['remote_share']:.0%} remote. Validated, enriched and deduplicated.</p>
-<h2>Free sample</h2>
-<table><thead><tr><th>Company</th><th>Role</th><th>Location</th><th>Stack</th></tr></thead><tbody>
-{rows}
-</tbody></table>
-{cta}
-</body></html>
-"""
-
-
 class DigitalAssetPackager(Strategy):
     name = "digital_asset_packager"
     tasks = ("package_asset",)
@@ -187,6 +176,8 @@ class DigitalAssetPackager(Strategy):
 
         version = (latest["version"] + 1) if latest else 1
         stats = _stats(leads)
+        intel_path = f"exports/intel/{niche}/tech_radar.json"
+        intel = tools.files.read_json(intel_path) if tools.files.exists(intel_path) else []
         generated = tools.state.now()
         base = f"assets/{niche}/v{version}"
         title = listing_title(niche)
@@ -196,6 +187,10 @@ class DigitalAssetPackager(Strategy):
             "ATTRIBUTION.md": render_attribution_md(stats),
             "leads.json": json.dumps(leads, indent=2, sort_keys=True, default=str) + "\n",
         }
+        intel_dir = f"exports/intel/{niche}"
+        for name in ("EXECUTIVE_TECH_RADAR.md", "tech_radar.json", "tech_radar.csv"):
+            if intel and tools.files.exists(f"{intel_dir}/{name}"):
+                files[name] = tools.files.read_text(f"{intel_dir}/{name}")
         for name, content in files.items():
             tools.files.write_text(f"{base}/{name}", content)
         tools.files.write_csv(f"{base}/leads.csv", leads, EXPORT_FIELDS)
@@ -203,47 +198,56 @@ class DigitalAssetPackager(Strategy):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for name in [*files, "leads.csv"]:
-                zf.writestr(f"{niche}-directory/{name}", tools.files.read_bytes(f"{base}/{name}"))
-        zip_rel = f"assets/{niche}/{niche}-directory-v{version}.zip"
+                zf.writestr(f"{niche}-intel/{name}", tools.files.read_bytes(f"{base}/{name}"))
+        zip_rel = f"assets/{niche}/{niche}-intel-v{version}.zip"
         tools.files.write_bytes(zip_rel, buf.getvalue())
 
+        companies = len(intel) or stats["companies"]
+        price = price_for(companies, cfg.price_tiers)
+        hot = sum(1 for r in intel if r.get("urgency_score", 0) >= cfg.high_urgency_threshold)
+        summary = (
+            f"{companies} companies hiring for {niche_title(niche)} roles, fingerprinted by tech stack "
+            f"(cloud, databases, data platform, infra) and scored for hiring urgency"
+            + (f"; {hot} show strong buying signals" if intel else "")
+            + f". {stats['count']} open roles. CSV + JSON + Executive Tech Radar."
+        )
         listing = {
             "name": title,
-            "price_cents": cfg.asset_price_cents,
-            "summary": f"{stats['count']} {niche_title(niche)} roles across {stats['companies']} companies, "
-            f"validated, enriched and deduplicated. CSV + JSON + readable directory.",
-            "description_markdown": files["README.md"],
-            "tags": [niche, "jobs", "directory", "dataset"],
+            "price_cents": price,
+            "summary": summary,
+            "description_markdown": files.get("EXECUTIVE_TECH_RADAR.md") or files["README.md"],
+            "tags": [niche, "tech stack", "b2b", "dataset"],
             "file": zip_rel,
             "version": version,
         }
         tools.files.write_json(f"{base}/listing.json", listing)
+        sample, fields = sanitized_sample(intel, leads)
+        tools.files.write_json(f"{base}/sample.json", {"fields": fields, "rows": sample})
 
-        sample = leads[:SAMPLE_SIZE]
-        tools.files.write_text(
-            f"site/{niche}/index.html",
-            render_showcase_html(niche, stats, sample, cfg.storefront_url, cfg.asset_price_cents),
-        )
-        tools.files.write_text(f"site/{niche}/index.md", render_directory_md(niche, sample))
-
+        inherited = {k: latest[k] for k in ("product_ref",) if latest and latest.get(k)}
         asset_id = tools.state.add_asset(
-            ctx.hypothesis["id"], ASSET_KIND, title, zip_rel, version, len(leads), cfg.asset_price_cents,
-            product_ref=latest["product_ref"] if latest else None,
+            ctx.hypothesis["id"], ASSET_KIND, title, zip_rel, version, len(leads), price,
+            product_ref=inherited.get("product_ref"),
         )
-        asset = {"id": asset_id, "title": title, "product_ref": latest["product_ref"] if latest else None}
+        tools.state.update_asset(asset_id, niche=niche)
+        if latest:
+            # Carry the live checkout forward; the publish step decides whether it can be reused.
+            tools.state.update_asset(
+                asset_id, **{k: latest[k] for k in ("provider", "checkout_url", "showcase_url", "lander_url") if latest.get(k)}
+            )
+        asset = {"id": asset_id, "title": title, "product_ref": inherited.get("product_ref")}
         linked = self._link_product(ctx, asset)
         return TaskResult(
             ok=True,
-            summary=f"built {title} v{version} ({len(leads)} leads) -> {zip_rel}",
-            metrics={"built": True, "version": version, "leads": len(leads), "zip": zip_rel, "product_linked": linked},
+            summary=f"built {title} v{version} ({companies} companies, ${price / 100:.2f}) -> {zip_rel}",
+            metrics={"built": True, "version": version, "leads": len(leads), "companies": companies,
+                     "price_cents": price, "zip": zip_rel, "product_linked": linked},
         )
 
     def _link_product(self, ctx: TaskContext, asset: dict[str, Any]) -> bool:
         """Attach a storefront product id to the asset so sales can be attributed."""
         if asset.get("product_ref"):
-            if asset.get("id"):
-                ctx.tools.state.link_product(asset["id"], asset["product_ref"])
-            return True
+            return True  # already linked (or published by a storefront): leave its status alone
         revenue = ctx.tools.revenue
         if not revenue.gumroad_enabled():
             return False

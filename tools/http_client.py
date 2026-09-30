@@ -156,6 +156,7 @@ class HttpClient:
         data: dict[str, Any] | None = None,
         json_body: Any = None,
         check_robots: bool | None = None,
+        attempts: int | None = None,
     ) -> Response:
         parts = urllib.parse.urlsplit(url)
         if parts.scheme not in ("http", "https"):
@@ -166,6 +167,7 @@ class HttpClient:
         if (self.respect_robots if check_robots is None else check_robots) and not self.allowed_by_robots(url):
             raise RobotsDisallowed(f"robots.txt disallows {redact(url)}")
 
+        max_attempts = attempts or self.max_attempts
         body: bytes | None = None
         base_headers = {"User-Agent": self.current_user_agent, "Accept": "application/json, text/html;q=0.9, */*;q=0.8"}
         if json_body is not None:
@@ -185,7 +187,7 @@ class HttpClient:
 
         def on_error(n: int, exc: BaseException, tb: str) -> None:
             if self.error_sink is not None:
-                self.error_sink("http_client", f"attempt {n}/{self.max_attempts} {method} {redact(url)}: {exc}", tb)
+                self.error_sink("http_client", f"attempt {n}/{max_attempts} {method} {redact(url)}: {exc}", tb)
 
         def attempt_or_fail_fast(p: dict[str, Any]) -> Response:
             try:
@@ -201,7 +203,7 @@ class HttpClient:
             return retry_with_adjustment(
                 attempt_or_fail_fast,
                 {"headers": base_headers, "timeout": self.timeout},
-                attempts=self.max_attempts,
+                attempts=max_attempts,
                 adjust=self._adjust,
                 on_error=on_error,
                 no_retry=(_Permanent,) + NON_RETRYABLE,

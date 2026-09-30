@@ -26,24 +26,31 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from agent.config import Config
-from agent.hypotheses import formulate_next
+from agent.hypotheses import formulate_next, pivot_reason, score_hypothesis
 from agent.state import StateStore
 from strategies import default_strategies
 from strategies.base import Strategy, TaskContext, TaskResult
 from tools import Toolkit, build_toolkit
 from tools.circuit_breaker import CircuitBreaker
-from tools.errors import CircuitOpenError, OperationalFailure
+from tools.errors import CircuitOpenError
 from tools.recovery import retry_with_adjustment
 
 log = logging.getLogger("automonetize.engine")
 
-# (task, priority) — lower priority runs first.
+# (task, priority) — lower priority runs first. Tasks without a registered handler are left out.
 PLAN: list[tuple[str, int]] = [
     ("aggregate_leads", 10),
+    ("build_intel", 15),
     ("package_asset", 20),
-    ("stage_outreach", 30),
-    ("sync_revenue", 40),
+    ("publish_listing", 25),
+    ("publish_showcase", 30),
+    ("stage_outreach", 35),
+    ("dispatch_outreach", 40),
+    ("sync_revenue", 45),
+    ("deliver_orders", 50),
+    ("collect_metrics", 55),
 ]
+BUILTIN_TASKS = {"sync_revenue"}
 
 
 @dataclass
@@ -145,11 +152,8 @@ class Engine:
         )
         log.warning("deprecated hypothesis #%s: %s", hyp["id"], reason)
 
-    def zero_traction(self, hyp: dict[str, Any]) -> bool:
-        return (
-            hyp["iterations"] >= self.config.pivot_after_iterations
-            and self.state.revenue_for_hypothesis(hyp["id"]) <= 0
-        )
+    def planned_tasks(self) -> list[tuple[str, int]]:
+        return [(t, p) for t, p in PLAN if t in BUILTIN_TASKS or t in self.handlers]
 
     # ------------------------------------------------------------------ cycle
     def current_cycle(self) -> int:
@@ -170,8 +174,8 @@ class Engine:
         report = CycleReport(cycle, "ran")
 
         hyp = self.ensure_hypothesis()
-        if hyp is not None and self.zero_traction(hyp):
-            reason = f"zero verified revenue after {hyp['iterations']} iterations"
+        reason = pivot_reason(self.state, self.config, hyp) if hyp is not None else None
+        if hyp is not None and reason:
             self.pivot(hyp, reason)
             report.pivots.append(f"{hyp['key']}: {reason}")
             hyp = self.ensure_hypothesis()
@@ -184,7 +188,7 @@ class Engine:
 
         report.hypothesis_id, report.hypothesis_key = hyp["id"], hyp["key"]
         if not self.state.pending_tasks(hyp["id"]):
-            for task, priority in PLAN:
+            for task, priority in self.planned_tasks():
                 self.state.add_task(hyp["id"], task, {}, priority)
 
         while self.breaker.allow_action():
@@ -204,8 +208,10 @@ class Engine:
         if self.breaker.tripped:
             self.emergency_stop(self.breaker.trip_reason)
             report.message = f"emergency stop: {self.breaker.trip_reason}"
-        if self.state.get_hypothesis(hyp["id"])["status"] == "active":
+        current = self.state.get_hypothesis(hyp["id"])
+        if current["status"] == "active":
             self.state.increment_hypothesis_iterations(hyp["id"])
+            self.state.set(f"score:{hyp['id']}", score_hypothesis(self.state, self.state.get_hypothesis(hyp["id"])))
         self._save_breaker()
         return report
 
@@ -218,15 +224,19 @@ class Engine:
         return strategy.run(task, ctx)
 
     def _sync_revenue(self) -> TaskResult:
+        """Poll every configured storefront for orders (Stripe, Lemon Squeezy, Gumroad)."""
         revenue = self.tools.revenue
-        if not revenue.gumroad_enabled():
-            summary = revenue.daily_summary()
-            return TaskResult(True, f"no storefront token configured; today ${summary['net_cents'] / 100:.2f} verified")
-        rep = revenue.sync_gumroad()
+        reports = revenue.sync_storefronts(self.tools.storefronts)
+        if revenue.gumroad_enabled():
+            reports.append(revenue.sync_gumroad())
+        today = revenue.daily_summary()
+        if not reports:
+            return TaskResult(True, f"no storefront credentials; today ${today['net_cents'] / 100:.2f} verified")
+        parts = [f"{r.source}: {r.new} new (+${r.net_cents_added / 100:.2f})" for r in reports]
         return TaskResult(
             True,
-            f"gumroad: {rep.new} new sales (+${rep.net_cents_added / 100:.2f} net), {rep.fetched} fetched",
-            metrics={"new_sales": rep.new, "net_cents_added": rep.net_cents_added},
+            "; ".join(parts) + f" · today ${today['net_cents'] / 100:.2f}/${today['target_cents'] / 100:.2f}",
+            metrics={"new_sales": sum(r.new for r in reports), "net_cents_added": sum(r.net_cents_added for r in reports)},
         )
 
     def _execute(self, cycle: int, hyp: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:

@@ -81,6 +81,40 @@ def _pipeline_table(snap: dict[str, Any]) -> Table:
     return t
 
 
+def _distribution_panel(snap: dict[str, Any]) -> Panel:
+    d = snap["distribution"]
+    t = Table.grid(padding=(0, 2))
+    t.add_column(style="bold")
+    t.add_column()
+    live = next((a for a in snap["assets"] if a.get("checkout_url")), None)
+    t.add_row("Storefront", d["storefront"])
+    t.add_row(
+        "Checkout",
+        Text(f"{live['checkout_url']} (${(live.get('price_cents') or 0) / 100:.2f})", style="green") if live
+        else Text("not live", style="yellow"),
+    )
+    if live and live.get("showcase_url"):
+        t.add_row("Showcase", live["showcase_url"])
+    mode = Text("DRY RUN", style="bold yellow") if d["dry_run"] else Text("LIVE", style="bold green")
+    used = d["dry_run_today"] if d["dry_run"] else d["sent_today"]
+    t.add_row("Dispatch", Text.assemble(mode, f"  {used}/{d['daily_limit']} today via {d['email_backend']} · {d['suppressed']} suppressed"))
+    orders = snap["orders"]
+    t.add_row(
+        "Orders",
+        f"{orders.get('delivered', 0)} delivered · {orders.get('paid', 0)} awaiting delivery · "
+        f"{orders.get('needs_manual_delivery', 0)} need manual delivery",
+    )
+    f = snap.get("funnel")
+    if f:
+        views = str(f["views"]) if snap["view_tracking"] else "n/a"
+        t.add_row(
+            "Funnel",
+            f"impressions {f['impressions']} → views {views} → purchases {f['purchases']} · "
+            f"conversion {f['conversion']:.1%} · velocity {f['velocity']:.2f}/cycle · score {f['score']}",
+        )
+    return Panel(t, title="Distribution & Funnel", border_style="green" if live else "yellow")
+
+
 def _revenue_panel(snap: dict[str, Any]) -> Panel:
     today = snap["revenue_today"]
     pct = min(1.0, today["progress"])
@@ -158,6 +192,7 @@ def render_dashboard(snap: dict[str, Any]) -> Group:
         Text("AutoMonetize", style="bold white on blue", justify="center"),
         _objective_panel(snap),
         runtime,
+        _distribution_panel(snap),
         _revenue_panel(snap),
         _health_panel(snap),
         _actions_panel(snap),

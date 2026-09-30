@@ -6,6 +6,7 @@ from typing import Any
 
 from agent.config import Config
 from agent.engine import uptime_seconds
+from agent.hypotheses import score_hypothesis
 from agent.state import StateStore
 from tools.revenue_tracker import RevenueTracker
 
@@ -41,8 +42,13 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
         "pid": state.get("pid"),
         "leads_total": state.count_leads(),
         "leads_active_niche": state.count_leads(hyp["params"]["niche"]) if hyp else 0,
+        "funnel": score_hypothesis(state, hyp) if hyp else None,
+        "view_tracking": bool(state.get("view_tracking")),
+        "distribution": _distribution(state, config),
+        "orders": state.order_counts(),
         "assets": [
-            {k: a[k] for k in ("id", "title", "version", "lead_count", "status", "product_ref", "path")}
+            {k: a.get(k) for k in ("id", "title", "version", "lead_count", "status", "product_ref", "path",
+                                   "provider", "checkout_url", "showcase_url", "price_cents")}
             for a in assets[:5]
         ],
         "assets_total": len(assets),
@@ -51,7 +57,7 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
         "revenue_history": revenue.history(7),
         "actions_total": state.count_actions(),
         "actions_failed": state.count_actions("failed"),
-        "recent_actions": state.recent_actions(8),
+        "recent_actions": state.recent_actions(14),
         "recent_errors": [
             {k: e[k] for k in ("created_at", "source", "kind", "message")} for e in state.recent_errors(6)
         ],
@@ -63,4 +69,32 @@ def collect_snapshot(state: StateStore, config: Config) -> dict[str, Any]:
             "trip_reason": breaker.get("trip_reason", ""),
             "emergency_stop": (emergency or {}).get("reason") or ("stop file present" if stop_file else ""),
         },
+    }
+
+
+def _distribution(state: StateStore, config: Config) -> dict[str, Any]:
+    """Storefront and dispatch status without building network clients."""
+    if config.storefront_provider != "auto":
+        provider = config.storefront_provider
+    elif config.stripe_secret_key or config.stripe_payment_links:
+        provider = "stripe"
+    elif config.lemonsqueezy_api_key and config.lemonsqueezy_store_id:
+        provider = "lemonsqueezy"
+    else:
+        provider = "gumroad (staging)"
+    from datetime import datetime, timezone
+
+    now = state.clock()
+    day = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    first = state.first_send_at()
+    weeks = max(0, (now - datetime.fromisoformat(first)).days // 7) if first else 0
+    limit = min(config.dispatch_max_per_day, config.warmup_start_per_day + config.warmup_step_per_week * weeks)
+    return {
+        "storefront": provider,
+        "dry_run": config.dry_run,
+        "email_backend": config.outreach_email_backend,
+        "daily_limit": limit,
+        "sent_today": state.sent_since(day),
+        "dry_run_today": int(state.get(f"dry_run_count:{day.date()}", 0)),
+        "suppressed": len(state.list_suppressed()),
     }

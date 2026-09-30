@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable
 
 from tools.circuit_breaker import CircuitBreaker, RateLimiter
+from tools.dispatcher import Dispatcher, build_backends
 from tools.file_io import SandboxedFileIO
 from tools.http_client import HttpClient, Transport
 from tools.revenue_tracker import RevenueTracker
 from tools.shell_runner import ShellRunner
+from tools.storefront import Storefront, build_storefronts
+from tools.storefront.github import GitHubClient
 
 if TYPE_CHECKING:  # pragma: no cover
     from agent.config import Config
@@ -25,6 +28,14 @@ class Toolkit:
     files: SandboxedFileIO
     shell: ShellRunner
     revenue: RevenueTracker
+    github: GitHubClient
+    dispatcher: Dispatcher
+    storefronts: list[Storefront] = field(default_factory=list)
+
+    @property
+    def storefront(self) -> Storefront:
+        """The storefront new listings are published to (first configured, Gumroad staging last)."""
+        return self.storefronts[0]
 
 
 def build_toolkit(
@@ -33,6 +44,7 @@ def build_toolkit(
     breaker: CircuitBreaker,
     transport: Transport | None = None,
     sleep=None,
+    smtp_factory: Callable[..., Any] | None = None,
 ) -> Toolkit:
     import time
 
@@ -61,7 +73,13 @@ def build_toolkit(
         fee_pct=config.platform_fee_pct,
         fee_fixed_cents=config.platform_fee_fixed_cents,
     )
-    return Toolkit(config=config, state=state, breaker=breaker, http=http, files=files, shell=shell, revenue=revenue)
+    backends = build_backends(config, http, smtp_factory) if smtp_factory else build_backends(config, http)
+    return Toolkit(
+        config=config, state=state, breaker=breaker, http=http, files=files, shell=shell, revenue=revenue,
+        github=GitHubClient(http, config.github_token),
+        dispatcher=Dispatcher(config, state, backends),
+        storefronts=build_storefronts(config, http),
+    )
 
 
 __all__ = ["Toolkit", "build_toolkit"]

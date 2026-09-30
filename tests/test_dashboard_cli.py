@@ -22,7 +22,7 @@ def test_snapshot_and_render_after_pipeline(config, state, toolkit):
     snap = collect_snapshot(state, config)
     assert snap["iteration"] == 1
     assert snap["hypothesis"]["key"] == "lead_directory:python-remote:g1"
-    assert snap["leads_total"] == 4 and snap["assets_total"] == 1
+    assert snap["leads_total"] == 6 and snap["assets_total"] == 1  # pooled leads, all niches
     assert snap["revenue_today"]["net_cents"] == 760
     assert snap["breaker"]["status"] == "OK"
 
@@ -31,7 +31,7 @@ def test_snapshot_and_render_after_pipeline(config, state, toolkit):
     out = console.export_text()
     for expected in (
         "Active Objective", "Reach $10.00/day", "lead_directory:python-remote:g1", "Iteration", "Uptime",
-        "Staged Assets / Leads", "Python Remote Hiring Directory v1", "Daily Revenue vs Target", "$7.60",
+        "Staged Assets / Leads", "Python Remote Tech Stack Intel v1", "Daily Revenue vs Target", "$7.60",
         "$10.00 target", "Circuit breaker", "OK", "HTTP 503", "Recent Actions", "aggregate_leads",
     ):
         assert expected in out, expected

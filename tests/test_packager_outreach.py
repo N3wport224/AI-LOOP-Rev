@@ -1,5 +1,4 @@
 import io
-import json
 import zipfile
 from datetime import timedelta
 
@@ -8,7 +7,6 @@ from strategies.base import TaskContext
 from strategies.digital_asset_packager import DigitalAssetPackager, listing_title, niche_title
 from strategies.outreach_stager import OPT_OUT, OutreachStager, draft_pitch, score_message
 from tests.conftest import NOW
-from tools.http_client import Response
 
 
 def _seed(toolkit, hyp):
@@ -18,7 +16,7 @@ def _seed(toolkit, hyp):
 def test_titles():
     assert niche_title("python-remote") == "Python Remote"
     assert niche_title("ml-ai") == "ML AI"
-    assert listing_title("devops-sre") == "Devops SRE Hiring Directory"
+    assert listing_title("devops-sre") == "Devops SRE Tech Stack Intel"
 
 
 def test_packager_skips_below_minimum(toolkit, make_hypothesis):
@@ -34,13 +32,14 @@ def test_packager_builds_versioned_bundle(toolkit, make_hypothesis):
     assert result.metrics["built"] and result.metrics["version"] == 1
     zip_bytes = toolkit.files.read_bytes(result.metrics["zip"])
     names = zipfile.ZipFile(io.BytesIO(zip_bytes)).namelist()
-    assert {f"python-remote-directory/{n}" for n in ("README.md", "directory.md", "leads.csv", "leads.json", "ATTRIBUTION.md")} == set(names)
+    assert {f"python-remote-intel/{n}" for n in ("README.md", "directory.md", "leads.csv", "leads.json", "ATTRIBUTION.md")} == set(names)
     readme = toolkit.files.read_text("assets/python-remote/v1/README.md")
     assert "4 roles across 4 companies" in readme
     listing = toolkit.files.read_json("assets/python-remote/v1/listing.json")
-    assert listing["name"] == "Python Remote Hiring Directory" and listing["price_cents"] == 900
-    site = toolkit.files.read_text("site/python-remote/index.html")
-    assert "Free sample" in site and "<script" not in site
+    assert listing["name"] == "Python Remote Tech Stack Intel"
+    assert listing["price_cents"] == 500  # 4 companies -> lowest tier
+    sample = toolkit.files.read_json("assets/python-remote/v1/sample.json")
+    assert len(sample["rows"]) == 4 and all("contact_email" not in r for r in sample["rows"])
 
     # unchanged data -> no new version
     again = packager.run("package_asset", TaskContext(toolkit, hyp, {}))
@@ -53,19 +52,11 @@ def test_packager_builds_versioned_bundle(toolkit, make_hypothesis):
     assert len(toolkit.state.list_assets(hyp["id"])) == 2
 
 
-def test_packager_escapes_html(toolkit, make_hypothesis):
-    hyp = make_hypothesis()
-    for i in range(3):
-        toolkit.state.upsert_lead(f"k{i}", "python-remote", {"company": "<script>alert(1)</script>", "title": f"T{i}", "url": "https://x"})
-    DigitalAssetPackager().run("package_asset", TaskContext(toolkit, hyp, {}))
-    assert "<script>alert" not in toolkit.files.read_text("site/python-remote/index.html")
-
-
 def test_packager_links_gumroad_product_by_title(toolkit, transport, make_hypothesis):
     toolkit.revenue.gumroad_token = "tok"
     transport.add_json(
         "https://api.gumroad.com/v2/products",
-        {"success": True, "products": [{"id": "prod_42", "name": "Python Remote Hiring Directory"}]},
+        {"success": True, "products": [{"id": "prod_42", "name": "Python Remote Tech Stack Intel"}]},
     )
     hyp = make_hypothesis()
     _seed(toolkit, hyp)

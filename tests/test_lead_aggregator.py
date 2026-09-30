@@ -6,7 +6,6 @@ from strategies.b2b_lead_aggregator import (
 )
 from strategies.base import TaskContext
 from tests.conftest import arbeitnow_payload, hn_items, remoteok_payload
-from tools.circuit_breaker import CircuitBreaker
 from tools.errors import CircuitOpenError
 from tools.http_client import Response
 

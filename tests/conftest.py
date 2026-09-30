@@ -43,8 +43,11 @@ class FakeTransport:
     def add_json(self, prefix: str, payload: Any, status: int = 200) -> None:
         self.add(prefix, Response(status, prefix, json.dumps(payload).encode(), {}))
 
+    def calls_to(self, prefix: str, method: str | None = None) -> list[dict[str, Any]]:
+        return [c for c in self.calls if c["url"].startswith(prefix) and (method is None or c["method"] == method)]
+
     def __call__(self, method: str, url: str, headers: dict[str, str], body: bytes | None, timeout: float) -> Response:
-        self.calls.append({"method": method, "url": url, "headers": dict(headers), "timeout": timeout})
+        self.calls.append({"method": method, "url": url, "headers": dict(headers), "timeout": timeout, "body": body})
         for prefix in sorted(self.routes, key=len, reverse=True):
             if url.startswith(prefix):
                 route = self.routes[prefix]

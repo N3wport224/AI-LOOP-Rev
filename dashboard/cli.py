@@ -23,29 +23,60 @@ from dashboard.snapshot import collect_snapshot
 from tools.revenue_tracker import RevenueTracker
 
 EXAMPLE_CONFIG = """# AutoMonetize configuration. Environment variables AUTOMONETIZE_<KEY> override these.
+# Secrets belong in the environment (.env), not here: STRIPE_SECRET_KEY, LEMONSQUEEZY_API_KEY,
+# GITHUB_TOKEN, SENDGRID_API_KEY, POSTMARK_SERVER_TOKEN, SMTP_PASSWORD, IMAP_PASSWORD, GUMROAD_ACCESS_TOKEN.
 [automonetize]
 data_dir = "data"
 interval_seconds = 3600          # one cycle per hour
 pivot_after_iterations = 24      # cycles with zero verified revenue before a pivot
+signal_window_iterations = 12    # cycles with zero views AND zero sales before a pivot (needs GitHub traffic)
 daily_target_cents = 1000        # $10.00/day
-max_actions_per_cycle = 8
+max_actions_per_cycle = 12
 max_api_calls_per_cycle = 60
 max_consecutive_errors = 5
 http_rate_per_minute = 20
 respect_robots_txt = true
 min_leads_for_asset = 10
-asset_price_cents = 900
-storefront_url = ""              # e.g. your Gumroad product URL, used on the showcase page
 lead_sources = ["remoteok", "arbeitnow", "hn_hiring"]
 
-# Outreach drafts are staged for review and never sent automatically.
+# Storefront: "auto" = Stripe if configured, else Lemon Squeezy, else Gumroad staging.
+storefront_provider = "auto"
+price_tiers = [[0, 500], [25, 900], [75, 1500]]   # [companies >=, price in cents], clamped to $5-$15
+# lemonsqueezy_store_id = ""
+# lemonsqueezy_variant_id = ""                     # shared "dataset" variant created once in the dashboard
+# [automonetize.lemonsqueezy_variant_map]          # optional: one variant per niche (exact attribution)
+# python-remote = "123456"
+# [automonetize.stripe_payment_links]              # optional: pre-made links when you don't use a secret key
+# python-remote = "https://buy.stripe.com/..."
+allow_manual_fulfillment = false
+
+# GitHub: showcase samples, Pages landers, traffic-based view tracking
+# github_showcase_repo = "you/datasets"            # samples go to showcase/<niche>/README.md
+# github_showcase_mode = "repo"                    # or "gist"
+# github_pages_repo = "you/you.github.io"          # landers go to docs/<niche>/index.html
+# pages_base_url = "https://you.github.io"
+
+# Email. Nothing is sent until dry_run = false. Cold outreach additionally requires human approval.
+dry_run = true
+outreach_email_backend = "smtp"  # your own mailbox; see README before using sendgrid/postmark for outreach
+email_backend = ""               # for order delivery; defaults to outreach_email_backend
+smtp_host = ""
+smtp_port = 587
+smtp_username = ""
 sender_name = ""
 sender_email = ""
+sender_postal_address = ""       # required by CAN-SPAM for live outreach
+unsubscribe_email = ""           # defaults to sender_email
+unsubscribe_url = ""             # https URL enables RFC 8058 one-click unsubscribe
+warmup_start_per_day = 5
+warmup_step_per_week = 5
+dispatch_max_per_day = 30
+imap_host = ""                   # poll replies and honour "unsubscribe" automatically
+imap_username = ""
+
 sender_skills = ["python", "django", "aws"]
 outreach_offer = "short-term contract help"
 outreach_daily_cap = 20
-
-# gumroad_access_token = ""      # prefer the GUMROAD_ACCESS_TOKEN env var
 
 [[automonetize.niches]]
 name = "python-remote"
@@ -188,11 +219,15 @@ def cmd_revenue(args: argparse.Namespace, console: Console) -> int:
     config.ensure_dirs()
     if args.revenue_cmd == "sync":
         engine = Engine(config)
-        if not engine.tools.revenue.gumroad_enabled():
-            console.print("[yellow]GUMROAD_ACCESS_TOKEN is not set; nothing to sync[/]")
+        tracker = engine.tools.revenue
+        reports = tracker.sync_storefronts(engine.tools.storefronts, days_back=args.days)
+        if tracker.gumroad_enabled():
+            reports.append(tracker.sync_gumroad(days_back=args.days))
+        if not reports:
+            console.print("[yellow]no storefront credentials (Stripe, Lemon Squeezy or Gumroad); nothing to sync[/]")
             return 1
-        rep = engine.tools.revenue.sync_gumroad(days_back=args.days)
-        console.print(f"fetched {rep.fetched} sales, {rep.new} new, +${rep.net_cents_added / 100:.2f} net")
+        for rep in reports:
+            console.print(f"{rep.source}: fetched {rep.fetched}, {rep.new} new, +${rep.net_cents_added / 100:.2f} net")
         return 0
     state = StateStore(config.db_path)
     tracker = RevenueTracker(
@@ -275,6 +310,80 @@ def cmd_assets(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_orders(args: argparse.Namespace, console: Console) -> int:
+    config, state = _open(args)
+    if args.orders_cmd == "deliver":
+        engine = Engine(config, state=state)
+        order = next((o for o in state.list_orders(limit=10000) if o["id"] == args.order_id), None)
+        asset = state.get_asset(args.asset_id)
+        if order is None or asset is None:
+            console.print("[red]unknown order or asset id[/]")
+            return 1
+        email = args.email or order["email"]
+        if not email:
+            console.print("[red]order has no buyer email; pass --email[/]")
+            return 1
+        outcome = engine.tools.dispatcher.deliver({**order, "email": email}, asset["title"], engine.tools.files.resolve(asset["path"]))
+        if outcome == "delivered":
+            state.set_order_status(order["id"], "delivered", asset_id=asset["id"])
+        console.print(f"order #{order['id']}: {outcome}" + (" (dry run: see data/dispatched_audit.log)" if outcome == "dry_run" else ""))
+        return 0
+    t = Table("id", "provider", "order", "email", "gross", "asset", "status", "occurred")
+    for o in state.list_orders(args.status, limit=args.limit):
+        t.add_row(
+            str(o["id"]), o["provider"], o["order_id"][:18], o["email"] or "-", f"${o['gross_cents'] / 100:.2f}",
+            str(o["asset_id"] or "-"), o["status"], o["occurred_at"],
+        )
+    console.print(t)
+    return 0
+
+
+def cmd_dispatch(args: argparse.Namespace, console: Console) -> int:
+    config = Config.load(args.config)
+    engine = Engine(config)
+    d = engine.tools.dispatcher
+    problems = d.compliance_problems("outreach")
+    console.print(f"mode: {'[green]LIVE[/]' if d.live else '[yellow]DRY RUN[/]'} · daily limit {d.daily_limit()}")
+    for p in problems:
+        console.print(f"[yellow]- {p}[/]")
+    if args.check:
+        return 0 if not problems else 1
+    rep = d.dispatch_approved()
+    console.print(
+        f"sent {rep.sent} · audited {rep.dry_run} · blocked {rep.blocked} · failed {rep.failed} · deferred {rep.deferred}"
+    )
+    for r in rep.reasons[:20]:
+        console.print(f"  {r}")
+    return 0
+
+
+def cmd_suppress(args: argparse.Namespace, console: Console) -> int:
+    config, state = _open(args)
+    if args.suppress_cmd == "add":
+        for email in args.emails:
+            console.print(f"{email}: {'suppressed' if state.suppress(email, args.reason) else 'already suppressed'}")
+        return 0
+    t = Table("email", "reason", "since")
+    for r in state.list_suppressed():
+        t.add_row(r["email"], r["reason"] or "", r["created_at"])
+    console.print(t)
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace, console: Console) -> int:
+    from tools.storefront.stripe_pages_publisher import serve_directory
+
+    config = Config.load(args.config)
+    site = config.data_dir / "site"
+    site.mkdir(parents=True, exist_ok=True)
+    console.print(f"serving {site} at http://127.0.0.1:{args.port}/ (Ctrl+C to stop)")
+    try:
+        serve_directory(site, args.port)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="automonetize", description="Autonomous zero-capital revenue agent")
@@ -340,6 +449,33 @@ def build_parser() -> argparse.ArgumentParser:
         o.add_argument("ids", type=int, nargs="+")
     osub.add_parser("export", help="write approved drafts to data/outbox for manual sending")
     out.set_defaults(func=cmd_outreach)
+
+    o = sub.add_parser("orders", help="storefront orders and fulfilment")
+    osub2 = o.add_subparsers(dest="orders_cmd", required=True)
+    ol = osub2.add_parser("list")
+    ol.add_argument("--status")
+    ol.add_argument("--limit", type=int, default=50)
+    od = osub2.add_parser("deliver", help="deliver an order by hand (e.g. one flagged needs_manual_delivery)")
+    od.add_argument("order_id", type=int)
+    od.add_argument("asset_id", type=int)
+    od.add_argument("--email")
+    o.set_defaults(func=cmd_orders)
+
+    d = sub.add_parser("dispatch", help="send approved outreach now (dry run unless dry_run=false)")
+    d.add_argument("--check", action="store_true", help="only report mode, limit and compliance problems")
+    d.set_defaults(func=cmd_dispatch)
+
+    sp = sub.add_parser("suppress", help="do-not-contact list")
+    ssub = sp.add_subparsers(dest="suppress_cmd", required=True)
+    sa = ssub.add_parser("add")
+    sa.add_argument("emails", nargs="+")
+    sa.add_argument("--reason", default="manual")
+    ssub.add_parser("list")
+    sp.set_defaults(func=cmd_suppress)
+
+    sv = sub.add_parser("serve", help="serve data/site landers locally")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.set_defaults(func=cmd_serve)
 
     a = sub.add_parser("assets", help="staged digital assets")
     asub = a.add_subparsers(dest="assets_cmd", required=True)

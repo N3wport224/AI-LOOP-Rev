@@ -111,7 +111,54 @@ CREATE TABLE IF NOT EXISTS outreach_queue (
 CREATE INDEX IF NOT EXISTS idx_backlog_pending ON backlog (hypothesis_id, status, priority);
 CREATE INDEX IF NOT EXISTS idx_revenue_day ON revenue (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_outreach_status ON outreach_queue (status);
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    email TEXT,
+    gross_cents INTEGER NOT NULL,
+    product_ref TEXT,
+    asset_id INTEGER,
+    hypothesis_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'paid',       -- paid | delivered | needs_manual_delivery | refunded
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    delivered_at TEXT,
+    occurred_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    UNIQUE (provider, order_id)
+);
+CREATE TABLE IF NOT EXISTS suppression (
+    email TEXT PRIMARY KEY,
+    reason TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS funnel_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hypothesis_id INTEGER NOT NULL,
+    metric TEXT NOT NULL,                      -- impressions | views | purchases
+    source TEXT NOT NULL,
+    value INTEGER NOT NULL,
+    observed_at TEXT NOT NULL,
+    UNIQUE (hypothesis_id, metric, source)
+);
 """
+
+# Columns added after the first release; applied to existing databases on open.
+MIGRATIONS: dict[str, dict[str, str]] = {
+    "assets": {
+        "checkout_url": "TEXT",
+        "provider": "TEXT",
+        "showcase_url": "TEXT",
+        "lander_url": "TEXT",
+        "niche": "TEXT",
+    },
+    "outreach_queue": {
+        "sent_at": "TEXT",
+        "message_id": "TEXT",
+        "dry_run_at": "TEXT",
+        "send_attempts": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
 
 
 def utc_now() -> datetime:
@@ -135,6 +182,14 @@ class StateStore:
         if self.db_path != ":memory:":
             self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        for table, columns in MIGRATIONS.items():
+            existing = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for name, decl in columns.items():
+                if name not in existing:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -424,6 +479,29 @@ class StateStore:
             (hypothesis_id, kind),
         )
 
+    def get_asset(self, asset_id: int) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM assets WHERE id = ?", (asset_id,))
+
+    def update_asset(self, asset_id: int, **fields: Any) -> None:
+        allowed = {"checkout_url", "provider", "showcase_url", "lander_url", "product_ref", "status", "niche", "price_cents"}
+        bad = set(fields) - allowed
+        if bad:
+            raise ValueError(f"cannot update asset fields {sorted(bad)}")
+        if not fields:
+            return
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self._exec(f"UPDATE assets SET {cols} WHERE id = ?", (*fields.values(), asset_id))
+
+    def asset_for_product(self, product_ref: str) -> dict[str, Any] | None:
+        """The newest asset carrying ``product_ref``, only if the ref is unambiguous across hypotheses."""
+        rows = self._all("SELECT * FROM assets WHERE product_ref = ? ORDER BY id DESC", (product_ref,))
+        if not rows or len({r["hypothesis_id"] for r in rows}) > 1:
+            return None
+        return rows[0]
+
+    def asset_by_title(self, title: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM assets WHERE lower(title) = lower(?) ORDER BY id DESC LIMIT 1", (title.strip(),))
+
     def link_product(self, asset_id: int, product_ref: str) -> None:
         self._exec("UPDATE assets SET product_ref = ?, status = 'listed' WHERE id = ?", (product_ref, asset_id))
 
@@ -471,6 +549,140 @@ class StateStore:
             )
             is not None
         )
+
+    def mark_outreach_sent(self, outreach_id: int, message_id: str) -> None:
+        self._exec(
+            "UPDATE outreach_queue SET status = 'sent', sent_at = ?, message_id = ?, "
+            "send_attempts = send_attempts + 1 WHERE id = ?",
+            (self.now(), message_id, outreach_id),
+        )
+
+    def mark_outreach_dry_run(self, outreach_id: int) -> None:
+        self._exec("UPDATE outreach_queue SET dry_run_at = ? WHERE id = ?", (self.now(), outreach_id))
+
+    def record_send_failure(self, outreach_id: int, max_attempts: int = 3) -> None:
+        self._exec("UPDATE outreach_queue SET send_attempts = send_attempts + 1 WHERE id = ?", (outreach_id,))
+        self._exec(
+            "UPDATE outreach_queue SET status = 'failed' WHERE id = ? AND send_attempts >= ?", (outreach_id, max_attempts)
+        )
+
+    def outreach_sent_for(self, hypothesis_id: int) -> int:
+        return int(
+            self._one(
+                "SELECT COUNT(*) AS n FROM outreach_queue WHERE hypothesis_id = ? AND status = 'sent'", (hypothesis_id,)
+            )["n"]  # type: ignore[index]
+        )
+
+    def sent_since(self, since: datetime) -> int:
+        return int(
+            self._one("SELECT COUNT(*) AS n FROM outreach_queue WHERE sent_at >= ?", (iso(since),))["n"]  # type: ignore[index]
+        )
+
+    def first_send_at(self) -> str | None:
+        row = self._one("SELECT MIN(sent_at) AS t FROM outreach_queue WHERE sent_at IS NOT NULL")
+        return row["t"] if row else None
+
+    # -- suppression ----------------------------------------------------------
+    def suppress(self, email: str, reason: str = "") -> bool:
+        cur = self._exec(
+            "INSERT OR IGNORE INTO suppression (email, reason, created_at) VALUES (?,?,?)",
+            (email.strip().lower(), reason, self.now()),
+        )
+        if cur.rowcount:
+            # Pull any queued drafts for this address so they can never go out.
+            self._exec(
+                "UPDATE outreach_queue SET status = 'suppressed' WHERE recipient = ? AND status IN ('pending_review','approved')",
+                (email.strip().lower(),),
+            )
+        return cur.rowcount == 1
+
+    def is_suppressed(self, email: str) -> bool:
+        return self._one("SELECT 1 FROM suppression WHERE email = ?", (email.strip().lower(),)) is not None
+
+    def list_suppressed(self) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM suppression ORDER BY created_at DESC")
+
+    # -- orders / fulfilment --------------------------------------------------
+    def record_order(
+        self, provider: str, order_id: str, email: str | None, gross_cents: int, product_ref: str | None,
+        asset_id: int | None, hypothesis_id: int | None, occurred_at: str | None = None, status: str = "paid",
+    ) -> bool:
+        cur = self._exec(
+            "INSERT OR IGNORE INTO orders (provider, order_id, email, gross_cents, product_ref, asset_id, hypothesis_id, "
+            "status, occurred_at, recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (provider, order_id, (email or "").lower() or None, gross_cents, product_ref, asset_id, hypothesis_id,
+             status, occurred_at or self.now(), self.now()),
+        )
+        return cur.rowcount == 1
+
+    def orders_to_deliver(self) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM orders WHERE status = 'paid' ORDER BY id")
+
+    def list_orders(self, status: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        if status:
+            return self._all("SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT ?", (status, limit))
+        return self._all("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
+
+    def set_order_status(self, order_pk: int, status: str, asset_id: int | None = None) -> None:
+        delivered = self.now() if status == "delivered" else None
+        self._exec(
+            "UPDATE orders SET status = ?, delivered_at = COALESCE(?, delivered_at), asset_id = COALESCE(?, asset_id), "
+            "delivery_attempts = delivery_attempts + CASE WHEN ? IN ('delivered','delivery_failed') THEN 1 ELSE 0 END "
+            "WHERE id = ?",
+            (status, delivered, asset_id, status, order_pk),
+        )
+
+    def record_delivery_failure(self, order_pk: int, max_attempts: int = 3) -> None:
+        self._exec("UPDATE orders SET delivery_attempts = delivery_attempts + 1 WHERE id = ?", (order_pk,))
+        self._exec(
+            "UPDATE orders SET status = 'needs_manual_delivery' WHERE id = ? AND delivery_attempts >= ?",
+            (order_pk, max_attempts),
+        )
+
+    def order_counts(self) -> dict[str, int]:
+        return {r["status"]: r["n"] for r in self._all("SELECT status, COUNT(*) AS n FROM orders GROUP BY status")}
+
+    def purchases_for_hypothesis(self, hypothesis_id: int) -> int:
+        return int(
+            self._one(
+                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND status != 'refunded'", (hypothesis_id,)
+            )["n"]  # type: ignore[index]
+        )
+
+    # -- funnel metrics -------------------------------------------------------
+    def set_metric(self, hypothesis_id: int, metric: str, source: str, value: int) -> None:
+        """Store the latest observed value of a counter (snapshots overwrite; counters never go down)."""
+        self._exec(
+            "INSERT INTO funnel_metrics (hypothesis_id, metric, source, value, observed_at) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(hypothesis_id, metric, source) DO UPDATE SET value = MAX(value, excluded.value), "
+            "observed_at = excluded.observed_at",
+            (hypothesis_id, metric, source, int(value), self.now()),
+        )
+
+    def add_metric(self, hypothesis_id: int, metric: str, source: str, delta: int = 1) -> None:
+        self._exec(
+            "INSERT INTO funnel_metrics (hypothesis_id, metric, source, value, observed_at) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(hypothesis_id, metric, source) DO UPDATE SET value = value + excluded.value, "
+            "observed_at = excluded.observed_at",
+            (hypothesis_id, metric, source, int(delta), self.now()),
+        )
+
+    def metrics_for_hypothesis(self, hypothesis_id: int) -> dict[str, int]:
+        rows = self._all(
+            "SELECT metric, SUM(value) AS v FROM funnel_metrics WHERE hypothesis_id = ? GROUP BY metric", (hypothesis_id,)
+        )
+        return {r["metric"]: int(r["v"]) for r in rows}
+
+    def lead_demand(self, keywords: list[str], since: datetime, pool: str = "__all__") -> int:
+        """How many pooled leads first seen since ``since`` mention any keyword (title, tags or stack)."""
+        kws = [k.lower() for k in keywords]
+        n = 0
+        for r in self._all("SELECT data FROM leads WHERE niche = ? AND first_seen >= ?", (pool, iso(since))):
+            d = json.loads(r["data"])
+            hay = " ".join([d.get("title", ""), " ".join(d.get("tags") or []), " ".join(d.get("stack") or [])]).lower()
+            if any(k in hay for k in kws):
+                n += 1
+        return n
 
     def outreach_counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self._all("SELECT status, COUNT(*) AS n FROM outreach_queue GROUP BY status")}

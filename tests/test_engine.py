@@ -2,7 +2,6 @@ import pytest
 
 from agent.engine import PLAN, Engine, ProcessLock
 from strategies.base import Strategy, TaskResult
-from tools.http_client import Response
 
 
 class ScriptedStrategy(Strategy):
@@ -36,7 +35,9 @@ def test_cycle_formulates_plans_and_executes(engine_factory, state):
     engine = engine_factory(strat)
     report = engine.run_cycle()
     assert report.status == "ran" and report.cycle == 1
-    assert [a["task"] for a in report.actions] == [t for t, _ in PLAN]
+    planned = [t for t, _ in engine.planned_tasks()]
+    assert planned == ["aggregate_leads", "package_asset", "stage_outreach", "sync_revenue"]  # handlers only
+    assert [a["task"] for a in report.actions] == planned
     assert all(a["status"] == "ok" for a in report.actions)
     hyp = state.active_hypothesis()
     assert hyp["key"] == "lead_directory:python-remote:g1" and hyp["iterations"] == 1
@@ -57,8 +58,9 @@ def test_pivots_after_n_iterations_without_revenue(engine_factory, state, config
     report = engine.run_cycle()
     assert report.pivots and "zero verified revenue" in report.pivots[0]
     assert state.get_hypothesis(first["id"])["status"] == "deprecated"
-    assert state.active_hypothesis()["params"]["niche"] == "rust-systems"
-    assert report.hypothesis_key.startswith("lead_directory:rust-systems")
+    # pivots to a cluster adjacent to the deprecated one
+    assert state.active_hypothesis()["params"]["niche"] == "ai-infrastructure"
+    assert report.hypothesis_key.startswith("lead_directory:ai-infrastructure")
 
 
 def test_revenue_prevents_pivot(engine_factory, state, config):
@@ -91,7 +93,7 @@ def test_invalidating_result_pivots_immediately(engine_factory, state):
     assert state.pending_tasks(first["id"]) == []
     engine.run_cycle()
     second = state.list_hypotheses()[1]
-    assert second["params"]["niche"] == "rust-systems"
+    assert second["params"]["niche"] == "ai-infrastructure"
 
 
 def test_retries_with_adjusted_payload_then_succeeds(engine_factory, state):
@@ -224,16 +226,18 @@ def test_full_pipeline_with_real_strategies(config, state, toolkit, transport):
     engine = Engine(config, state=state, toolkit=toolkit, sleep=lambda s: None)
     report = engine.run_cycle()
     statuses = {a["task"]: a["status"] for a in report.actions}
-    assert statuses == {"aggregate_leads": "ok", "package_asset": "ok", "stage_outreach": "ok", "sync_revenue": "ok"}
+    assert statuses == {t: "ok" for t, _ in PLAN}
     assert state.count_leads("python-remote") == 4
     assert state.list_assets()[0]["version"] == 1
     assert state.outreach_counts()["pending_review"] == 2
     assert toolkit.files.exists("site/python-remote/index.html")
+    assert toolkit.files.exists("exports/intel/python-remote/EXECUTIVE_TECH_RADAR.md")
+    assert toolkit.files.exists("showcase/python-remote/README.md")
 
 
 def test_full_pipeline_syncs_gumroad_revenue(config, state, toolkit, transport):
     toolkit.revenue.gumroad_token = "tok"
-    transport.add_json("https://api.gumroad.com/v2/products", {"success": True, "products": [{"id": "p1", "name": "Python Remote Hiring Directory"}]})
+    transport.add_json("https://api.gumroad.com/v2/products", {"success": True, "products": [{"id": "p1", "name": "Python Remote Tech Stack Intel"}]})
     transport.add_json("https://api.gumroad.com/v2/sales", {"success": True, "sales": [{"id": "s1", "price": 1500, "product_id": "p1", "created_at": "2026-09-30T11:00:00Z"}]})
     engine = Engine(config, state=state, toolkit=toolkit, sleep=lambda s: None)
     engine.run_cycle()
