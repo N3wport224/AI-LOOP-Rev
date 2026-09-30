@@ -1,0 +1,4 @@
+# Alternative to the long-running loop: one cycle per hour from cron.
+# The process lock guarantees overlapping runs never share the database.
+# Edit with `crontab -e`.
+7 * * * * cd $HOME/AutoMonetize && . ./.env 2>/dev/null; ./.venv/bin/automonetize run --once --headless >> data/cron.log 2>&1
