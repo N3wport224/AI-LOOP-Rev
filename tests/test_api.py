@@ -306,7 +306,8 @@ def test_routing_docs_and_openapi(kit):
         r = await client.delete("/v1/signals")
         assert r.status == 405 and (await r.json())["error"]["code"] == "method_not_allowed" and r.headers["Allow"] == "GET"
         doc = await (await client.get("/openapi.json")).json()
-        assert doc["openapi"] == "3.1.0" and set(doc["paths"]) == {"/v1/signals", "/v1/companies/{domain}", "/v1/me", "/v1/auth/rotate"}
+        assert doc["openapi"] == "3.1.0" and set(doc["paths"]) == {"/v1/signals", "/v1/companies/{domain}", "/v1/me", "/v1/auth/rotate",
+                                                                  "/v1/orders/recover"}
         assert doc["servers"][0]["url"] == "https://hooks.example.com"
         assert {"bearerAuth", "apiKeyHeader"} == set(doc["components"]["securitySchemes"])
         for op in (doc["paths"]["/v1/signals"]["get"], doc["paths"]["/v1/companies/{domain}"]["get"]):

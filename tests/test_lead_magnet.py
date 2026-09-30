@@ -160,7 +160,8 @@ def test_pulse_signals_prefer_fresh_high_intent():
     assert [p["company"] for p in picked] == ["Co00", "Co03", "Co06"] and all(p["fresh"] for p in picked)
     quiet = pulse_signals(recs, NOW + timedelta(days=1), 3)  # nothing new since tomorrow
     assert [p["company"] for p in quiet] == ["Co00", "Co01", "Co02"] and not any(p["fresh"] for p in quiet)
-    assert set(picked[0]) == {"company", "intent_tag", "migration_path", "stack", "openings", "fresh", "careers_url"}
+    assert set(picked[0]) == {"company", "intent_tag", "migration_path", "stack", "openings", "fresh", "careers_url",
+                              "intent_score", "urgency_score", "company_id"}
 
 
 def run_nurture(kit):

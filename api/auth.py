@@ -33,6 +33,7 @@ KEY_RE = re.compile(r"^am_live_[0-9a-f]{48}$")
 API_KIND = "api_subscription"
 DEFAULT_PERMISSIONS = ["signals:read", "companies:read"]
 LIVE = ("active", "degraded")
+HELD = LIVE + ("suspended",)  # suspended = grace period over; restorable, unlike revoked
 
 STRIPE_TO_KEY = {
     "active": "active", "trialing": "active",
@@ -94,7 +95,7 @@ class ApiKeys:
             return None
         return self._row(self.state._one("SELECT * FROM api_keys WHERE key_hash = ?", (hash_key(key),)))
 
-    def for_subscriber(self, subscriber_id: int, statuses: tuple[str, ...] = LIVE) -> list[dict[str, Any]]:
+    def for_subscriber(self, subscriber_id: int, statuses: tuple[str, ...] = HELD) -> list[dict[str, Any]]:
         marks = ",".join("?" * len(statuses))
         rows = self.state._all(f"SELECT * FROM api_keys WHERE subscriber_id = ? AND status IN ({marks}) ORDER BY id",
                                (subscriber_id, *statuses))
@@ -128,7 +129,7 @@ class ApiKeys:
 
     def rotate(self, row: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         """New key with the same subscriber, plan and status; the old one stops working now."""
-        key, new = self.issue(row["subscriber_id"], row["email"], row["status"] if row["status"] in LIVE else "active",
+        key, new = self.issue(row["subscriber_id"], row["email"], row["status"] if row["status"] in HELD else "active",
                               row["plan"], rotated_from=row["id"])
         self.set_status(row["id"], "rotated", f"rotated to key {new['id']}")
         return key, new
@@ -249,6 +250,10 @@ def sync_from_stripe_status(tools: Any, subscriber_id: int, stripe_status: str |
     target = STRIPE_TO_KEY.get(stripe_status or "")
     if target is None:
         return None
+    from strategies.retention_engine import grace_expired
+
+    if target == "degraded" and grace_expired(tools.state, subscriber_id):
+        target = "suspended"  # the 7-day grace is over; don't let the next status sync undo that
     keys = ApiKeys(tools.state, tools.config)
     if target == "active" and not keys.for_subscriber(subscriber_id):
         provision(tools, subscriber_id)

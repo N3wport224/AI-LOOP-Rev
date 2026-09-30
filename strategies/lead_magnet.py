@@ -335,13 +335,34 @@ def pulse_signals(records: list[dict[str, Any]], since: datetime, n: int = 3) ->
         names = {r["company"] for r in picked}
         rest = sorted([r for r in records if r.get("intent_score") and r["company"] not in names], key=key)
         picked += [dict(r, fresh=False) for r in rest[: n - len(picked)]]
+    from api.data import company_id
+
     return [{"company": r["company"], "intent_tag": r.get("intent_tag", ""), "migration_path": r.get("migration_path", ""),
              "stack": (r.get("stack") or [])[:4], "openings": r.get("openings", 0), "fresh": r["fresh"],
-             "careers_url": r.get("careers_url", "")} for r in picked]
+             "careers_url": r.get("careers_url", ""), "intent_score": int(r.get("intent_score") or 0),
+             "urgency_score": int(r.get("urgency_score") or 0), "company_id": company_id(r["company"])} for r in picked]
+
+
+def dossier_links(config: Any, signals: list[dict[str, Any]], email: str, live: bool) -> dict[str, str]:
+    """1-click dossier checkout for featured companies above ``dossier_pulse_min_intent``."""
+    from strategies.dossier_engine import dossier_link
+    from tools.dossier_builder import eligible
+
+    if not live:
+        return {}
+    out = {}
+    for s in signals:
+        if s.get("intent_score", 0) > config.dossier_pulse_min_intent and eligible(s, config.dossier_min_score):
+            url = dossier_link(config, s["company_id"], "pulse")
+            if url:
+                out[s["company_id"]] = _with_params(url, {"email": email})
+    return out
 
 
 def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, Any]], links: dict[str, str],
-                 unsubscribe: str) -> tuple[str, str, str]:
+                 unsubscribe: str, dossiers: dict[str, str] | None = None) -> tuple[str, str, str]:
+    dossiers = dossiers or {}
+    price = f"${config.dossier_price_cents / 100:.0f}"
     label = niche_title(niche)
     subject = f"{label} Tech Pulse {period}: " + (signals[0]["intent_tag"].replace("Urgency: ", "") + f" at {signals[0]['company']}"
                                                    if signals else "this week's buying signals")
@@ -350,6 +371,8 @@ def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, A
         text.append(f"{i}. {s['company']}: {s['intent_tag']}" + (f", {s['migration_path']}" if s["migration_path"] else "")
                     + f". Stack: {', '.join(s['stack']) or 'n/a'}. {s['openings']} open role(s)."
                     + ("" if s["fresh"] else " (still active)"))
+        if s.get("company_id") in dossiers:
+            text.append(f"   Executive dossier on {s['company']} ({price}, instant PDF): {dossiers[s['company_id']]}")
     if links.get("subscription"):
         text += ["", f"Every company, every week ({links['subscription_price']}/month): {links['subscription']}"]
     if links.get("dataset"):
@@ -365,7 +388,11 @@ def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, A
         f"<span style=\"background:#fff3e0;color:#8a4b00;padding:1px 6px;border-radius:4px\">{html.escape(s['intent_tag'])}</span>"
         + (f" &middot; {html.escape(s['migration_path'])}" if s["migration_path"] else "")
         + f"<br><span style=\"color:#555\">Stack: {html.escape(', '.join(s['stack']) or 'n/a')} &middot; {int(s['openings'] or 0)} open role(s)"
-        + ("" if s["fresh"] else " &middot; still active") + "</span></li>"
+        + ("" if s["fresh"] else " &middot; still active") + "</span>"
+        + (f"<br><a href=\"{html.escape(dossiers[s['company_id']])}\" style=\"display:inline-block;margin-top:6px;background:#1f6feb;"
+           f"color:#fff;padding:6px 12px;border-radius:5px;text-decoration:none;font-size:13px;font-weight:600\">"
+           f"Get the executive dossier on {html.escape(s['company'])}: {price}</a>" if s.get("company_id") in dossiers else "")
+        + "</li>"
         for s in signals
     )
     buttons = ""
@@ -459,7 +486,10 @@ class LeadMagnet(Strategy):
                 continue
             links = upgrade_links(tools, niche, f"pulse_{period}", sub["email"])
             unsub = link(cfg, "unsubscribe", sub["token"])
-            subject, text, body_html = render_pulse(cfg, niche, period, signals, links, unsub)
+            from strategies.dossier_engine import dossier_asset
+
+            dossiers = dossier_links(cfg, signals, sub["email"], dossier_asset(state) is not None)
+            subject, text, body_html = render_pulse(cfg, niche, period, signals, links, unsub, dossiers)
             email = Email(to=sub["email"], subject=subject, body=text, html=body_html, kind="nurture",
                           headers=_list_unsubscribe(cfg, unsub))
             try:

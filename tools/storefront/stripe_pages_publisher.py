@@ -88,6 +88,24 @@ class StripeClient:
             data["subscription_data"] = {"metadata": subscription_metadata}
         return self._post("/payment_links", data, key)
 
+    def create_checkout_session(self, price_id: str, success_url: str, cancel_url: str, metadata: dict[str, str],
+                                key: str, client_reference_id: str = "", customer_email: str = "") -> dict[str, Any]:
+        """One-off Checkout Session (used for per-company dossiers: the company rides in metadata)."""
+        data: dict[str, Any] = {
+            "mode": "payment", "line_items": [{"price": price_id, "quantity": 1}], "success_url": success_url,
+            "cancel_url": cancel_url, "metadata": metadata, "payment_intent_data": {"metadata": metadata},
+        }
+        if client_reference_id:
+            data["client_reference_id"] = client_reference_id
+        if customer_email:
+            data["customer_email"] = customer_email
+        return self._post("/checkout/sessions", data, key)
+
+    def create_portal_session(self, customer_id: str, return_url: str, key: str) -> dict[str, Any]:
+        """Stripe-hosted billing portal (update card, see invoices, cancel). Needs the portal
+        activated once in Dashboard → Settings → Billing → Customer portal."""
+        return self._post("/billing_portal/sessions", {"customer": customer_id, "return_url": return_url}, key)
+
     def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         return self.http.get_json(f"{STRIPE_API}/subscriptions/{subscription_id}", headers=self._headers(), check_robots=False)
 

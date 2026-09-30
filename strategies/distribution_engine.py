@@ -83,7 +83,15 @@ def fulfil_order(tools, order: dict[str, Any]) -> str:
         tools.state.set_order_status(current["id"], "needs_manual_delivery")
         return "manual"
     try:
-        outcome = tools.dispatcher.deliver(current, asset["title"], tools.files.resolve(asset["path"]))
+        if asset["kind"] == "dossier":
+            from strategies.dossier_engine import fulfil_dossier
+
+            outcome = fulfil_dossier(tools, current, asset)
+            if outcome == "manual":
+                tools.state.set_order_status(current["id"], "needs_manual_delivery")
+                return "manual"
+        else:
+            outcome = tools.dispatcher.deliver(current, asset["title"], tools.files.resolve(asset["path"]))
     except Exception as exc:  # noqa: BLE001
         tools.state.release_order(current["id"])
         tools.state.record_delivery_failure(current["id"])

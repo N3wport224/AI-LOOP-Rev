@@ -104,6 +104,8 @@ class ApiService:
                 self.failures.record(ip)
                 return self.error("invalid_api_key", 401, headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
                                   request_id=rid)
+            if row["status"] == "suspended":
+                return self.error("payment_required", 402, request_id=rid)
             if row["status"] not in ("active", "degraded"):
                 return self.error("key_revoked", 401, "This key was " + ("rotated" if row["status"] == "rotated" else "revoked")
                                   + (": the subscription ended." if row["status"] == "revoked" else "."), request_id=rid)
@@ -151,6 +153,9 @@ class ApiService:
         result = await self.run(self.index.company, ident, self.tools.state.clock())
         if result is None:
             raise QueryError("not_found", f"no company {ident!r} in the dataset", "domain")
+        from strategies.dossier_engine import offer_for
+
+        result.update(await self.run(offer_for, self.tools, result, "api"))  # the $49 dossier upsell
         return self.respond(result)
 
     async def me(self, request: web.Request, row: dict[str, Any]) -> web.Response:

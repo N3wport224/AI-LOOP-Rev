@@ -63,6 +63,7 @@ class Order:
     campaign: str | None = None
     kind: str = "one_off"        # one_off | subscription (an invoice)
     status: str | None = None    # override the fulfilment status (subscription invoices aren't "delivered")
+    meta: dict | None = None     # product-specific details, e.g. {"kind": "dossier", "company_id": "acme"}
 
 
 class Storefront(Protocol):

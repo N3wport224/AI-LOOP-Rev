@@ -266,6 +266,36 @@ CREATE TABLE IF NOT EXISTS copy_events (
     count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, slot, variant, event)
 );
+CREATE TABLE IF NOT EXISTS dunning_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscriber_id INTEGER NOT NULL,
+    invoice_id TEXT,
+    status TEXT NOT NULL DEFAULT 'open',       -- open | recovered | expired | canceled
+    started_at TEXT NOT NULL,
+    grace_until TEXT NOT NULL,
+    reminders_sent INTEGER NOT NULL DEFAULT 0,
+    last_reminder_at TEXT,
+    closed_at TEXT,
+    detail TEXT
+);
+CREATE TABLE IF NOT EXISTS churn_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscriber_id INTEGER NOT NULL UNIQUE,
+    product TEXT NOT NULL,                     -- dataset | api
+    reason TEXT,                               -- payment_failed | cancellation_requested | ...
+    tenure_days REAL,
+    mrr_lost_cents INTEGER NOT NULL DEFAULT 0,
+    had_dunning INTEGER NOT NULL DEFAULT 0,
+    at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS recovery_tokens (
+    token_hash TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
 CREATE TABLE IF NOT EXISTS telemetry_seen (
     key TEXT PRIMARY KEY,
     day TEXT NOT NULL
@@ -296,6 +326,8 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_sub ON api_keys (subscriber_id, status);
 CREATE INDEX IF NOT EXISTS idx_company_history_domain ON company_history (domain, observed_on);
 CREATE INDEX IF NOT EXISTS idx_source_runs ON source_runs (source_id, at);
 CREATE INDEX IF NOT EXISTS idx_telemetry_seen_day ON telemetry_seen (day);
+CREATE INDEX IF NOT EXISTS idx_dunning_sub ON dunning_cases (subscriber_id, status);
+CREATE INDEX IF NOT EXISTS idx_orders_email ON orders (email);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers (token) WHERE token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_sessions_pi ON checkout_sessions (payment_intent);
 CREATE INDEX IF NOT EXISTS idx_sessions_ref ON checkout_sessions (product_ref, updated_at);
@@ -319,6 +351,7 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "channel": "TEXT",
         "campaign": "TEXT",
         "kind": "TEXT NOT NULL DEFAULT 'one_off'",  # one_off | subscription
+        "meta": "TEXT",                             # JSON, e.g. {"kind": "dossier", "company_id": ...}
     },
     "checkout_sessions": {
         "channel": "TEXT",
@@ -845,13 +878,13 @@ class StateStore:
     def record_order(
         self, provider: str, order_id: str, email: str | None, gross_cents: int, product_ref: str | None,
         asset_id: int | None, hypothesis_id: int | None, occurred_at: str | None = None, status: str = "paid",
-        channel: str | None = None, campaign: str | None = None, kind: str = "one_off",
+        channel: str | None = None, campaign: str | None = None, kind: str = "one_off", meta: dict[str, Any] | None = None,
     ) -> bool:
         cur = self._exec(
             "INSERT OR IGNORE INTO orders (provider, order_id, email, gross_cents, product_ref, asset_id, hypothesis_id, "
-            "status, occurred_at, recorded_at, channel, campaign, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "status, occurred_at, recorded_at, channel, campaign, kind, meta) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (provider, order_id, (email or "").lower() or None, gross_cents, product_ref, asset_id, hypothesis_id,
-             status, occurred_at or self.now(), self.now(), channel, campaign, kind),
+             status, occurred_at or self.now(), self.now(), channel, campaign, kind, json.dumps(meta) if meta else None),
         )
         return cur.rowcount == 1
 

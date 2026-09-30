@@ -205,17 +205,20 @@ class WebhookProcessor:
         if event_type == "payment_intent.succeeded":
             return self._payment_intent_succeeded(obj)
         if event_type == "invoice.payment_failed":
-            from api.auth import payment_failed
-            from strategies.subscription_engine import invoice_subscription_id
+            from strategies.retention_engine import on_payment_failed
 
-            sub_id = invoice_subscription_id(obj)
-            n = payment_failed(self.tools, sub_id, str(obj.get("id", ""))) if sub_id else 0
-            return ("processed" if n else "ignored"), f"invoice {obj.get('id')} failed: {n} API key(s) degraded", []
+            detail, reminder = on_payment_failed(self.tools, obj)
+            if reminder is not None:
+                after.append(reminder)  # the email goes out after Stripe gets its 200
+            return "processed", f"invoice {obj.get('id')} failed: {detail}", []
         if event_type == "invoice.paid":
             from strategies.subscription_engine import record_invoice, restore_api_access
 
+            from strategies.retention_engine import on_paid
+
             new = record_invoice(self.tools, obj)
             restore_api_access(self.tools, obj)
+            on_paid(self.tools, obj)
             return ("processed" if new else "ignored"), f"invoice {obj.get('id')} {'recorded' if new else 'already recorded or not a subscription'}", []
         if event_type.startswith("customer.subscription."):
             from strategies.subscription_engine import apply_subscription_update
@@ -223,6 +226,10 @@ class WebhookProcessor:
             if event_type.endswith("deleted"):
                 obj = {**obj, "status": "canceled"}
             sid = apply_subscription_update(self.tools, obj)
+            if sid and event_type.endswith("deleted"):
+                from strategies.retention_engine import on_canceled
+
+                on_canceled(self.tools, obj)
             return ("processed" if sid else "ignored"), f"subscription {obj.get('id')} → {obj.get('status')}", []
         self._remember_session(obj)
         if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
@@ -288,6 +295,7 @@ class WebhookProcessor:
             product_ref=s.get("payment_link"),
             occurred_at=_iso(s.get("created")) or tools.state.now(),
             asset_id=asset_hint, channel=channel, campaign=campaign,
+            meta={k: str(meta[k]) for k in ("kind", "company_id") if meta.get(k)} or None,
         )
         stripe_sf = next((sf for sf in tools.storefronts if sf.name == "stripe"), None)
         fee_pct = stripe_sf.fee_pct if stripe_sf else tools.config.stripe_fee_pct
@@ -423,6 +431,15 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
             return web.Response(status=status, headers={"Cache-Control": "no-store"})
 
         app.router.add_post("/t/e", beacon)
+    # Public commerce routes under /v1 (registered before the API's /v1 catch-all).
+    from strategies import dossier_engine
+    from tools.storefront import recovery_endpoint
+
+    async def run_in_pool(fn: Callable[..., Any], *args: Any) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(executor, held, fn, *args)
+
+    recovery_endpoint.mount(app, processor.tools, run_in_pool, client_ip, executor, held, pending)
+    dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount
 

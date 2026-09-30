@@ -215,6 +215,17 @@ class Config:
     api_max_page_size: int = 100
     api_auth_failures_per_ip_hour: int = 30  # brakes on key guessing
 
+    # Executive Migration Dossier (one-off, per company)
+    dossier_price_cents: int = 4900          # 0 disables the tier
+    dossier_min_score: int = 75              # sold only when max(urgency, intent) is above this
+    dossier_pulse_min_intent: int = 80       # Tech Pulse shows a dossier button above this intent score
+
+    # Retention / dunning
+    dunning_grace_days: int = 7              # API keys stay degraded (not revoked) this long after a failed payment
+    dunning_reminder_days: list[int] = field(default_factory=lambda: [0, 3, 6])
+    recovery_per_ip_hour: int = 3            # /v1/orders/recover
+    recovery_per_email_day: int = 3
+
     # Autonomous source discovery
     source_discovery_enabled: bool = True
     source_discovery_interval_hours: int = 24
@@ -320,7 +331,7 @@ _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
 _LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts"}
-_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix"}
+_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix", "dunning_reminder_days"}
 
 
 def _coerce(raw: str, default: Any, name: str) -> Any:

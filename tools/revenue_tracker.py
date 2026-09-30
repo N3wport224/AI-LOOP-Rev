@@ -190,7 +190,7 @@ class RevenueTracker:
                 order.provider, order.order_id, order.email, order.gross_cents, order.product_ref,
                 asset["id"] if asset else None, hypothesis_id, order.occurred_at or None,
                 status=status, channel=getattr(order, "channel", None), campaign=getattr(order, "campaign", None),
-                kind=getattr(order, "kind", "one_off"),
+                kind=getattr(order, "kind", "one_off"), meta=getattr(order, "meta", None),
             )
             report.new += 1
             report.net_cents_added += order.gross_cents - fee

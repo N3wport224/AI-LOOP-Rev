@@ -9,6 +9,7 @@ ERROR_CODES = {
     "missing_api_key": "No key sent. Use `Authorization: Bearer am_live_...` (or `X-API-Key`).",
     "invalid_api_key": "The key isn't recognised.",
     "key_revoked": "The key was revoked (subscription ended) or rotated.",
+    "payment_required": "The subscription payment has been failing for over 7 days. Update the card (see your email) to restore access.",
     "insufficient_permission": "The key's plan doesn't include this endpoint.",
     "rate_limited": "Too many requests in a short burst. Retry after `Retry-After` seconds.",
     "quota_exceeded": "Today's request quota is used up. It resets at 00:00 UTC (`Retry-After`).",
@@ -123,6 +124,18 @@ def spec(server_url: str = "", version: str = "1.0.0") -> dict[str, Any]:
                                       "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KeyInfo"}}}},
                               **common},
             }},
+            "/v1/orders/recover": {"post": {
+                "operationId": "recoverOrders", "summary": "Re-send everything bought with an email address (no key needed)",
+                "description": ("Always answers 202 with the same body, whether or not the address has purchases; the files go "
+                                "to that address only. 3 requests per client per hour."),
+                "security": [],
+                "requestBody": {"required": True, "content": {"application/json": {"schema": {
+                    "type": "object", "required": ["email"], "properties": {"email": {"type": "string", "format": "email"}}}}}},
+                "responses": {"202": {"description": "Accepted", "content": {"application/json": {"schema": {
+                    "type": "object", "required": ["object", "status", "message"], "properties": {
+                        "object": {"const": "recovery_request"}, "status": {"const": "accepted"}, "message": {"type": "string"}}}}}},
+                              "400": err("Invalid email"), "429": throttled},
+            }},
             "/v1/auth/rotate": {"post": {
                 "operationId": "rotateKey", "summary": "Replace this key; the old one stops working immediately",
                 "responses": {"201": {"description": "The new key (shown only once)",
@@ -156,7 +169,10 @@ def spec(server_url: str = "", version: str = "1.0.0") -> dict[str, Any]:
                             "title": {"type": "string"}, "location": NULLABLE_STR, "remote": {"type": "boolean"},
                             "posted_at": NULLABLE_STR, "url": NULLABLE_STR, "source": NULLABLE_STR,
                             "first_seen": {"type": "string"}, "last_seen": {"type": "string"}}}},
-                        "meta": {"$ref": "#/components/schemas/Meta"}}}]},
+                        "meta": {"$ref": "#/components/schemas/Meta"},
+                        "dossier_available": {"type": "boolean", "description": "An Executive Migration Dossier can be bought for this company"},
+                        "dossier_url": {**NULLABLE_STR, "description": "Opens Stripe checkout for this company's dossier"},
+                        "dossier_price_cents": {"type": ["integer", "null"]}}}]},
                 "KeyInfo": {"type": "object", "required": ["object", "prefix", "status", "plan", "daily_quota", "used_today"],
                             "properties": {"object": {"const": "api_key"}, "prefix": {"type": "string"},
                                            "status": {"type": "string", "enum": ["active", "degraded"]},

@@ -117,6 +117,10 @@ def apply_subscription_update(tools, sub: dict[str, Any]) -> int | None:
 
     if is_api_subscriber(tools.state, tools.state.subscriber(sid)):
         sync_from_stripe_status(tools, sid, status)  # webhook or polling: keys follow the subscription
+    if status == "past_due":
+        from strategies.retention_engine import on_past_due
+
+        on_past_due(tools, sid)  # dunning opens once, whether we saw the failed invoice or not
     return sid
 
 
