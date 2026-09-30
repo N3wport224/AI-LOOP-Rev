@@ -1,2 +1,4 @@
 rich>=13
+aiohttp>=3.9
+stripe>=8
 pytest>=7

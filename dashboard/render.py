@@ -104,6 +104,23 @@ def _distribution_panel(snap: dict[str, Any]) -> Panel:
         f"{orders.get('delivered', 0)} delivered · {orders.get('paid', 0)} awaiting delivery · "
         f"{orders.get('needs_manual_delivery', 0)} need manual delivery",
     )
+    wh = d.get("webhook") or {}
+    if wh.get("configured"):
+        last = wh.get("last_event") or {}
+        t.add_row("Webhooks", f"enabled · {sum(wh['events'].values())} events"
+                  + (f" · last {last.get('type')} at {str(last.get('at', ''))[11:19]}" if last else ""))
+    else:
+        t.add_row("Webhooks", Text("off (polling only): set STRIPE_WEBHOOK_SECRET", style="yellow"))
+    sale = d.get("last_sale")
+    if sale:
+        t.add_row("Last sale", f"+${sale['net_cents'] / 100:.2f} net at {sale['at'][11:19]} (today ${sale['today_net_cents'] / 100:.2f})")
+    for e in d.get("pricing", [])[:3]:
+        t.add_row("Pricing", f"asset #{e['asset_id']} at ${e['price_cents'] / 100:.2f} ({e['status']}) · "
+                  f"{e['views']} views · {e['initiations']} checkouts started")
+    t.add_row("Inbound", f"{d.get('feed_items', 0)} radar posts in RSS"
+              + "".join(f" · {k} {str(v)[:10]}" for k, v in (d.get("syndicated") or {}).items()))
+    if d.get("offline_since"):
+        t.add_row("Network", Text(f"OFFLINE since {d['offline_since']}: cycles paused", style="bold yellow"))
     f = snap.get("funnel")
     if f:
         views = str(f["views"]) if snap["view_tracking"] else "n/a"

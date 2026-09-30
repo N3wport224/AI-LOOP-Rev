@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd user agent for AutoMonetize. Do not edit the double-underscore placeholders by hand:
+  deploy/install_launchd.sh renders this into ~/Library/LaunchAgents/com.automonetize.agent.plist.
+  Secrets are NOT stored here: deploy/run_agent.sh loads them from __WORKDIR__/.env at start.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.automonetize.agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__WORKDIR__/deploy/run_agent.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__WORKDIR__</string>
+
+  <!-- Start at login and restart whenever the process exits (crash, kill, network-induced failure). -->
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- Wait at least 30 s between restarts so a crash loop can't spin the CPU. -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <!-- SIGTERM on unload/logout; give the supervisor time to finish the cycle and flush SQLite. -->
+  <key>ExitTimeOut</key>
+  <integer>90</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__WORKDIR__/.venv/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>AUTOMONETIZE_ENV_FILE</key>
+    <string>__WORKDIR__/.env</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/automonetize.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/automonetize.stderr.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

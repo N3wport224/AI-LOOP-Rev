@@ -64,6 +64,13 @@ class GitHubClient:
             result = self._call("POST", "/gists", json_body=payload)
         return {"id": result["id"], "html_url": result["html_url"]}
 
+    # -- GraphQL ---------------------------------------------------------------------
+    def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        result = self._call("POST", "/graphql", json_body={"query": query, "variables": variables}) or {}
+        if result.get("errors"):
+            raise RuntimeError(f"GitHub GraphQL: {result['errors'][0].get('message', result['errors'])}")
+        return result.get("data") or {}
+
     # -- traffic -------------------------------------------------------------------
     def popular_paths(self, repo: str) -> list[dict[str, Any]]:
         """Top 10 paths by views over the last 14 days (needs push access to the repo)."""

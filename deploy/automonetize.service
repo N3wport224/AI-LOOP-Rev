@@ -9,12 +9,12 @@ After=network-online.target
 Type=simple
 WorkingDirectory=%h/AutoMonetize
 EnvironmentFile=-%h/AutoMonetize/.env
-ExecStart=%h/AutoMonetize/.venv/bin/automonetize run --headless
+ExecStart=/bin/bash %h/AutoMonetize/deploy/run_agent.sh
 Restart=on-failure
 RestartSec=60
 # SIGTERM lets the current cycle finish its task and exit cleanly.
 KillSignal=SIGTERM
-TimeoutStopSec=120
+TimeoutStopSec=90
 
 [Install]
 WantedBy=default.target

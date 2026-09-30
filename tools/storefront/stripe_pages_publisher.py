@@ -10,7 +10,6 @@ per niche in ``stripe_payment_links``; landers will use them, but orders can't b
 
 from __future__ import annotations
 
-import html
 import http.server
 import socketserver
 import threading
@@ -24,6 +23,7 @@ from tools.storefront.github import GitHubClient
 
 if TYPE_CHECKING:  # pragma: no cover
     from agent.config import Config
+    from tools.page_builder import ProductPage
     from tools.http_client import HttpClient
 
 STRIPE_API = "https://api.stripe.com/v1"
@@ -86,10 +86,13 @@ class StripeClient:
         self._post(f"/payment_links/{link_id}", {"active": False}, f"deactivate-{link_id}")
 
     def completed_sessions(self, payment_link: str, created_gte: int, max_pages: int = 10) -> list[dict[str, Any]]:
+        return self.sessions(payment_link, created_gte, status="complete", max_pages=max_pages)
+
+    def sessions(self, payment_link: str, created_gte: int, status: str | None = None, max_pages: int = 10) -> list[dict[str, Any]]:
         sessions: list[dict[str, Any]] = []
-        params: dict[str, Any] = {
-            "payment_link": payment_link, "status": "complete", "limit": 100, "created[gte]": created_gte,
-        }
+        params: dict[str, Any] = {"payment_link": payment_link, "limit": 100, "created[gte]": created_gte}
+        if status:
+            params["status"] = status
         for _ in range(max_pages):
             page = self.http.get_json(
                 STRIPE_API + "/checkout/sessions", params=params, headers=self._headers(), check_robots=False
@@ -130,21 +133,40 @@ class StripeStorefront:
         ):
             return PublishResult(self.name, True, previous["checkout_url"], previous["product_ref"], "reused Payment Link")
 
-        key = f"automonetize-{listing.hypothesis_id}-{listing.asset_id}-{listing.price_cents}"
-        meta = {"niche": listing.niche, "hypothesis_id": str(listing.hypothesis_id), "asset_id": str(listing.asset_id)}
-        product = self.client.create_product(listing.title, listing.summary, meta, key + "-product")
-        price = self.client.create_price(product["id"], listing.price_cents, cfg.currency, key + "-price")
+        link_id, url, product_id = self.create_link(
+            listing.title, listing.summary, listing.price_cents,
+            {"niche": listing.niche, "hypothesis_id": str(listing.hypothesis_id), "asset_id": str(listing.asset_id)},
+        )
+        if previous and previous.get("provider") == self.name and (previous.get("product_ref") or "").startswith("plink_"):
+            self.deactivate(previous["product_ref"])
+        return PublishResult(self.name, True, url, link_id, f"created {product_id} / {link_id}")
+
+    def create_link(self, title: str, summary: str, price_cents: int, meta: dict[str, str]) -> tuple[str, str, str]:
+        """Product → Price → Payment Link. Returns (payment_link_id, url, product_id)."""
+        key = f"automonetize-{meta.get('hypothesis_id', '')}-{meta.get('asset_id', '')}-{price_cents}"
+        if meta.get("experiment"):
+            # A later return to the same price must mint a fresh link, not replay a deactivated one.
+            key += f"-x{meta['experiment']}"
+        product = self.client.create_product(title, summary, meta, key + "-product")
+        price = self.client.create_price(product["id"], price_cents, self.config.currency, key + "-price")
         link = self.client.create_payment_link(
-            price["id"], meta,
+            price["id"], {**meta, "price_cents": str(price_cents)},
             "Thanks for your purchase! The full dataset will be emailed to you shortly.",
             key + "-link",
         )
-        if previous and previous.get("provider") == self.name and previous.get("product_ref", "").startswith("plink_"):
-            try:
-                self.client.deactivate_payment_link(previous["product_ref"])
-            except Exception:  # noqa: BLE001 - an old link staying active is harmless
-                pass
-        return PublishResult(self.name, True, link["url"], link["id"], f"created {product['id']} / {link['id']}")
+        return link["id"], link["url"], product["id"]
+
+    def deactivate(self, link_id: str) -> None:
+        try:
+            self.client.deactivate_payment_link(link_id)
+        except Exception:  # noqa: BLE001 - an old link staying active is harmless
+            pass
+
+    def session_statuses(self, link_id: str, created_gte: int) -> list[dict[str, Any]]:
+        """All Checkout Sessions (open, complete, expired) for a link: each one is a checkout initiation."""
+        if not self.config.stripe_secret_key:
+            return []
+        return self.client.sessions(link_id, created_gte)
 
     def fetch_orders(self, product_refs: list[str], since: datetime) -> list[Order]:
         if not self.config.stripe_secret_key:
@@ -174,40 +196,20 @@ def _cell(value: Any) -> str:
     return str(value if value is not None else "")
 
 
-def render_lander_html(listing: Listing, checkout_url: str) -> str:
-    title = html.escape(listing.title)
-    cols = listing.sample_columns
-    head = "".join(f"<th>{html.escape(c.replace('_', ' '))}</th>" for c in cols)
-    rows = "\n".join(
-        "<tr>" + "".join(f"<td>{html.escape(_cell(r.get(c)))}</td>" for c in cols) + "</tr>" for r in listing.sample_rows
+def listing_page(listing: Listing, checkout_url: str, currency: str = "usd", metrics: dict[str, Any] | None = None) -> "ProductPage":
+    from tools.page_builder import ProductPage
+
+    return ProductPage(
+        niche=listing.niche, title=listing.title, summary=listing.summary, price_cents=listing.price_cents,
+        currency=currency, checkout_url=checkout_url, sample_columns=listing.sample_columns,
+        sample_rows=listing.sample_rows, metrics=metrics or {}, sku=f"asset-{listing.asset_id}",
     )
-    price = f"${listing.price_cents / 100:.2f}"
-    cta = (
-        f'<a class="cta" href="{html.escape(checkout_url)}" rel="noopener">Buy the full dataset: {price}</a>'
-        if checkout_url else "<p><em>Checkout opens soon.</em></p>"
-    )
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title><meta name="description" content="{html.escape(listing.summary)}">
-<style>
-body{{font-family:system-ui,-apple-system,sans-serif;max-width:920px;margin:0 auto;padding:2rem 1rem;line-height:1.55;color:#111}}
-h1{{font-size:1.9rem;margin-bottom:.3rem}} .lede{{color:#444;font-size:1.1rem}}
-.wrap{{overflow-x:auto}} table{{border-collapse:collapse;width:100%;font-size:.92rem}}
-td,th{{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-align:top}} th{{text-transform:capitalize}}
-.cta{{display:inline-block;background:#111;color:#fff;padding:.8rem 1.2rem;border-radius:8px;text-decoration:none;font-weight:600;margin:1rem 0}}
-.muted{{color:#666;font-size:.9rem}}
-@media (prefers-color-scheme: dark){{body{{background:#111;color:#eee}}.lede{{color:#bbb}}td,th{{border-color:#333}}.cta{{background:#eee;color:#111}}.muted{{color:#999}}}}
-</style></head><body>
-<h1>{title}</h1>
-<p class="lede">{html.escape(listing.summary)}</p>
-{cta}
-<h2>Free 5-record preview</h2>
-<div class="wrap"><table><thead><tr>{head}</tr></thead><tbody>
-{rows}
-</tbody></table></div>
-<p class="muted">Built from public job-board APIs; every record links to its source. Delivered as CSV + JSON + an executive summary.</p>
-</body></html>
-"""
+
+
+def render_lander_html(listing: Listing, checkout_url: str, base_url: str = "") -> str:
+    from tools.page_builder import render_product_page
+
+    return render_product_page(listing_page(listing, checkout_url), base_url)
 
 
 def render_lander_md(listing: Listing, checkout_url: str) -> str:
@@ -231,14 +233,15 @@ class PagesDeployer:
         self.github = github
 
     def deploy(self, listing: Listing, checkout_url: str) -> str:
-        page = render_lander_html(listing, checkout_url)
+        cfg = self.config
+        page = render_lander_html(listing, checkout_url, cfg.pages_base_url)
         self.files.write_text(f"site/{listing.niche}/index.html", page)
         self.files.write_text(f"site/{listing.niche}/index.md", render_lander_md(listing, checkout_url))
-        cfg = self.config
         if self.github and self.github.configured() and cfg.github_pages_repo:
+            prefix = f"{cfg.github_pages_dir.strip('/')}/" if cfg.github_pages_dir.strip("/") else ""
             self.github.put_file(
-                cfg.github_pages_repo, f"docs/{listing.niche}/index.html", page,
-                f"Update {listing.niche} lander", cfg.github_branch,
+                cfg.github_pages_repo, f"{prefix}{listing.niche}/index.html", page,
+                f"Update {listing.niche} lander", cfg.github_pages_branch or cfg.github_branch,
             )
             base = cfg.pages_base_url.rstrip("/")
             return f"{base}/{listing.niche}/" if base else ""

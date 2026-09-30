@@ -21,7 +21,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from tools.http_client import HttpClient
 
 MIN_PRICE_CENTS = 500
-MAX_PRICE_CENTS = 1500
+MAX_PRICE_CENTS = 1900
 
 
 @dataclass
@@ -58,6 +58,7 @@ class Order:
     occurred_at: str
     refunded: bool = False
     product_name: str = ""
+    asset_id: int | None = None  # explicit attribution hint (e.g. from checkout metadata)
 
 
 class Storefront(Protocol):
@@ -73,7 +74,7 @@ class Storefront(Protocol):
 
 
 def price_for(count: int, tiers: list[list[int]]) -> int:
-    """Pick a price tier by dataset size, clamped to the $5-$15 band."""
+    """Pick a starting price tier by dataset size, clamped to the $5-$19 band."""
     price = MIN_PRICE_CENTS
     for threshold, cents in sorted(tiers):
         if count >= threshold:

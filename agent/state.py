@@ -141,6 +141,39 @@ CREATE TABLE IF NOT EXISTS funnel_metrics (
     observed_at TEXT NOT NULL,
     UNIQUE (hypothesis_id, metric, source)
 );
+CREATE TABLE IF NOT EXISTS webhook_events (
+    event_id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,                      -- processed | ignored | failed
+    detail TEXT,
+    received_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS price_experiments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id INTEGER NOT NULL,
+    hypothesis_id INTEGER,
+    price_cents INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    product_ref TEXT,                          -- payment link id: orders on it belong to this experiment
+    checkout_url TEXT,
+    views_at_start INTEGER NOT NULL DEFAULT 0,
+    views INTEGER NOT NULL DEFAULT 0,
+    initiations INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'running',    -- running | ended | converged
+    reason TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT
+);
+CREATE TABLE IF NOT EXISTS checkout_sessions (
+    session_id TEXT PRIMARY KEY,
+    product_ref TEXT,
+    payment_intent TEXT,
+    status TEXT NOT NULL,                      -- open | complete | expired
+    payment_status TEXT,
+    email TEXT,
+    amount_cents INTEGER,
+    updated_at TEXT NOT NULL
+);
 """
 
 # Columns added after the first release; applied to existing databases on open.
@@ -151,6 +184,7 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "showcase_url": "TEXT",
         "lander_url": "TEXT",
         "niche": "TEXT",
+        "kind_meta": "TEXT",
     },
     "outreach_queue": {
         "sent_at": "TEXT",
@@ -269,6 +303,12 @@ class StateStore:
         self._exec(
             "UPDATE hypotheses SET status = ?, reason = ?, updated_at = ? WHERE id = ?",
             (status, reason, self.now(), hypothesis_id),
+        )
+
+    def update_hypothesis_params(self, hypothesis_id: int, params: dict[str, Any]) -> None:
+        self._exec(
+            "UPDATE hypotheses SET params = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(params), self.now(), hypothesis_id),
         )
 
     def increment_hypothesis_iterations(self, hypothesis_id: int) -> int:
@@ -483,7 +523,7 @@ class StateStore:
         return self._one("SELECT * FROM assets WHERE id = ?", (asset_id,))
 
     def update_asset(self, asset_id: int, **fields: Any) -> None:
-        allowed = {"checkout_url", "provider", "showcase_url", "lander_url", "product_ref", "status", "niche", "price_cents"}
+        allowed = {"checkout_url", "provider", "showcase_url", "lander_url", "product_ref", "status", "niche", "price_cents", "kind_meta"}
         bad = set(fields) - allowed
         if bad:
             raise ValueError(f"cannot update asset fields {sorted(bad)}")
@@ -493,11 +533,23 @@ class StateStore:
         self._exec(f"UPDATE assets SET {cols} WHERE id = ?", (*fields.values(), asset_id))
 
     def asset_for_product(self, product_ref: str) -> dict[str, Any] | None:
-        """The newest asset carrying ``product_ref``, only if the ref is unambiguous across hypotheses."""
+        """The newest asset carrying ``product_ref``, only if the ref is unambiguous across hypotheses.
+
+        Falls back to price experiments, so orders on a retired price's link still find their dataset."""
         rows = self._all("SELECT * FROM assets WHERE product_ref = ? ORDER BY id DESC", (product_ref,))
-        if not rows or len({r["hypothesis_id"] for r in rows}) > 1:
+        if not rows:
+            exp = self._one(
+                "SELECT asset_id FROM price_experiments WHERE product_ref = ? ORDER BY id DESC LIMIT 1", (product_ref,)
+            )
+            return self.get_asset(exp["asset_id"]) if exp else None
+        if len({r["hypothesis_id"] for r in rows}) > 1:
             return None
         return rows[0]
+
+    def all_product_refs(self) -> list[str]:
+        refs = {r["product_ref"] for r in self._all("SELECT product_ref FROM assets WHERE product_ref IS NOT NULL")}
+        refs |= {r["product_ref"] for r in self._all("SELECT product_ref FROM price_experiments WHERE product_ref IS NOT NULL")}
+        return sorted(refs)
 
     def asset_by_title(self, title: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM assets WHERE lower(title) = lower(?) ORDER BY id DESC LIMIT 1", (title.strip(),))
@@ -624,6 +676,8 @@ class StateStore:
         return self._all("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
 
     def set_order_status(self, order_pk: int, status: str, asset_id: int | None = None) -> None:
+        if status != "delivering" and self.get(f"delivering:{order_pk}"):
+            self.set(f"delivering:{order_pk}", None)
         delivered = self.now() if status == "delivered" else None
         self._exec(
             "UPDATE orders SET status = ?, delivered_at = COALESCE(?, delivered_at), asset_id = COALESCE(?, asset_id), "
@@ -632,12 +686,144 @@ class StateStore:
             (status, delivered, asset_id, status, order_pk),
         )
 
+    def claim_order_for_delivery(self, order_pk: int) -> bool:
+        """paid → delivering, atomically. Only one worker (webhook or engine sweep) wins."""
+        cur = self._exec(
+            "UPDATE orders SET status = 'delivering' WHERE id = ? AND status = 'paid'",
+            (order_pk,),
+        )
+        if cur.rowcount == 1:
+            self.set(f"delivering:{order_pk}", self.now())
+        return cur.rowcount == 1
+
+    def release_order(self, order_pk: int) -> None:
+        self._exec("UPDATE orders SET status = 'paid' WHERE id = ? AND status = 'delivering'", (order_pk,))
+        self.set(f"delivering:{order_pk}", None)
+
+    def reset_stale_deliveries(self, older_than: timedelta = timedelta(minutes=15)) -> int:
+        """Orders stuck in 'delivering' (process died mid-send) go back to 'paid'."""
+        cutoff = self.clock() - older_than
+        n = 0
+        for row in self._all("SELECT id FROM orders WHERE status = 'delivering'"):
+            started = self.get(f"delivering:{row['id']}")
+            if not started or datetime.fromisoformat(started) < cutoff:
+                self.release_order(row["id"])
+                n += 1
+        return n
+
     def record_delivery_failure(self, order_pk: int, max_attempts: int = 3) -> None:
         self._exec("UPDATE orders SET delivery_attempts = delivery_attempts + 1 WHERE id = ?", (order_pk,))
         self._exec(
             "UPDATE orders SET status = 'needs_manual_delivery' WHERE id = ? AND delivery_attempts >= ?",
             (order_pk, max_attempts),
         )
+
+    def orders_since(self, hypothesis_id: int, since: datetime) -> int:
+        return int(
+            self._one(
+                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND occurred_at >= ? AND status != 'refunded'",
+                (hypothesis_id, iso(since)),
+            )["n"]  # type: ignore[index]
+        )
+
+    def orders_for_refs(self, refs: list[str], since: str | None = None) -> int:
+        if not refs:
+            return 0
+        marks = ",".join("?" * len(refs))
+        sql = f"SELECT COUNT(*) AS n FROM orders WHERE product_ref IN ({marks}) AND status != 'refunded'"
+        args: tuple = tuple(refs)
+        if since:
+            sql += " AND occurred_at >= ?"
+            args += (since,)
+        return int(self._one(sql, args)["n"])  # type: ignore[index]
+
+    def get_order(self, provider: str, order_id: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM orders WHERE provider = ? AND order_id = ?", (provider, order_id))
+
+    # -- webhooks ---------------------------------------------------------------
+    def claim_webhook_event(self, event_id: str, event_type: str) -> bool:
+        """Atomically mark an event as seen. False means it was already handled (duplicate/replay)."""
+        cur = self._exec(
+            "INSERT OR IGNORE INTO webhook_events (event_id, type, status, received_at) VALUES (?,?,?,?)",
+            (event_id, event_type, "processing", self.now()),
+        )
+        return cur.rowcount == 1
+
+    def finish_webhook_event(self, event_id: str, status: str, detail: str = "") -> None:
+        self._exec("UPDATE webhook_events SET status = ?, detail = ? WHERE event_id = ?", (status, detail[:500], event_id))
+
+    def release_webhook_event(self, event_id: str) -> None:
+        """Forget a claim so Stripe's retry of a failed event is processed again."""
+        self._exec("DELETE FROM webhook_events WHERE event_id = ?", (event_id,))
+
+    def webhook_event_counts(self) -> dict[str, int]:
+        return {r["status"]: r["n"] for r in self._all("SELECT status, COUNT(*) AS n FROM webhook_events GROUP BY status")}
+
+    def upsert_checkout_session(
+        self, session_id: str, product_ref: str | None, payment_intent: str | None, status: str,
+        payment_status: str | None, email: str | None, amount_cents: int | None,
+    ) -> None:
+        self._exec(
+            "INSERT INTO checkout_sessions (session_id, product_ref, payment_intent, status, payment_status, email, "
+            "amount_cents, updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET "
+            "product_ref = COALESCE(excluded.product_ref, product_ref), payment_intent = COALESCE(excluded.payment_intent, payment_intent), "
+            "status = excluded.status, payment_status = excluded.payment_status, email = COALESCE(excluded.email, email), "
+            "amount_cents = COALESCE(excluded.amount_cents, amount_cents), updated_at = excluded.updated_at",
+            (session_id, product_ref, payment_intent, status, payment_status, email, amount_cents, self.now()),
+        )
+
+    def session_for_payment_intent(self, payment_intent: str) -> dict[str, Any] | None:
+        return self._one("SELECT * FROM checkout_sessions WHERE payment_intent = ?", (payment_intent,))
+
+    def initiations_for_refs(self, refs: list[str], since: str | None = None) -> int:
+        if not refs:
+            return 0
+        marks = ",".join("?" * len(refs))
+        sql = f"SELECT COUNT(*) AS n FROM checkout_sessions WHERE product_ref IN ({marks})"
+        args: tuple = tuple(refs)
+        if since:
+            sql += " AND updated_at >= ?"
+            args += (since,)
+        return int(self._one(sql, args)["n"])  # type: ignore[index]
+
+    # -- price experiments --------------------------------------------------------
+    def start_experiment(
+        self, asset_id: int, hypothesis_id: int | None, price_cents: int, provider: str,
+        product_ref: str | None, checkout_url: str | None, views_at_start: int,
+    ) -> int:
+        self._exec(
+            "UPDATE price_experiments SET status = 'ended', ended_at = ? WHERE asset_id = ? AND status = 'running'",
+            (self.now(), asset_id),
+        )
+        cur = self._exec(
+            "INSERT INTO price_experiments (asset_id, hypothesis_id, price_cents, provider, product_ref, checkout_url, "
+            "views_at_start, started_at) VALUES (?,?,?,?,?,?,?,?)",
+            (asset_id, hypothesis_id, price_cents, provider, product_ref, checkout_url, views_at_start, self.now()),
+        )
+        return int(cur.lastrowid)
+
+    def running_experiment(self, asset_id: int) -> dict[str, Any] | None:
+        return self._one(
+            "SELECT * FROM price_experiments WHERE asset_id = ? AND status IN ('running','converged') ORDER BY id DESC LIMIT 1",
+            (asset_id,),
+        )
+
+    def experiments_for_hypothesis(self, hypothesis_id: int) -> list[dict[str, Any]]:
+        return self._all("SELECT * FROM price_experiments WHERE hypothesis_id = ? ORDER BY id", (hypothesis_id,))
+
+    def update_experiment(self, exp_id: int, **fields: Any) -> None:
+        allowed = {"views", "initiations", "status", "reason", "ended_at"}
+        if set(fields) - allowed:
+            raise ValueError(f"cannot update experiment fields {sorted(set(fields) - allowed)}")
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self._exec(f"UPDATE price_experiments SET {cols} WHERE id = ?", (*fields.values(), exp_id))
+
+    # -- durability ---------------------------------------------------------------
+    def checkpoint(self) -> None:
+        """Flush the WAL into the main database file (safe shutdown point)."""
+        if self.db_path != ":memory:":
+            with self._lock:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
     def order_counts(self) -> dict[str, int]:
         return {r["status"]: r["n"] for r in self._all("SELECT status, COUNT(*) AS n FROM orders GROUP BY status")}

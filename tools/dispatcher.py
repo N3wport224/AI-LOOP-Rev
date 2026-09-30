@@ -285,9 +285,19 @@ class Dispatcher:
         )
         return Email(to=row["recipient"], subject=row["subject"], body=row["body"].rstrip() + footer, kind="outreach", headers=headers)
 
-    def compose_delivery(self, to: str, title: str, zip_name: str, content: bytes) -> Email:
+    def compose_delivery(self, to: str, title: str, zip_name: str, content: bytes, order: dict[str, Any] | None = None) -> Email:
+        receipt = ""
+        if order:
+            receipt = (
+                "\n\nReceipt\n-------\n"
+                f"Order:   {order.get('provider', '')}:{order.get('order_id', '')}\n"
+                f"Item:    {title}\n"
+                f"Amount:  ${(order.get('gross_cents') or 0) / 100:.2f} {self.config.currency.upper()}\n"
+                f"Date:    {order.get('occurred_at', '')}\n"
+            )
         body = (
-            f"Hi,\n\nThanks for buying {title}! Your dataset is attached ({zip_name}): CSV + JSON + the executive summary.\n\n"
+            f"Hi,\n\nThanks for buying {title}! Your dataset is attached ({zip_name}): CSV + JSON + the executive summary."
+            f"{receipt}\n"
             "If anything is missing or wrong, just reply to this email.\n\n"
             f"{self.config.sender_name or 'AutoMonetize'}"
         )
@@ -367,7 +377,7 @@ class Dispatcher:
         content = zip_path.read_bytes()
         if len(content) > MAX_ATTACHMENT_BYTES:
             raise ValueError(f"{zip_path.name} is too large to attach ({len(content)} bytes)")
-        email = self.compose_delivery(order["email"], title, zip_path.name, content)
+        email = self.compose_delivery(order["email"], title, zip_path.name, content, order)
         backend = self.backend_for("delivery")
         if not self.live or backend is None:
             logged = set(self.state.get("delivery_dry_run_logged", []))

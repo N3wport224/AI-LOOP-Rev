@@ -33,7 +33,7 @@ def test_price_tiers_clamped_to_band():
     assert price_for(3, tiers) == 500
     assert price_for(25, tiers) == 900
     assert price_for(500, tiers) == 1500
-    assert price_for(1000, [[0, 99], [10, 5000]]) == 1500
+    assert price_for(1000, [[0, 99], [10, 5000]]) == 1900
     assert price_for(1, [[0, 99]]) == 500
 
 
@@ -73,7 +73,7 @@ def test_checkout_payload_shape():
     assert d["relationships"]["variant"]["data"] == {"type": "variants", "id": "22"}
 
 
-@pytest.mark.parametrize("cents", [0, 499, 1501, 5000])
+@pytest.mark.parametrize("cents", [0, 499, 1901, 5000])
 def test_price_band_enforced(cents):
     with pytest.raises(ValueError):
         validate_price(cents)

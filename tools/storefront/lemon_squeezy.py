@@ -143,6 +143,23 @@ class LemonSqueezyStorefront:
             provider_delivers=dedicated and has_file,
         )
 
+    def create_link(self, title: str, summary: str, price_cents: int, meta: dict[str, str]) -> tuple[str, str, str]:
+        """A new checkout at a different price for the same niche (used by the pricing engine)."""
+        niche = meta.get("niche", "")
+        variant_id, dedicated = self.variant_for(niche)
+        listing = Listing(
+            asset_id=int(meta.get("asset_id") or 0), hypothesis_id=int(meta.get("hypothesis_id") or 0), niche=niche,
+            title=title, summary=summary, description_md="", price_cents=price_cents, zip_path="",
+        )
+        checkout = self.client.create_checkout(
+            build_checkout_payload(self.config.lemonsqueezy_store_id, variant_id, listing, self.config.pages_base_url)
+        )
+        ref = variant_id if dedicated else f"ls-shared:{variant_id}:{listing.asset_id}"
+        return ref, checkout["attributes"]["url"], variant_id
+
+    def deactivate(self, ref: str) -> None:
+        """Lemon Squeezy checkouts can't be disabled through the API; old URLs simply stop being linked."""
+
     def fetch_orders(self, product_refs: list[str], since: datetime) -> list[Order]:
         if not self.configured():
             return []

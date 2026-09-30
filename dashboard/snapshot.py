@@ -97,4 +97,19 @@ def _distribution(state: StateStore, config: Config) -> dict[str, Any]:
         "sent_today": state.sent_since(day),
         "dry_run_today": int(state.get(f"dry_run_count:{day.date()}", 0)),
         "suppressed": len(state.list_suppressed()),
+        "webhook": {
+            "configured": bool(config.stripe_webhook_secret),
+            "last_event": state.get("webhook_last_event"),
+            "events": state.webhook_event_counts(),
+        },
+        "last_sale": state.get("last_sale"),
+        "pricing": [
+            {k: e[k] for k in ("asset_id", "price_cents", "status", "views", "initiations", "reason")}
+            for h in ([state.active_hypothesis()] if state.active_hypothesis() else [])
+            for e in state.experiments_for_hypothesis(h["id"]) if e["status"] in ("running", "converged")
+        ],
+        "syndicated": {k.split(":", 1)[1]: state.get(k) for k in ("syndicated:devto", "syndicated:hashnode", "syndicated:github_discussions") if state.get(k)},
+        "feed_items": len(state.get("feed_items", []) or []),
+        "offline_since": state.get("offline_since"),
+        "last_shutdown": state.get("last_shutdown"),
     }

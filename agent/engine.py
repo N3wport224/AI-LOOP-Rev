@@ -44,11 +44,14 @@ PLAN: list[tuple[str, int]] = [
     ("package_asset", 20),
     ("publish_listing", 25),
     ("publish_showcase", 30),
+    ("syndicate", 31),
+    ("build_site", 32),
     ("stage_outreach", 35),
     ("dispatch_outreach", 40),
     ("sync_revenue", 45),
     ("deliver_orders", 50),
     ("collect_metrics", 55),
+    ("optimize_pricing", 60),
 ]
 BUILTIN_TASKS = {"sync_revenue"}
 
@@ -73,6 +76,7 @@ class Engine:
         toolkit: Toolkit | None = None,
         transport=None,
         sleep: Callable[[float], None] = time.sleep,
+        online_check: Callable[[], bool] | None = None,
     ):
         config.ensure_dirs()
         self.config = config
@@ -94,6 +98,11 @@ class Engine:
             for task in strategy.tasks:
                 self.handlers[task] = strategy
         self._stop_event = threading.Event()
+        if online_check is None:
+            from agent.connectivity import is_online
+
+            online_check = lambda: is_online(config.network_check_hosts)  # noqa: E731
+        self.online_check = online_check
 
     # ------------------------------------------------------------------ emergency stop
     def _load_breaker(self) -> None:
@@ -169,6 +178,17 @@ class Engine:
         if stopped:
             self.state.log_action(cycle, None, "cycle", "skipped", why)
             return CycleReport(cycle, "stopped", message=why)
+
+        if not self.online_check():
+            # Network down (wifi drop, laptop asleep, proxy gone): wait it out without burning
+            # retries or counting failures toward the emergency stop.
+            if not self.state.get("offline_since"):
+                self.state.set("offline_since", self.state.now())
+            self.state.log_action(cycle, None, "cycle", "skipped", "offline: waiting for network")
+            return CycleReport(cycle, "offline", message="network unreachable")
+        if self.state.get("offline_since"):
+            self.state.log_action(cycle, None, "network", "ok", f"back online (offline since {self.state.get('offline_since')})")
+            self.state.set("offline_since", None)
 
         self.breaker.begin_cycle()
         report = CycleReport(cycle, "ran")

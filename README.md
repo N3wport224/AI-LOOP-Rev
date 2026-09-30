@@ -6,19 +6,27 @@ revenue** with zero startup capital. Every cycle it:
 1. collects hiring data from public job-board APIs;
 2. turns it into **company-level tech-stack intelligence** (stack fingerprints, hiring-intent
    signals, urgency scores, verified careers URLs) packaged as a paid dataset;
-3. **publishes** it: a live checkout (Stripe Payment Link or Lemon Squeezy), a sales lander,
-   and a sanitized free preview in a public GitHub `showcase/` directory or Gist;
-4. **distributes** it: personalized outreach drafts, sent after human approval under
-   warm-up caps and CAN-SPAM rules;
-5. **closes the loop**: polls orders, records verified revenue, emails each buyer their file;
-6. **scores** the hypothesis on its funnel (impressions → views → purchases) and pivots
-   to an adjacent, higher-demand stack cluster when it isn't converting.
+3. **publishes** it: a live checkout (Stripe Payment Link or Lemon Squeezy), an SEO lander
+   with `schema.org/Product` markup on GitHub Pages, and a sanitized free preview;
+4. **distributes** it inbound, with no approval needed: a weekly data-driven "Tech Radar"
+   article syndicated to Dev.to, Hashnode, GitHub Discussions and an RSS feed, linking back
+   to the lander and checkout. (Cold outreach still exists, but only sends drafts a human approved.)
+5. **sells in real time**: a signature-verified Stripe webhook records verified revenue and
+   emails the buyer their zip plus a receipt seconds after payment; polling reconciles anything missed;
+6. **optimizes price**: experiments across $5/$9/$14/$19 per dataset, steps down or bundles
+   2-for-1 when traffic doesn't convert, steps up and converges when it does, and on strong
+   demand scrapes deeper and ships a $19 premium deep-dive add-on;
+7. **scores** each hypothesis on its funnel and pivots to an adjacent, higher-demand stack
+   cluster when it isn't converting.
 
-> **Reality check.** None of this guarantees income. The machinery runs without supervision
-> once configured, but two things stay deliberately human: approving cold emails, and the
-> one-time account setup (Stripe, or the Lemon Squeezy product). Everything is dry-run
-> until you turn it off. Only revenue confirmed by a payment provider API (or entered by
-> you with `--verified`) counts toward the target.
+It runs as a supervised daemon (engine + webhook listener) under launchd or systemd,
+survives crashes, reboots, sleep and network drops, and shuts down cleanly on SIGTERM.
+
+> **Reality check.** None of this guarantees income. Once configured, the sales path
+> (checkout → payment → delivery → revenue) and inbound publishing run without anyone
+> watching. What stays human: one-time account setup, approving any cold email, and exposing
+> the webhook endpoint publicly (a tunnel or host, see below). Only revenue confirmed by a
+> payment provider counts toward the target.
 
 ## How it works
 
@@ -26,21 +34,27 @@ revenue** with zero startup capital. Every cycle it:
  guard → observe → reflect/pivot → plan → act (≤ max_actions_per_cycle, 3 attempts per task)
                                             │
   aggregate_leads → build_intel → package_asset → publish_listing → publish_showcase
-  → stage_outreach → dispatch_outreach → sync_revenue → deliver_orders → collect_metrics
+  → syndicate → build_site → stage_outreach → dispatch_outreach → sync_revenue
+  → deliver_orders → collect_metrics → optimize_pricing
+
+ in parallel (supervised thread): Stripe webhook → verify → record revenue → email zip + receipt
 ```
 
 | Task | Module | What it does |
 |---|---|---|
 | `aggregate_leads` | `strategies/b2b_lead_aggregator.py` | Remote OK, Arbeitnow and HN "Who is hiring" APIs → validated, enriched, deduplicated leads. Every valid lead also goes into a demand pool used for pivots. |
 | `build_intel` | `strategies/tech_stack_intel.py` | Per company: stack fingerprint (languages, frameworks, databases, data platform, cloud, infra, observability, AI/ML), intent triggers (migration, legacy refactor, ERP integration, new team, greenfield, scaling, urgent hire, funding), urgency score 0-100, careers URL verified with a live HTTP 2xx. Writes `tech_radar.json/.csv` and `EXECUTIVE_TECH_RADAR.md`. |
-| `package_asset` | `strategies/digital_asset_packager.py` | Versioned zip (radar + CSV/JSON + role directory + attribution), listing with a tiered price ($5/$9/$15 by company count), 5-record sanitized sample. |
+| `package_asset` | `strategies/digital_asset_packager.py` | Versioned zip (radar + CSV/JSON + role directory + attribution), listing with a starting price by company count, 5-record sanitized sample. |
 | `publish_listing` | `strategies/distribution_engine.py` + `tools/storefront/` | Opens or reuses a checkout on the active storefront and deploys the lander (local `data/site/`, optionally GitHub Pages). Won't sell what it can't deliver. |
 | `publish_showcase` | `strategies/distribution_engine.py` | Sanitized preview with the checkout link → `data/showcase/<niche>/`, plus GitHub repo `showcase/<niche>/README.md` or a public Gist. |
+| `syndicate` | `strategies/inbound_syndicator.py`, `tools/syndicator.py` | This week's radar article → RSS always; Dev.to / Hashnode / GitHub Discussions when configured (max one post per platform per week); Substack paste-ready file. |
+| `build_site` | `strategies/inbound_syndicator.py`, `tools/page_builder.py` | Product page per dataset, bundle and add-on (JSON-LD, OG tags, canonical, KPIs, sample, CTA) plus index, `sitemap.xml`, `robots.txt`, `feeds/radar.xml`; committed to GitHub Pages. |
 | `stage_outreach` | `strategies/outreach_stager.py` | Personalized drafts → `pending_review`. |
 | `dispatch_outreach` | `tools/dispatcher.py`, `tools/inbox.py` | Honours unsubscribe replies (IMAP), then sends **approved** drafts. Dry run by default. |
 | `sync_revenue` | `tools/revenue_tracker.py` | Polls Stripe sessions, Lemon Squeezy orders and Gumroad sales; records verified net revenue and attributes it to a hypothesis. |
 | `deliver_orders` | `strategies/distribution_engine.py` | Emails each paid order its zip. |
-| `collect_metrics` | `strategies/distribution_engine.py` | Impressions (sent outreach + live surfaces), views (GitHub traffic on the showcase path), purchases. |
+| `collect_metrics` | `strategies/distribution_engine.py` | Impressions (sent outreach, live surfaces, syndicated posts), views (GitHub traffic on the showcase path), purchases. |
+| `optimize_pricing` | `agent/pricing_engine.py` | Price experiments, bundles, demand-driven depth and premium add-ons (see below). |
 
 ### Hypotheses, scoring and pivots (`agent/hypotheses.py`)
 
@@ -71,7 +85,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
-pytest                     # 163 tests, ~5 s, no network
+pytest                     # 222 tests, ~10 s, no network
 ```
 
 Existing databases from earlier versions are migrated automatically on open.
@@ -112,7 +126,7 @@ So:
 
 The agent verifies the variant (`GET /v1/variants/:id`), checks for an attached file
 (`GET /v1/files?filter[variant_id]=`), creates a checkout per dataset (`POST /v1/checkouts`
-with `custom_price` in the $5-$15 band) and polls `GET /v1/orders`.
+with `custom_price` in the $5-$19 band) and polls `GET /v1/orders`.
 
 **Attribution caveat:** checkout custom data is only returned in webhooks, not by the orders
 API. Orders are matched by variant (exact with dedicated variants) or by product name (best
@@ -140,6 +154,100 @@ pages_base_url       = "https://you.github.io"
 Views come from `GET /repos/{repo}/traffic/popular/paths` (top 10 paths, rolling 14 days).
 GitHub exposes no view counts for Gists or Pages sites, so gist mode publishes but can't
 feed the views rule. `automonetize serve` hosts `data/site/` locally for previewing landers.
+
+## Real-time fulfilment: Stripe webhooks
+
+`tools/storefront/webhook_listener.py` runs an aiohttp server (default
+`127.0.0.1:8443/webhook`, plus `GET /healthz`) inside the supervisor. For every request it:
+
+1. verifies the `Stripe-Signature` header with `stripe.Webhook.construct_event` and
+   `STRIPE_WEBHOOK_SECRET`, rejecting anything unsigned, tampered or older than 5 minutes
+   (replay protection);
+2. deduplicates on the event id, since Stripe delivers at least once;
+3. matches the Checkout Session to its dataset by `payment_link` (or `metadata.asset_id`) and
+   takes the buyer from `customer_details.email`;
+4. records verified net revenue (the daily goal updates at once);
+5. answers 200, then emails the zip and a receipt in the background. An atomic claim
+   (`paid → delivering`) means the webhook and the engine's `deliver_orders` sweep can never
+   send twice; failed sends stay `paid` and are retried.
+
+Handled events: `checkout.session.completed` (paid now, or pending for delayed payment
+methods), `checkout.session.async_payment_succeeded`, `payment_intent.succeeded` (completes a
+pending session; a bare PaymentIntent carries no dataset or email, so it never creates an
+order on its own), and `checkout.session.expired` (feeds the cart drop-off metric).
+Polling (`sync_revenue`) stays on as reconciliation: it uses the same order id, so a sale is
+never counted twice, and it catches anything sent while the machine was asleep.
+
+### Local development with the Stripe CLI
+
+```bash
+brew install stripe/stripe-cli/stripe && stripe login
+stripe listen --forward-to localhost:8443/webhook \
+  --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.expired,payment_intent.succeeded
+# copy the printed "whsec_..." into .env as STRIPE_WEBHOOK_SECRET, then in another terminal:
+automonetize webhook --selftest          # checks the secret round-trips
+automonetize supervise                   # engine + listener (or: automonetize webhook for the listener only)
+stripe trigger checkout.session.completed
+```
+
+### Production
+
+Stripe must reach the endpoint over public HTTPS. The listener binds to localhost on
+purpose; expose it with a tunnel (Cloudflare Tunnel's free tier, or ngrok) or run on a
+small VPS behind a reverse proxy. Then Dashboard → Developers → Webhooks → *Add endpoint*
+`https://<your-host>/webhook` with the four events above, and put that endpoint's signing
+secret in `STRIPE_WEBHOOK_SECRET`. If the endpoint is unreachable for a while, Stripe retries
+for up to 3 days and polling covers the gap.
+
+## Inbound distribution
+
+* **Landers** (`tools/page_builder.py`): one page per dataset, bundle and premium add-on,
+  with `<title>`, meta description, canonical, Open Graph and product price tags, a
+  `schema.org/Product` + `Offer` JSON-LD block (escaped so it can't break out of its
+  `<script>`), urgency KPIs, the 5-record sample and the Payment Link. Plus `index.html`,
+  `sitemap.xml`, `robots.txt` and an RSS 2.0 feed at `feeds/radar.xml`. Written to
+  `data/site/` and committed to `github_pages_repo`, on `github_pages_branch` (e.g.
+  `gh-pages`) under `github_pages_dir` (`docs` by default, `""` for the root). Unchanged
+  files make no commit. Rebuild by hand with `automonetize site`.
+* **Syndication** (`tools/syndicator.py`): a weekly article from the active niche's radar,
+  with a headline that only claims what the data shows (e.g. *"Weekly Tech Radar: Top 10
+  Python Companies Planning Migrations (PostgreSQL Leads Their Stacks)"*), a top-10 table,
+  stack adoption, signals, method, and a footer linking the free preview, the checkout and
+  the canonical lander.
+
+| Channel | Setup | Notes |
+|---|---|---|
+| RSS | none | Always on; Substack, Medium and newsletter tools can import from it |
+| Dev.to | `DEVTO_API_KEY` (Settings → Extensions) | Sets `canonical_url`; `syndication_publish = false` makes drafts |
+| Hashnode | `HASHNODE_TOKEN` + `hashnode_publication_id` | GraphQL `publishPost` with `originalArticleURL` |
+| GitHub Discussions | `github_discussions_repo` (Discussions enabled) + token with Discussions write | Category from `github_discussions_category` |
+| Substack | none | No public posting API: paste-ready file in `data/syndication/substack/` |
+
+At most one post per platform every `syndication_interval_days` (7), each article once, and
+only when at least `syndication_min_companies` (10) back it. Contact details are never included.
+`automonetize syndicate [--drafts]` runs it on demand.
+
+## Pricing engine
+
+`agent/pricing_engine.py` runs one price experiment per live dataset, each with its own
+Stripe Price and Payment Link, so every order maps to the price that produced it. Links from
+earlier experiments stay attributable. It tracks showcase views gained since the experiment
+started, checkout initiations (all Checkout Sessions: open, complete or expired), completed
+orders and cart drop-off.
+
+| Condition | Action |
+|---|---|
+| > 20 views, 0 orders, experiment ≥ 48h old | new Price one tier down ($19 → $14 → $9 → $5) |
+| same at $5 | 2-for-1 bundle with another niche's dataset (prefers adjacent clusters), at the higher price |
+| ≥ 2 orders at the current price | test one tier up, unless it already earned less per view |
+| 1 order in > 20 views after 48h | explore the cheaper tier once, then settle on the best |
+| neighbouring tiers tested and worse | **converge**: hold the best revenue-per-view tier |
+| > 2 sales in 24h for the niche | scraping depth +1 (more Arbeitnow pages, more HN comments, broader keywords) and a $19 premium deep-dive (per-company profiles), at most weekly |
+
+Revenue per view uses a smoothed conversion estimate, so a single lucky sale can't lock a
+price in. The tests drive the decision rule against three demand curves and check it
+converges on the best tier each time. Needs a Stripe secret key (or Lemon Squeezy); Gumroad
+prices are manual. `automonetize pricing status` shows every experiment.
 
 ## Email: outreach and delivery
 
@@ -189,16 +297,50 @@ automonetize orders list; tail data/dispatched_audit.log
 # 2. go live
 sed -i 's/^DRY_RUN=.*/DRY_RUN=false/' .env
 
-# 3. run unattended (pick one)
+# 3. run unattended: the supervisor runs the engine + webhook listener (pick one)
+deploy/install_launchd.sh              # macOS (below)
 cp deploy/automonetize.service ~/.config/systemd/user/ && \
-  systemctl --user daemon-reload && systemctl --user enable --now automonetize
-# or: crontab -e   (see deploy/crontab.example: one cycle per hour)
-# or: nohup automonetize run --headless > data/nohup.out 2>&1 &
+  systemctl --user daemon-reload && systemctl --user enable --now automonetize   # Linux
+# or in a terminal: automonetize supervise
+# (engine only, no webhooks: deploy/crontab.example or `automonetize run --headless`)
 
 # 4. watch it
 automonetize dashboard --watch         # or: automonetize status --json
-journalctl --user -u automonetize -f   # also data/agent.log
+tail -f ~/Library/Logs/automonetize.stdout.log   # macOS; Linux: journalctl --user -u automonetize -f
 ```
+
+### macOS: launchd
+
+```bash
+deploy/install_launchd.sh              # renders deploy/com.automonetize.agent.plist into
+                                       # ~/Library/LaunchAgents/, lints it, bootstraps and starts it
+launchctl print gui/$(id -u)/com.automonetize.agent | head -30   # state, PID, last exit
+launchctl kickstart -k gui/$(id -u)/com.automonetize.agent        # restart
+deploy/install_launchd.sh uninstall    # stop and remove
+```
+
+The agent starts at login (`RunAtLoad`), restarts whenever it exits (`KeepAlive = true`,
+at most every 30 s via `ThrottleInterval`), and logs to
+`~/Library/Logs/automonetize.stdout.log` / `.stderr.log`. Secrets are not copied into the
+plist: `deploy/run_agent.sh` sources `.env` at every start, then `exec`s
+`automonetize supervise`, so launchd's SIGTERM reaches the supervisor directly.
+`ExitTimeOut` gives it 90 s to finish up.
+
+### Supervisor and resilience (`agent/supervisor.py`)
+
+* The **engine** and **webhook** workers run as threads sharing one lock-guarded SQLite
+  connection. A crashed worker restarts with exponential backoff. More than 5 crashes in 10
+  minutes shuts everything down if it's the engine, or disables just the webhook (polling
+  then covers orders).
+* **SIGTERM / SIGINT / SIGHUP** → stop taking work, let the current cycle and in-flight
+  fulfilment finish (≤ `shutdown_timeout_seconds`), `PRAGMA wal_checkpoint(TRUNCATE)`,
+  write an operational checkpoint (`last_shutdown`: reason, iteration, per-worker
+  starts/crashes), release `data/agent.lock`.
+* **Network drops and sleep**: each cycle first probes `network_check_hosts` (or the
+  `HTTPS_PROXY`). If nothing answers, the cycle is skipped as *offline*, with no retries burned
+  and no failures counted toward the emergency stop, and the loop resumes by itself.
+* **Reboots**: launchd/systemd restart the supervisor; state, backlog, experiments and
+  undelivered orders all live in SQLite.
 
 Your recurring job: `automonetize outreach list --full` → approve/reject every day or two,
 and `automonetize orders list --status needs_manual_delivery` if you use Lemon Squeezy with
@@ -220,9 +362,15 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `interval_seconds` | `3600` | Time between cycles |
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `12` / `60` / `5` | Circuit breakers |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `16` / `60` / `5` | Circuit breakers |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
-| `price_tiers` | `[[0,500],[25,900],[75,1500]]` | Price by company count, clamped to $5-$15 |
+| `price_tiers` | `[[0,500],[25,900],[75,1500]]` | Starting price by company count, clamped to $5-$19 |
+| `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[500,900,1400,1900]` / `20` / `48` | Price experiments |
+| `demand_sales_threshold` / `premium_price_cents` / `max_scrape_depth` | `3` / `1900` / `3` | Demand expansion |
+| `stripe_webhook_secret` / `webhook_host` / `webhook_port` / `webhook_path` | env / `127.0.0.1` / `8443` / `/webhook` | Webhook listener |
+| `network_check_hosts` | Stripe + GitHub API | Offline probe (`[]` disables) |
+| `github_pages_branch` / `github_pages_dir` / `site_title` | `""` / `docs` / `Tech Stack Intel` | Site publishing |
+| `syndication_publish` / `syndication_interval_days` / `syndication_min_companies` | `true` / `7` / `10` | Syndication |
 | `allow_manual_fulfillment` | `false` | Sell even when the agent can't email the file |
 | `intel_max_url_checks` / `high_urgency_threshold` | `15` / `60` | Careers URL checks per cycle; "hot" cutoff |
 | `github_showcase_repo` / `github_showcase_mode` / `github_pages_repo` / `pages_base_url` | empty / `repo` | Publishing targets |
@@ -235,7 +383,10 @@ their conventional unprefixed names. Unknown keys are rejected.
 ## CLI
 
 ```
+automonetize supervise [--no-webhook] [--headless]   # daemon: engine + webhook listener
+automonetize webhook [--port P] [--selftest]         # listener only
 automonetize run [--once|--cycles N] [--interval S] [--headless]
+automonetize site | syndicate [--drafts] | pricing status|run
 automonetize dashboard [--watch] | status [--json] | hypotheses
 automonetize outreach list [--full] | approve ID… | reject ID… | export | mark-sent ID…
 automonetize dispatch [--check]           # send approved outreach now
@@ -274,8 +425,22 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 163 tests, no network
+pytest     # 222 tests, ~10 s, no network
 ```
+
+Phase 3 adds: webhook signature verification with both the Stripe SDK and the built-in
+verifier (tampered, wrong-secret, stale/replayed and malformed signatures), event-id dedupe,
+webhook/polling idempotency, async payments via `payment_intent.succeeded`, expired sessions,
+metadata attribution, 500-and-retry on processing errors, concurrent fulfilment sending
+exactly one email with receipt, the aiohttp app and a real-socket server; JSON-LD validity
+and `<script>` breakout resistance, SEO tags, sitemap and RSS 2.0 XML compliance, Pages
+branch publishing, article and platform payloads, syndication cadence and dedupe; pricing
+decision rules, convergence against three simulated demand curves, repricing through fake
+Stripe (new link, idempotency key, old link deactivated, lander updated, old link still
+attributable), bundles, demand expansion, premium add-ons, drop-off, Arbeitnow paging;
+supervisor lifecycle, SIGTERM/SIGINT shutdown with handler restore, WAL checkpoint, lock
+release, crash restart with backoff, crash-loop handling, the supervised webhook serving
+requests, offline cycles, and launchd plist validity.
 
 Coverage includes the engine loop and circuit breakers; tool sandbox boundaries; Stripe
 (form encoding, idempotency, link reuse and deactivation, session pagination); Lemon Squeezy

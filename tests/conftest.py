@@ -153,6 +153,7 @@ def config(tmp_path: Path) -> Config:
             {"name": "python-remote", "keywords": ["python", "django", "fastapi", "flask"]},
             {"name": "rust-systems", "keywords": ["rust"]},
         ],
+        network_check_hosts=[],
     )
 
 

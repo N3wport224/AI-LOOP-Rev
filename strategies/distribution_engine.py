@@ -66,6 +66,34 @@ def render_showcase_md(listing: Listing, checkout_url: str, lander_url: str = ""
     return "\n".join(lines) + "\n"
 
 
+def fulfil_order(tools, order: dict[str, Any]) -> str:
+    """Deliver one paid order. Shared by the webhook (instant) and ``deliver_orders`` (retry sweep).
+
+    Returns ``delivered``, ``dry_run``, ``failed`` or ``manual``. Safe to call twice: an order that is
+    no longer ``paid`` is left alone."""
+    current = tools.state.get_order(order["provider"], order["order_id"]) or order
+    if current["status"] != "paid":
+        return {"delivered": "delivered", "delivering": "in_progress"}.get(current["status"], "manual")
+    if not tools.state.claim_order_for_delivery(current["id"]):
+        return "in_progress"  # another worker got there first
+    asset = tools.state.get_asset(current["asset_id"]) if current["asset_id"] else None
+    if asset is None or not current["email"]:
+        tools.state.set_order_status(current["id"], "needs_manual_delivery")
+        return "manual"
+    try:
+        outcome = tools.dispatcher.deliver(current, asset["title"], tools.files.resolve(asset["path"]))
+    except Exception as exc:  # noqa: BLE001
+        tools.state.release_order(current["id"])
+        tools.state.record_delivery_failure(current["id"])
+        tools.state.log_error("fulfilment", f"order {current['provider']}:{current['order_id']} delivery failed: {exc!r}")
+        return "failed"
+    if outcome == "delivered":
+        tools.state.set_order_status(current["id"], "delivered")
+    else:
+        tools.state.release_order(current["id"])
+    return outcome
+
+
 class DistributionEngine(Strategy):
     name = "distribution_engine"
     tasks = ("publish_listing", "publish_showcase", "dispatch_outreach", "deliver_orders", "collect_metrics")
@@ -177,23 +205,12 @@ class DistributionEngine(Strategy):
     def deliver_orders(self, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
         delivered = pending = failed = 0
+        tools.state.reset_stale_deliveries()
         for order in tools.state.orders_to_deliver():
-            asset = tools.state.get_asset(order["asset_id"]) if order["asset_id"] else None
-            if asset is None or not order["email"]:
-                tools.state.set_order_status(order["id"], "needs_manual_delivery")
-                continue
-            try:
-                outcome = tools.dispatcher.deliver(order, asset["title"], tools.files.resolve(asset["path"]))
-            except Exception as exc:  # noqa: BLE001
-                tools.state.record_delivery_failure(order["id"])
-                tools.state.log_error("fulfilment", f"order {order['provider']}:{order['order_id']} delivery failed: {exc!r}")
-                failed += 1
-                continue
-            if outcome == "delivered":
-                tools.state.set_order_status(order["id"], "delivered")
-                delivered += 1
-            else:
-                pending += 1
+            outcome = fulfil_order(tools, order)
+            delivered += outcome == "delivered"
+            pending += outcome == "dry_run"
+            failed += outcome == "failed"
         manual = tools.state.order_counts().get("needs_manual_delivery", 0)
         return TaskResult(
             True,

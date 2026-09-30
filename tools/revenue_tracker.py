@@ -163,7 +163,9 @@ class RevenueTracker:
             if order.refunded or not order.order_id:
                 report.skipped += 1
                 continue
-            asset = self.state.asset_for_product(order.product_ref) if order.product_ref else None
+            asset = self.state.get_asset(order.asset_id) if getattr(order, "asset_id", None) else None
+            if asset is None and order.product_ref:
+                asset = self.state.asset_for_product(order.product_ref)
             if asset is None and order.product_name:
                 asset = self.state.asset_by_title(order.product_name)
             fee = min(order.gross_cents, round(order.gross_cents * fee_pct / 100) + fee_fixed_cents) if order.gross_cents > 0 else 0
@@ -194,7 +196,7 @@ class RevenueTracker:
 
     def sync_storefronts(self, storefronts: list[Any], days_back: int = 3) -> list[SyncReport]:
         since = self.state.clock() - timedelta(days=days_back)
-        refs = [a["product_ref"] for a in self.state.list_assets() if a.get("product_ref")]
+        refs = self.state.all_product_refs()
         reports = []
         for sf in storefronts:
             if sf.name == "gumroad":

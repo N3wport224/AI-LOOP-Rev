@@ -31,7 +31,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 12
+    max_actions_per_cycle: int = 16
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3
@@ -125,6 +125,40 @@ class Config:
     imap_username: str = ""
     imap_password: str = ""
 
+    # Stripe webhooks (real-time fulfilment)
+    stripe_webhook_secret: str = ""
+    webhook_host: str = "127.0.0.1"
+    webhook_port: int = 8443
+    webhook_path: str = "/webhook"
+    webhook_tolerance_seconds: int = 300
+
+    # Resilience
+    network_check_hosts: list[str] = field(default_factory=lambda: ["api.stripe.com:443", "api.github.com:443"])
+    supervisor_max_restarts: int = 5
+    supervisor_restart_window_seconds: int = 600
+    shutdown_timeout_seconds: float = 60.0
+
+    # Pricing engine
+    price_matrix: list[int] = field(default_factory=lambda: [500, 900, 1400, 1900])
+    pricing_min_views: int = 20
+    pricing_window_hours: int = 48
+    demand_sales_threshold: int = 3          # sales in 24h that count as strong demand (>2)
+    premium_price_cents: int = 1900
+    max_scrape_depth: int = 3
+
+    # Inbound site + syndication
+    github_pages_branch: str = ""            # "" = github_branch; e.g. "gh-pages"
+    github_pages_dir: str = "docs"           # "" to publish at the branch root
+    site_title: str = "Tech Stack Intel"
+    devto_api_key: str = ""
+    hashnode_token: str = ""
+    hashnode_publication_id: str = ""
+    github_discussions_repo: str = ""        # owner/repo with Discussions enabled
+    github_discussions_category: str = "Announcements"
+    syndication_publish: bool = True         # False = create drafts only (Dev.to) / skip live posting
+    syndication_interval_days: int = 7
+    syndication_min_companies: int = 10
+
     @property
     def db_path(self) -> Path:
         return self.data_dir / self.db_filename
@@ -181,10 +215,13 @@ _PLAIN_ENV = {
     "SMTP_PASSWORD": "smtp_password",
     "IMAP_PASSWORD": "imap_password",
     "DRY_RUN": "dry_run",
+    "STRIPE_WEBHOOK_SECRET": "stripe_webhook_secret",
+    "DEVTO_API_KEY": "devto_api_key",
+    "HASHNODE_TOKEN": "hashnode_token",
 }
 
-_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds"}
-_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map"}
+_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts"}
+_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix"}
 
 
 def _coerce(raw: str, default: Any, name: str) -> Any:

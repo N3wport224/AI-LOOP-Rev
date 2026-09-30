@@ -253,15 +253,23 @@ def matches_niche(lead: Lead, keywords: Iterable[str]) -> bool:
 
 
 # --------------------------------------------------------------------------- fetchers
-def fetch_remoteok(http) -> list[Lead]:
-    return parse_remoteok(http.get_json("https://remoteok.com/api"))
+def fetch_remoteok(http, depth: int = 1) -> list[Lead]:
+    return parse_remoteok(http.get_json("https://remoteok.com/api"))  # single endpoint: depth doesn't apply
 
 
-def fetch_arbeitnow(http) -> list[Lead]:
-    return parse_arbeitnow(http.get_json("https://www.arbeitnow.com/api/job-board-api"))
+def fetch_arbeitnow(http, depth: int = 1) -> list[Lead]:
+    leads: list[Lead] = []
+    for page in range(1, max(1, depth) + 1):
+        payload = http.get_json("https://www.arbeitnow.com/api/job-board-api", params={"page": page} if page > 1 else None)
+        batch = parse_arbeitnow(payload)
+        leads.extend(batch)
+        if not batch or not ((payload or {}).get("links") or {}).get("next"):
+            break
+    return leads
 
 
-def fetch_hn_hiring(http, max_comments: int = 400) -> list[Lead]:
+def fetch_hn_hiring(http, depth: int = 1, max_comments: int = 400) -> list[Lead]:
+    max_comments *= max(1, depth)
     search = http.get_json(
         "https://hn.algolia.com/api/v1/search_by_date",
         params={"tags": "story,author_whoishiring", "query": "who is hiring", "hitsPerPage": 5},
@@ -306,7 +314,9 @@ class LeadAggregator(Strategy):
         failed_sources: list[str] = []
         for source in sources:
             try:
-                raw.extend(self.fetchers[source](tools.http))
+                depth = int(ctx.params.get("depth", 1))
+                fetch = self.fetchers[source]
+                raw.extend(fetch(tools.http, depth=depth) if depth > 1 else fetch(tools.http))
             except CircuitOpenError:
                 raise  # budget exhausted: stop the whole task, don't blame the source
             except Exception as exc:  # noqa: BLE001 - one bad source must not sink the others

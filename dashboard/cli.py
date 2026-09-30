@@ -24,14 +24,15 @@ from tools.revenue_tracker import RevenueTracker
 
 EXAMPLE_CONFIG = """# AutoMonetize configuration. Environment variables AUTOMONETIZE_<KEY> override these.
 # Secrets belong in the environment (.env), not here: STRIPE_SECRET_KEY, LEMONSQUEEZY_API_KEY,
-# GITHUB_TOKEN, SENDGRID_API_KEY, POSTMARK_SERVER_TOKEN, SMTP_PASSWORD, IMAP_PASSWORD, GUMROAD_ACCESS_TOKEN.
+# GITHUB_TOKEN, SENDGRID_API_KEY, POSTMARK_SERVER_TOKEN, SMTP_PASSWORD, IMAP_PASSWORD, GUMROAD_ACCESS_TOKEN,
+# STRIPE_WEBHOOK_SECRET, DEVTO_API_KEY, HASHNODE_TOKEN.
 [automonetize]
 data_dir = "data"
 interval_seconds = 3600          # one cycle per hour
 pivot_after_iterations = 24      # cycles with zero verified revenue before a pivot
 signal_window_iterations = 12    # cycles with zero views AND zero sales before a pivot (needs GitHub traffic)
 daily_target_cents = 1000        # $10.00/day
-max_actions_per_cycle = 12
+max_actions_per_cycle = 16
 max_api_calls_per_cycle = 60
 max_consecutive_errors = 5
 http_rate_per_minute = 20
@@ -73,6 +74,29 @@ warmup_step_per_week = 5
 dispatch_max_per_day = 30
 imap_host = ""                   # poll replies and honour "unsubscribe" automatically
 imap_username = ""
+
+# Real-time fulfilment: Stripe webhooks (secret from `stripe listen` or the Dashboard endpoint)
+webhook_host = "127.0.0.1"
+webhook_port = 8443
+webhook_path = "/webhook"
+network_check_hosts = ["api.stripe.com:443", "api.github.com:443"]  # [] disables the offline check
+
+# Pricing engine: price experiments across these tiers (cents)
+price_matrix = [500, 900, 1400, 1900]
+pricing_min_views = 20           # views without a sale before stepping down...
+pricing_window_hours = 48        # ...once an experiment is this old
+demand_sales_threshold = 3       # sales in 24h that trigger deeper scraping + a premium add-on
+premium_price_cents = 1900
+
+# Inbound: landers, sitemap and RSS on GitHub Pages, weekly syndicated radars
+site_title = "Tech Stack Intel"
+# github_pages_branch = "gh-pages"  # default: github_branch
+# github_pages_dir = ""             # default "docs"; "" = branch root
+# hashnode_publication_id = ""
+# github_discussions_repo = "you/datasets"
+syndication_publish = true       # false = Dev.to drafts only
+syndication_interval_days = 7
+syndication_min_companies = 10
 
 sender_skills = ["python", "django", "aws"]
 outreach_offer = "short-term contract help"
@@ -384,6 +408,112 @@ def cmd_serve(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_supervise(args: argparse.Namespace, console: Console) -> int:
+    from agent.supervisor import Supervisor
+
+    config = Config.load(args.config)
+    config.ensure_dirs()
+    _setup_logging(config, args.headless, args.verbose)
+    engine = Engine(config)
+    stopped, why = engine.is_stopped()
+    if stopped:
+        console.print(f"[red]refusing to start: {why}. Run `automonetize resume` first.[/]")
+        return 3
+    log = logging.getLogger("automonetize.cli")
+
+    def on_cycle(report: CycleReport) -> None:
+        summary = "; ".join(f"{a['task']}={a['status']}" for a in report.actions) or report.message
+        log.info("cycle %s %s hypothesis=%s %s", report.cycle, report.status, report.hypothesis_key, summary)
+
+    sup = Supervisor(config, engine=engine, webhook=not args.no_webhook, interval=args.interval,
+                     max_cycles=args.cycles, on_cycle=on_cycle)
+    try:
+        reason = sup.run()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/]")
+        return 2
+    log.info("supervisor exited: %s", reason)
+    return 0
+
+
+def cmd_webhook(args: argparse.Namespace, console: Console) -> int:
+    import threading
+
+    from tools.storefront.webhook_listener import WebhookProcessor, WebhookServer, sign_payload
+
+    config = Config.load(args.config)
+    config.ensure_dirs()
+    engine = Engine(config)
+    if not config.stripe_webhook_secret:
+        console.print("[red]STRIPE_WEBHOOK_SECRET is not set (copy it from `stripe listen` or the Dashboard endpoint)[/]")
+        return 1
+    if args.selftest:
+        payload = json.dumps({"id": "evt_selftest", "type": "customer.created", "data": {"object": {}}}).encode()
+        out = WebhookProcessor(engine.tools).handle(payload, sign_payload(payload, config.stripe_webhook_secret))
+        console.print(f"signature check: {'[green]ok[/]' if out.status == 200 else f'[red]{out.status} {out.body}[/]'}")
+        return 0 if out.status == 200 else 1
+    _setup_logging(config, True, args.verbose)
+    server = WebhookServer(engine.tools, port=args.port)
+    stop = threading.Event()
+    console.print(f"listening on http://{server.host}:{server.port}{server.path} (Ctrl+C to stop)")
+    try:
+        server.run(stop)
+    except KeyboardInterrupt:
+        stop.set()
+    return 0
+
+
+def cmd_site(args: argparse.Namespace, console: Console) -> int:
+    from strategies.inbound_syndicator import InboundSyndicator
+    from strategies.base import TaskContext
+
+    config, state = _open(args)
+    engine = Engine(config, state=state)
+    hyp = state.active_hypothesis() or {"id": 0, "params": {"niche": ""}, "iterations": 0}
+    res = InboundSyndicator().build_site(TaskContext(engine.tools, hyp, {}))
+    console.print(res.summary)
+    return 0
+
+
+def cmd_syndicate(args: argparse.Namespace, console: Console) -> int:
+    from strategies.base import TaskContext
+    from strategies.inbound_syndicator import InboundSyndicator
+
+    config, state = _open(args)
+    if args.drafts:
+        config.syndication_publish = False
+    engine = Engine(config, state=state)
+    hyp = state.active_hypothesis()
+    if hyp is None:
+        console.print("[yellow]no active hypothesis yet[/]")
+        return 1
+    res = InboundSyndicator().syndicate(TaskContext(engine.tools, hyp, {}))
+    console.print(res.summary)
+    return 0
+
+
+def cmd_pricing(args: argparse.Namespace, console: Console) -> int:
+    config, state = _open(args)
+    if args.pricing_cmd == "run":
+        from agent.pricing_engine import PricingEngine
+
+        hyp = state.active_hypothesis()
+        if hyp is None:
+            console.print("[yellow]no active hypothesis[/]")
+            return 1
+        report = PricingEngine(Engine(config, state=state).tools).run(hyp)
+        for line in report["demand"] + report["decisions"]:
+            console.print(line)
+        return 0
+    t = Table("exp", "asset", "price", "status", "views", "initiations", "started", "reason")
+    for h in state.list_hypotheses():
+        for e in state.experiments_for_hypothesis(h["id"]):
+            t.add_row(str(e["id"]), str(e["asset_id"]), f"${e['price_cents'] / 100:.2f}", e["status"], str(e["views"]),
+                      str(e["initiations"]), e["started_at"], e["reason"] or "")
+    console.print(t)
+    return 0
+
+
 # --------------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="automonetize", description="Autonomous zero-capital revenue agent")
@@ -472,6 +602,33 @@ def build_parser() -> argparse.ArgumentParser:
     sa.add_argument("--reason", default="manual")
     ssub.add_parser("list")
     sp.set_defaults(func=cmd_suppress)
+
+    su = sub.add_parser("supervise", help="run engine + webhook daemon under supervision (for launchd/systemd)")
+    su.add_argument("--no-webhook", action="store_true", help="engine only (polling sync)")
+    su.add_argument("--interval", type=float)
+    su.add_argument("--cycles", type=int)
+    su.add_argument("--headless", action="store_true")
+    su.add_argument("--verbose", "-v", action="store_true")
+    su.set_defaults(func=cmd_supervise)
+
+    wh = sub.add_parser("webhook", help="run only the Stripe webhook listener")
+    wh.add_argument("--port", type=int)
+    wh.add_argument("--selftest", action="store_true", help="verify the configured secret signs/verifies correctly")
+    wh.add_argument("--verbose", "-v", action="store_true")
+    wh.set_defaults(func=cmd_webhook)
+
+    st = sub.add_parser("site", help="rebuild landers, sitemap and RSS feed (and push to GitHub Pages if configured)")
+    st.set_defaults(func=cmd_site)
+
+    sy = sub.add_parser("syndicate", help="publish this week's tech radar article")
+    sy.add_argument("--drafts", action="store_true", help="create drafts only")
+    sy.set_defaults(func=cmd_syndicate)
+
+    pr = sub.add_parser("pricing", help="price experiments")
+    psub = pr.add_subparsers(dest="pricing_cmd", required=True)
+    psub.add_parser("status")
+    psub.add_parser("run", help="evaluate pricing now")
+    pr.set_defaults(func=cmd_pricing)
 
     sv = sub.add_parser("serve", help="serve data/site landers locally")
     sv.add_argument("--port", type=int, default=8000)
