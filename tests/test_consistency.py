@@ -134,3 +134,12 @@ def test_every_task_is_in_the_readme_task_table():
 
     table = README.split("## Every task in a cycle", 1)[1].split("\n## ", 1)[0]
     assert [t for t, _ in PLAN if f"`{t}`" not in table] == []
+
+
+def test_every_env_variable_is_documented():
+    """Phase 389: each variable the agent reads from .env is in .env.example (or explained in the README)."""
+    from agent.config import _PLAIN_ENV
+
+    example = (ROOT / ".env.example").read_text()
+    missing = [k for k in _PLAIN_ENV if k not in example]
+    assert missing == [], f"add to .env.example: {missing}"

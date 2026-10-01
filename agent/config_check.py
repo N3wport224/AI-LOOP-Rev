@@ -7,6 +7,8 @@
 * **Out-of-range values:** percentages outside 1-90, negative or zero day counts, a daily target
   of $0, a backup period shorter than a day, and similar.
 * **Malformed values:** email addresses and URLs that can't work.
+* **Factory and newer settings** (Phase 385): unknown ``factory_types``, a factory interval under a
+  minute, very low product caps, and a chat webhook that isn't Slack or Discord.
 * **Times and fractions** (Phase 141): a time zone Python doesn't know (reports would silently use
   UTC), hours outside 0-23, weekdays outside 0-6, and rates that must be a fraction (0.10, not 10).
 """
@@ -87,4 +89,33 @@ def problems(config: Any, toml_path: Path | None = None) -> list[str]:
             out.append(f"{name} = {v}: use a fraction like 0.10 (for 10%)")
     if getattr(config, "bounce_pause_rate", 0.05) <= 0 or getattr(config, "bounce_pause_rate", 0.05) >= 1:
         out.append(f"bounce_pause_rate = {config.bounce_pause_rate}: use a fraction like 0.05")
+    out += factory_problems(config)
+    return out
+
+
+def factory_problems(config: Any) -> list[str]:
+    """Phase 385: the product factory's and the newer settings."""
+    out = []
+    try:
+        from strategies.product_types import TYPES
+
+        unknown = [t for t in (getattr(config, "factory_types", None) or []) if t not in TYPES]
+        if unknown:
+            out.append(f"factory_types: unknown type(s) {', '.join(map(str, unknown))}; known: {', '.join(TYPES)}")
+    except Exception:  # noqa: BLE001 - the check must never stop doctor
+        pass
+    interval = int(getattr(config, "factory_interval_seconds", 600) or 0)
+    if interval < 60:
+        out.append(f"factory_interval_seconds = {interval}: the factory runs at most once a minute (60 is used)")
+    if int(getattr(config, "factory_max_live", 500) or 0) < 10:
+        out.append(f"factory_max_live = {config.factory_max_live}: fewer than 10 products on sale leaves the factory idle")
+    if int(getattr(config, "factory_min_rows", 20) or 0) < 5:
+        out.append(f"factory_min_rows = {config.factory_min_rows}: products under 5 rows aren't worth selling")
+    webhook = str(getattr(config, "chat_webhook_url", "") or "")
+    if webhook:
+        from tools.chat import service
+
+        if not service(webhook):
+            out.append("chat_webhook_url isn't a Slack (hooks.slack.com/services/...) or Discord (discord.com/api/webhooks/...) "
+                       "address; chat notifications are off")
     return out

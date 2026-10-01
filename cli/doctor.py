@@ -200,6 +200,14 @@ class Doctor:
             f = scale["factory"]
             out.append(Finding("Product factory", "ok" if f["ok"] else "warn", f["detail"], f["fix"]))
         if cfg.product_factory:
+            from strategies.catalog_insight import enabled_types
+            from strategies.product_types import TYPES
+
+            on = enabled_types(cfg)  # Phase 388
+            off = [t for t in TYPES if t not in on]
+            out.append(Finding("Product types", "ok" if on else "warn",
+                               f"{len(on)} of {len(TYPES)} made" + (f" (not: {', '.join(off)})" if off else ""),
+                               "" if on else "factory_types lists no known type: fix it or leave it empty for all"))
             from strategies.factory_cadence import describe as describe_pace
 
             out.append(Finding("Factory pace", "ok", describe_pace(state, cfg)))  # Phase 359

@@ -66,6 +66,12 @@ def _v_https(v: str) -> str | None:
     return None if p.scheme == "https" and p.netloc and not p.query else "must be an https:// URL"
 
 
+def _v_chat(v: str) -> str | None:
+    from tools.chat import service
+
+    return None if service(v) else "must be a Slack incoming-webhook or Discord webhook address"
+
+
 def _v_repo(v: str) -> str | None:
     return None if re.fullmatch(r"[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}", v) else "use owner/repo"
 
@@ -151,6 +157,9 @@ FIELDS: list[Field] = [
     Field("HEALTHCHECK_URL", "Heartbeat URL", "monitoring", "heartbeat_url", validate=_v_https,
           placeholder="https://hc-ping.com/your-check-id",
           help="Free at healthchecks.io: it emails you if the agent stops (Mac off, asleep or offline)."),
+    Field("CHAT_WEBHOOK_URL", "Slack or Discord webhook", "monitoring", "chat_webhook_url", True, "password",
+          validate=_v_chat, placeholder="https://hooks.slack.com/services/...",
+          help="Sales and alerts in a Slack or Discord channel (Phase 305). Treat it like a password."),
     Field("ENABLE_AUTONOMOUS_CODE_EVOLUTION", "Enable autonomous code evolution", "evolution", "enable_autonomous_code_evolution",
           kind="bool", options=["false", "true"], validate=_v_choice("true", "false"),
           help="Off by default. Needs a clean git checkout; changes are committed locally, never pushed. "

@@ -2650,6 +2650,21 @@ People search for "<company> hiring"; this gives them a useful page (`strategies
 * **Phase 384, always current:** pages are rebuilt with the site. A company that stops hiring loses
   its page at the next build.
 
+## Settings hygiene (Phases 385-389)
+
+* **Phase 385, checks for the newer settings:** `automonetize doctor` flags:
+  * unknown `factory_types` names;
+  * a factory interval under a minute;
+  * very low `factory_max_live` or `factory_min_rows`;
+  * a `chat_webhook_url` that isn't Slack or Discord.
+* **Phase 386, `.env.example` is complete:** it now lists `OWNER_EMAIL`, `HEALTHCHECK_URL`,
+  `NTFY_TOPIC`, `CHAT_WEBHOOK_URL` and the names the control panel uses.
+* **Phase 387, the chat webhook in the panel:** Settings → Monitoring takes the Slack or Discord
+  address and checks it.
+* **Phase 388, product types in doctor:** how many types the factory makes, and which it doesn't.
+* **Phase 389, kept complete:** a test fails if a variable the agent reads from `.env` is missing
+  from `.env.example`.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
