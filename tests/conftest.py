@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 import pytest
+
+os.environ["AM_NO_SELF_UPDATE"] = "1"  # belt and braces: no engine built by a test may update this checkout
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -182,6 +185,7 @@ def config(tmp_path: Path) -> Config:
             {"name": "rust-systems", "keywords": ["rust"]},
         ],
         network_check_hosts=[],
+        auto_update=False,  # never fetch or switch the real checkout from a test (self-update has its own suite)
         min_hypothesis_days=0,  # most tests exercise the iteration rules; the age floor has its own tests
         # Phase 1-3 tests were written against this price grid; Phase 4 defaults are tested separately.
         price_tiers=[[0, 500], [25, 900], [75, 1500]],

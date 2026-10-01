@@ -9,6 +9,8 @@ re-sends files on request and passes everything else to you.
   subscriptions, refunds or disputes), at most 20 per cycle.
 * Never to a suppressed address. Every email carries the postal address and a reply-"unsubscribe"
   opt-out (``List-Unsubscribe`` mailto); the support desk honours such replies.
+* It carries the buyer's personal referral link (``strategies/referrals.py``): a friend's purchase
+  earns them the next update free.
 * Live sending waits until ``sender_postal_address`` is set. Off with ``buyer_followup = false``.
 """
 
@@ -25,7 +27,7 @@ WINDOW_DAYS = 10
 PER_CYCLE = 20
 
 
-def followup_email(cfg: Any, order: dict[str, Any], title: str) -> Email:
+def followup_email(cfg: Any, order: dict[str, Any], title: str, ref_link: str = "") -> Email:
     mailbox = cfg.unsubscribe_email or cfg.sender_email
     lines = [
         "Hi,",
@@ -35,6 +37,9 @@ def followup_email(cfg: Any, order: dict[str, Any], title: str) -> Email:
         "If anything is missing, just reply \"resend\" and it goes out again right away.",
         "And if there's a company, field or niche you'd like in the next version, reply and tell me: I read every answer.",
     ]
+    if ref_link:
+        lines += ["", "Know someone who'd use it? Here's your personal link. When they buy through it, you get the next "
+                  "updated version free:", ref_link]
     if cfg.pages_base_url:
         lines += ["", f"Everything else on offer: {cfg.pages_base_url.rstrip('/')}/"]
     lines += ["", "Thanks for buying,", cfg.sender_name or "AutoMonetize", "", "--",
@@ -80,7 +85,11 @@ class BuyerFollowup(Strategy):
                 continue
             asset = state.get_asset(order["asset_id"]) if order.get("asset_id") else None
             try:
-                tools.dispatcher.send_transactional(followup_email(cfg, order, asset["title"] if asset else "your dataset"),
+                from strategies.referrals import referral_link
+
+                url = str((asset or {}).get("checkout_url") or "")
+                ref = referral_link(state, email, url) if cfg.referrals and url.startswith("https://") else ""
+                tools.dispatcher.send_transactional(followup_email(cfg, order, asset["title"] if asset else "your dataset", ref),
                                                     audit_key=f"followup:{order['id']}")
             except Exception as exc:  # noqa: BLE001 - retried next cycle
                 state.log_error("buyer_followup", f"follow-up to order {order['id']} failed: {exc!r}")

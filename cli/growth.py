@@ -43,6 +43,17 @@ def pace_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def todo_main(argv: list[str] | None = None) -> int:
+    from strategies.owner_todo import as_text, todo
+
+    config, state, _ = _setup()
+    items = todo(state, config)
+    say(GREEN if not items else BOLD, "Only you can do these (most valuable first):" if items else as_text(items))
+    if items:
+        print(as_text(items))
+    return 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 

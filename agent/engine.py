@@ -77,12 +77,15 @@ PLAN: list[tuple[str, int]] = [
     ("create_launch_promos", 54),
     ("announce_releases", 55),
     ("offer_refresh", 62),
+    ("reward_referrals", 63),
+    ("win_back", 64),
     ("check_storefront", 61),
     ("pace_goal", 95),
     ("monthly_books", 96),
     ("backup_data", 97),
     ("send_heartbeat", 94),
     ("report_owner", 98),
+    ("self_update", 100),  # after evolution: an installed update reloads the process too
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
 ]
 BUILTIN_TASKS = {"sync_revenue"}
@@ -148,6 +151,9 @@ class Engine:
             from agent.heartbeat import Heartbeat
 
             self.handlers["send_heartbeat"] = Heartbeat()
+            from agent.self_update import SelfUpdate
+
+            self.handlers["self_update"] = SelfUpdate()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online
@@ -493,6 +499,12 @@ class Engine:
             canary_tick(self.state, self.config, cycle_done=cycle_done)
         except Exception as exc:  # noqa: BLE001 - never let the watchdog take the loop down
             self.state.log_error("evolution", f"canary check failed: {exc!r}")
+        try:
+            from agent import self_update
+
+            self_update.canary_tick(self.state, self.config, cycle_done=cycle_done)
+        except Exception as exc:  # noqa: BLE001
+            self.state.log_error("self_update", f"update canary check failed: {exc!r}")
 
     def idle_wait(self, interval: float, slice_seconds: float = 30.0) -> None:
         """Wait ``interval`` seconds of *wall-clock* time between cycles, holding no power assertion.

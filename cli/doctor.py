@@ -180,6 +180,15 @@ class Doctor:
             out.append(Finding("Heartbeat", "ok" if fresh else "warn",
                                f"last ping {beat[:16]}" if beat else "no ping sent yet",
                                "" if fresh else "check the URL with: automonetize heartbeat <url>"))
+        from agent.self_update import info as update_info
+
+        upd = update_info(state)
+        if not cfg.auto_update:
+            out.append(Finding("Self-update", "warn", "off: new versions are only installed by hand", "automonetize doctor --fix"))
+        elif upd.get("status"):
+            bad = upd["status"].startswith(("not updating", "update ")) and "upstream" not in upd["status"]
+            out.append(Finding("Self-update", "warn" if bad else "ok", upd["status"][:200],
+                               "automonetize doctor --fix" if bad else ""))
         pace = state.get("goal_pace")
         if pace:
             out.append(Finding("Goal pace", "ok" if (pace.get("progress") or 0) >= 1 else "warn",

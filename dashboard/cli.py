@@ -801,6 +801,12 @@ def cmd_heartbeat(args: argparse.Namespace, console: Console) -> int:
     return heartbeat_main([args.url] if args.url else [])
 
 
+def cmd_todo(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import todo_main
+
+    return todo_main([])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -988,6 +994,8 @@ def build_parser() -> argparse.ArgumentParser:
     hb = sub.add_parser("heartbeat", help="get an email if the agent stops: shows setup, or tests and saves a ping URL")
     hb.add_argument("url", nargs="?", help="ping URL, e.g. https://hc-ping.com/<id>")
     hb.set_defaults(func=cmd_heartbeat)
+    td = sub.add_parser("todo", help="the few things only you can do, most valuable first, with the command for each")
+    td.set_defaults(func=cmd_todo)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)

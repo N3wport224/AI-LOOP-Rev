@@ -254,6 +254,7 @@ def sandbox_env(worktree: Path) -> dict[str, str]:
            if not k.startswith(("AUTOMONETIZE_", "GIT_CONFIG_")) and not _SECRETISH.search(k)
            and k not in ("ENABLE_AUTONOMOUS_CODE_EVOLUTION", "DRY_RUN", "PUBLIC_WEBHOOK_URL", LISTEN_FD_ENV, "PYTHONPATH")}
     env["PYTHONPATH"] = str(worktree)
+    env["AM_NO_SELF_UPDATE"] = "1"  # checks run the agent; it must never update the real checkout
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 

@@ -87,8 +87,18 @@ def build_status(gctx) -> dict[str, Any]:
         "evolution": snap.get("evolution", {}),
         "finance": state.get("stripe_finance") or {},
         "pace": state.get("goal_pace") or {},
+        "todo": _todo(state, cfg),
         "dry_run": cfg.dry_run,
     }
+
+
+def _todo(state, cfg) -> list[dict]:
+    from strategies.owner_todo import todo
+
+    try:
+        return todo(state, cfg)
+    except Exception:  # noqa: BLE001 - the status page must render regardless
+        return []
 
 
 async def get_status(request: web.Request) -> web.Response:

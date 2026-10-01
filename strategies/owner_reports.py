@@ -147,7 +147,11 @@ class OwnerReports(Strategy):
         problems = state._all("SELECT source, message FROM errors WHERE kind IN ('operational_failure', 'alert') AND created_at >= ? "
                               "ORDER BY id DESC LIMIT 5", (since,))
         cycles = int(state._one("SELECT COUNT(DISTINCT cycle) AS n FROM actions WHERE created_at >= ?", (since,))["n"])
+        from strategies.owner_todo import as_text as todo_text, todo
+
+        owner_items = todo(state, cfg)
         lines = [
+            *(["Only you can do these (most valuable first):", todo_text(owner_items), ""] if owner_items else []),
             f"Yesterday: {money(int(yesterday.get('net_cents', 0)))} net (goal {money(cfg.daily_target_cents)}/day)",
             f"Last 7 days: {money(week)} net · MRR {money(mrr)}",
             describe(state.get("stripe_finance")),

@@ -99,6 +99,11 @@
       : fin.error ? "couldn't read: " + fin.error
       : `${money(fin.available_cents)} ready · ${money(fin.pending_cents)} on the way` +
         (fin.last_payout ? ` · last payout ${money(fin.last_payout.amount_cents)} (${fin.last_payout.status}, ${fin.last_payout.arrival_date})` : "");
+    const items = s.todo || [];
+    $("#todo-card").hidden = !items.length;
+    $("#todo-list").replaceChildren(...items.map((i) => el("li", {},
+      el("b", { text: i.title }), el("span", { class: "muted", text: ` (~${i.minutes} min): ${i.why}. ` }),
+      el("code", { text: i.how }))));
     const pace = s.pace || {};
     $("#k-pace").textContent = pace.date ? money(pace.net_per_day_cents) + "/day" : "—";
     $("#k-pace-bar").style.width = Math.min(100, Math.round((pace.progress || 0) * 100)) + "%";

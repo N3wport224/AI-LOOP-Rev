@@ -258,7 +258,7 @@ def setup(loop: Loop, sandbox: Path) -> str:
         dry_run=False, email_backend="smtp", smtp_host="smtp.sandbox.invalid", sender_email="launch@loop.example",
         sender_name="AutoMonetize Loop Test", sender_postal_address="1 Test Street, Springfield, IL 62701, USA",
         unsubscribe_email="unsubscribe@loop.example", seo_min_companies=2, seo_min_migrations=2, indexnow_enabled=False,
-        source_discovery_enabled=False, max_active_niches=1, copy_bandit_enabled=True,
+        source_discovery_enabled=False, max_active_niches=1, copy_bandit_enabled=True, auto_update=False,
     )
     cfg.ensure_dirs()
     loop.stripe = FakeStripe(seed_postings(datetime.now(timezone.utc)))

@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 716 tests, ~40 s, no network
+pytest                     # 732 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 41 tasks now (Phases 20-31 added eleven). An old `automonetize.toml` that pins
+The plan has 44 tasks now (Phases 20-35 added fourteen). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -980,7 +980,8 @@ cut short.
 * On the 1st of each month (in `subscription_timezone`) the agent writes last month's verified
   revenue (sales, subscription payments, refunds, disputes and fees) to
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
-* `automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
+* `automonetize todo                                    # the few things only you can do, most valuable first
+automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
 automonetize books [YYYY-MM]` builds any month by hand.
 
@@ -1068,6 +1069,53 @@ The email shows real numbers ("your copy has 140 rows; today's has 212").
   kit drops it when it expires.
 * Live mode only. Payment Links get `allow_promotion_codes` switched on when their first code is
   created.
+
+## Hands-off upkeep and repeat customers (Phases 32-35)
+
+**Phase 32: self-update** (`agent/self_update.py`, task `self_update`). You no longer need
+`git pull`. Every `auto_update_hours` (6), the agent checks the branch your checkout tracks:
+1. **Sandbox:** new commits are checked out in a temporary git worktree, merged with any local
+   commits (e.g. self-evolution's). A conflict stops the update and alerts you.
+2. **Dependencies:** if the requirements changed, they're installed first.
+3. **Checks:** the full test suite and the end-to-end simulator must pass in the sandbox, with no
+   secrets in its environment.
+4. **Switch:** the branch fast-forwards and the agent reloads, keeping the webhook socket open.
+5. **Canary:** for 60 minutes, a crash, a new kind of failure or an exception in a changed file
+   rolls back to the previous commit and reloads. That version is then skipped until a newer one
+   is published.
+
+It never updates over uncommitted changes, a detached HEAD, or while a self-evolution canary is
+running. Tests, the simulator and evolution checks set `AM_NO_SELF_UPDATE`, so they can never
+touch the real checkout. Off with `auto_update = false`. Status appears in `automonetize doctor`.
+
+**Phase 33: owner to-do** (`strategies/owner_todo.py`). One short, ranked list of what only you can
+do, each item with why it matters, about how long it takes, and the exact command or place:
+* go live;
+* answer a dispute;
+* deliver an order by hand;
+* add the postal address;
+* connect marketing;
+* review sales emails;
+* turn on the heartbeat;
+* unblock self-update.
+
+It sits at the top of the control panel, opens every daily report and is printed by
+`automonetize todo`. Items disappear once done.
+
+**Phase 34: referral rewards** (`strategies/referrals.py`, task `reward_referrals`).
+* Each buyer's follow-up email carries a personal link: the normal checkout, attributed to them.
+* When a friend buys through it, and the friend's order is 7 days old and not refunded or
+  disputed, the referrer gets the newest version of that dataset free, as an attachment.
+* No self-referrals, and at most one reward per referrer per 30 days. It costs nothing.
+* Off with `referrals = false`.
+
+**Phase 35: subscriber win-back** (`strategies/winback.py`, task `win_back`).
+* 7-30 days after a subscription is canceled, the former subscriber gets one email: what changed
+  in their niche since they left (real numbers), and `winback_discount_pct` (50%) off the first
+  month back with a single-use 14-day code on a link that applies it.
+* Never sent to anyone who has resubscribed or is suppressed, and only once ("the only time I'll
+  ask").
+* Postal address and opt-out included. In dry run nothing is created in Stripe.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
@@ -1359,6 +1407,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `storefront_check_hours` | `6` | How often checkout links, product pages and downloads are checked |
 | `release_announcements` / `announce_min_gap_days` | `true` / `14` | New-niche emails to past buyers |
 | `stale_after_days` | `7` | Days without new postings before a dataset stops being promoted |
+| `auto_update` / `auto_update_hours` | `true` / `6` | Install verified updates of the tracked branch by itself |
+| `referrals` | `true` | Personal referral links in follow-ups; referrers get the newest version free |
+| `winback` / `winback_after_days` / `winback_discount_pct` | `true` / `7` / `50` | One discounted invitation back after a cancellation |
 | `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
 | `release_gate_max_drop` / `release_gate_hold_days` | `0.5` / `3` | Hold a new version that lost rows |
 | `refresh_offers` / `refresh_after_days` / `refresh_min_new_rows` / `refresh_discount_pct` | `true` / `30` / `25` / `50` | Discounted update offers to past buyers |
@@ -1430,7 +1481,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 716 tests, ~40 s, no network
+pytest     # 732 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

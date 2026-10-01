@@ -269,6 +269,16 @@ class Config:
     announce_min_gap_days: int = 14          # at most one announcement per buyer in this many days
     stale_after_days: int = 7                # a dataset with no new postings this long is not promoted
 
+    # Self-update (agent/self_update.py)
+    auto_update: bool = True                 # install verified updates of the branch this checkout tracks
+    auto_update_hours: float = 6.0
+
+    # Referral rewards and subscriber win-back (Phases 34-35)
+    referrals: bool = True                   # personal referral links in follow-ups; referrers get the newest version free
+    winback: bool = True                     # one discounted invitation back after a subscription is canceled
+    winback_after_days: int = 7
+    winback_discount_pct: int = 50           # off the first month back
+
     # Heartbeat, release gate, refresh offers, launch codes (Phases 28-31)
     heartbeat_url: str = ""                  # e.g. https://hc-ping.com/<uuid>: emails you if the agent goes quiet
     release_gate_max_drop: float = 0.5       # hold a new version that lost more than this share of rows
