@@ -2051,6 +2051,26 @@ From `strategies/market_trends.py`:
   * It needs 8 such companies.
   * It takes its turn in the factory's rotation like the other types.
 
+## Site discovery (Phases 225-229)
+
+With hundreds of products, visitors need a way to find the right one (`strategies/site_discovery.py`).
+The home page links each of these pages that exists.
+
+* **Phase 225, search index:** `search.json` lists every product on sale: title, link, price,
+  technology, type and rows.
+* **Phase 226, search page:** `search/` filters the list as you type, in the browser. Nothing is
+  sent anywhere. Without JavaScript it points to the catalog.
+* **Phase 227, full catalog:** `catalog/` lists every product grouped by technology, 200 per page
+  (`catalog/2/` and so on), so every product is one click from a crawlable page.
+* **Phase 228, status page:** `status/` shows only counts and board names, nothing private:
+  * when the data last changed;
+  * postings seen in the last 7 days;
+  * products on sale;
+  * which job boards are answering.
+* **Phase 229, what's new:** `changes/` lists, week by week for the last 8 weeks, products added
+  and retired, and price changes. Retired products are named, not linked, since their pages are
+  gone.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

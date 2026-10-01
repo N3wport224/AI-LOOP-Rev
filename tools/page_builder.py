@@ -647,7 +647,7 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "", sponsor: str = "",
                  more: bool = False, best: str = "", hubs: bool = False, blog: bool = False, products_feed: bool = False,
                  heatmap: bool = False, embed: bool = False, sources: bool = False, library: bool = False,
-                 request: bool = False) -> str:
+                 request: bool = False, links: tuple[tuple[str, str], ...] = ()) -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
         f'{html.escape(p.summary[:160])} '
@@ -667,7 +667,7 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="sources/">Data sources</a> ·' if sources else ""}{' <a href="library/">Your library</a> ·' if library else ""}{' <a href="request/">Request a dataset</a> ·' if request else ""}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="sources/">Data sources</a> ·' if sources else ""}{' <a href="library/">Your library</a> ·' if library else ""}{' <a href="request/">Request a dataset</a> ·' if request else ""}{"".join(f' <a href="{html.escape(href)}">{html.escape(text)}</a> ·' for href, text in links)}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -775,6 +775,7 @@ class SiteBuilder:
         from tools.offer_pages import _shell
         from tools.site_extras import legal_pages, not_found_page, verification_meta
 
+        from strategies.site_discovery import INDEX_LINKS
         from tools import site_more
 
         contact = cfg.sender_email or cfg.owner_email or ""
@@ -786,7 +787,8 @@ class SiteBuilder:
                                          heatmap="tools/hiring-heatmap/index.html" in (extra or {}),
                                          embed="embed/index.html" in (extra or {}),
                                          sources="sources/index.html" in (extra or {}),
-                                         library="library/index.html" in (extra or {}), request="request/index.html" in (extra or {}))
+                                         library="library/index.html" in (extra or {}), request="request/index.html" in (extra or {}),
+                                         links=tuple((href, text) for path, href, text in INDEX_LINKS if path in (extra or {})))
         out.update(extra or {})  # e.g. more/ (strategies/revenue_models.py)
         out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
             title, body, cfg.site_title, description=desc))

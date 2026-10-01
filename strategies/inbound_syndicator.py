@@ -368,6 +368,10 @@ class InboundSyndicator(Strategy):
 
         if trends_page(tools.state, shell):  # Phase 222
             extra["trends/index.html"] = trends_page(tools.state, shell)
+        from strategies.site_discovery import site_files
+
+        extra.update(site_files(pages, tools.state, cfg, lambda title, body, desc, depth: _shell(  # Phases 225-229
+            title, body, cfg.site_title, description=desc, depth=depth)))
         from strategies.buyer_experience import library_page, request_page
 
         extra["library/index.html"] = library_page(cfg, shell)
