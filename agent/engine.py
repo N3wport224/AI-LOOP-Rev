@@ -92,6 +92,8 @@ PLAN: list[tuple[str, int]] = [
     ("check_disk", 5),  # first: a full disk pauses builds before they start
     ("tune_offers", 68),
     ("process_bounces", 44),
+    ("guard_payments", 46),
+    ("check_webhook", 62),
     ("report_owner", 98),
     ("self_update", 100),  # after evolution: an installed update reloads the process too
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over

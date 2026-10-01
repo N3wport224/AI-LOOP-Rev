@@ -25,6 +25,8 @@ from strategies.sample_offer import SampleOffer
 from strategies.seasonal_sale import SeasonalSale
 from strategies.bounce_guard import BounceGuard
 from strategies.offer_tuner import OfferTuner
+from strategies.webhook_health import WebhookHealth
+from strategies.payment_guard import PaymentGuard
 from strategies.owner_reports import OwnerReports
 from strategies.support_desk import SupportDesk
 from strategies.retention_engine import RetentionEngine
@@ -46,10 +48,11 @@ def default_strategies() -> list[Strategy]:
         ShareKit(), BuyerFollowup(), Bookkeeping(), StorefrontHealth(), ReleaseAnnouncer(), GoalPacing(), FreshnessGuard(),
         LaunchPromos(), RefreshOffers(), Referrals(), WinBack(),
         BundleUpgrade(), SampleOffer(), SeasonalSale(), BounceGuard(), OfferTuner(),
+        WebhookHealth(), PaymentGuard(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "WebhookHealth", "PaymentGuard", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]

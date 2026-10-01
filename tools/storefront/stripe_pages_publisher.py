@@ -77,11 +77,13 @@ class StripeClient:
         return self._post("/prices", data, key)
 
     def create_payment_link(self, price_id: str, metadata: dict[str, str], message: str, key: str,
-                            subscription_metadata: dict[str, str] | None = None) -> dict[str, Any]:
+                            subscription_metadata: dict[str, str] | None = None,
+                            options: dict[str, Any] | None = None) -> dict[str, Any]:
         data: dict[str, Any] = {
             "line_items": [{"price": price_id, "quantity": 1}],
             "metadata": metadata,
             "after_completion": {"type": "hosted_confirmation", "hosted_confirmation": {"custom_message": message}},
+            **(options or {}),  # e.g. automatic tax, a thank-you page redirect
         }
         if subscription_metadata:
             # Copied onto the Subscription object, so subscription events carry the niche/asset.
@@ -191,7 +193,7 @@ class StripeStorefront:
         link = self.client.create_payment_link(
             price["id"], {**meta, "price_cents": str(price_cents)},
             "Thanks for your purchase! The full dataset will be emailed to you shortly.",
-            key + "-link",
+            key + "-link", options=link_options(self.config, meta),
         )
         return link["id"], link["url"], product["id"]
 
@@ -208,6 +210,7 @@ class StripeStorefront:
             price["id"], {**meta, "kind": "subscription"},
             f"You're subscribed! The current dataset arrives by email now, then fresh updates every {interval}.",
             key + "-link", subscription_metadata={**meta, "kind": "subscription"},
+            options=link_options(self.config, meta),
         )
         return link["id"], link["url"], price["id"]
 
@@ -247,6 +250,14 @@ class StripeStorefront:
 
 
 # ---------------------------------------------------------------------------- landers
+def link_options(config: Any, meta: dict[str, str] | None = None) -> dict[str, Any]:
+    """Extra Payment Link settings every new link gets (Stripe Tax when it's active on the account)."""
+    opts: dict[str, Any] = {}
+    if getattr(config, "stripe_automatic_tax", False):
+        opts["automatic_tax"] = {"enabled": True}
+    return opts
+
+
 def _cell(value: Any) -> str:
     if isinstance(value, list):
         value = ", ".join(str(v) for v in value[:6])

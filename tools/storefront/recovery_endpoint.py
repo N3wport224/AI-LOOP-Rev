@@ -110,8 +110,13 @@ class RecoveryService:
             elif tools.files.exists(asset["path"]):
                 path = tools.files.resolve(asset["path"])
                 if path.name not in seen:
-                    files.append(Attachment(path.name, path.read_bytes()))
-                    notes.append(f"{asset['title']} (order {order['order_id'][-8:]})")
+                    note = f"{asset['title']} (order {order['order_id'][-8:]})"
+                    link = self._link_if_large(path, asset["path"], order.get("email") or "")
+                    if link:
+                        notes.append(f"{note}: too big to attach, download it here (7 days): {link}")
+                    else:
+                        files.append(Attachment(path.name, path.read_bytes()))
+                        notes.append(note)
                     seen.add(path.name)
         for sub in found["dataset_subs"]:
             dataset = next((a for a in tools.state.list_assets() if a["kind"] == ASSET_KIND and a.get("niche") == sub.get("niche")), None)
@@ -122,6 +127,14 @@ class RecoveryService:
                     notes.append(f"Current dataset for your subscription ({sub.get('niche')})")
                     seen.add(path.name)
         return files, notes
+
+    def _link_if_large(self, path: Any, rel: str, email: str) -> str:
+        from tools import download_links
+        from tools.dispatcher import MAX_ATTACHMENT_BYTES
+
+        if path.stat().st_size <= MAX_ATTACHMENT_BYTES or not download_links.available(self.tools.config):
+            return ""
+        return download_links.issue(self.tools.state, self.tools.config, rel, email)
 
     def issue_token(self, email: str) -> str:
         token = secrets.token_urlsafe(24)

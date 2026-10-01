@@ -296,6 +296,13 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Delivery & payments (Phases 50-54)
+    download_link_days: int = 7              # large files: private link lifetime
+    download_link_uses: int = 5
+    webhook_check_hours: float = 6.0
+    card_testing_threshold: int = 10         # failed charges in an hour that count as an attack
+    stripe_automatic_tax: bool = False       # switched on by itself when Stripe Tax is active on the account
+
     # Housekeeping and disk (Phases 47-48)
     log_keep_days: int = 90                  # actions kept this long, errors twice as long
     keep_versions: int = 3                   # dataset versions kept per niche (sold ones always kept)

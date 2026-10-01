@@ -189,6 +189,17 @@ class Doctor:
 
         for p in config_problems(cfg, ROOT / "automonetize.toml"):
             out.append(Finding("Settings", "warn", p, "fix it in automonetize.toml or control panel → Settings"))
+        hook = state.get("webhook_health") or {}
+        if hook:
+            out.append(Finding("Stripe webhook", "warn" if hook.get("problems") else "ok",
+                               "; ".join(hook.get("problems") or []) or (f"repaired: {hook['repaired']}" if hook.get("repaired")
+                                                                         else f"healthy (checked {hook['at'][:16]})"),
+                               "automonetize setup-autonomous --live" if hook.get("problems") else ""))
+        pay = state.get("payment_guard") or {}
+        if pay.get("tax_status") and pay["tax_status"] != "active":
+            out.append(Finding("Sales tax", "warn", f"Stripe Tax is {pay['tax_status']}: no tax is collected",
+                               "if you must collect sales tax/VAT where you or your buyers are, set up Stripe → Tax; "
+                               "the agent then applies it to every link by itself"))
         sec = state.get("security_audit") or {}
         for f in sec.get("findings", []):
             out.append(Finding(f"Security: {f['name']}", "fail" if f["status"] == "fail" else "warn", f["detail"], f["fix"]))

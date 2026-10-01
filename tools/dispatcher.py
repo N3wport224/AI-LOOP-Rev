@@ -290,7 +290,8 @@ class Dispatcher:
         )
         return Email(to=row["recipient"], subject=row["subject"], body=row["body"].rstrip() + footer, kind="outreach", headers=headers)
 
-    def compose_delivery(self, to: str, title: str, zip_name: str, content: bytes, order: dict[str, Any] | None = None) -> Email:
+    def compose_delivery(self, to: str, title: str, zip_name: str, content: bytes, order: dict[str, Any] | None = None,
+                         link: str = "") -> Email:
         receipt = ""
         if order:
             receipt = (
@@ -300,14 +301,16 @@ class Dispatcher:
                 f"Amount:  ${(order.get('gross_cents') or 0) / 100:.2f} {self.config.currency.upper()}\n"
                 f"Date:    {order.get('occurred_at', '')}\n"
             )
+        where = (f"It's too big to attach, so here's your private download link ({zip_name}; it works for "
+                 f"{self.config.download_link_days} days):\n{link}\n\nIt contains" if link else f"Your dataset is attached ({zip_name}):")
         body = (
-            f"Hi,\n\nThanks for buying {title}! Your dataset is attached ({zip_name}): CSV + JSON + the executive summary."
+            f"Hi,\n\nThanks for buying {title}! {where} CSV + JSON + the executive summary."
             f"{receipt}\n"
             "If anything is missing or wrong, just reply to this email.\n\n"
             f"{self.config.sender_name or 'AutoMonetize'}"
         )
         return Email(to=to, subject=f"Your download: {title}", body=body, kind="delivery",
-                     attachments=[Attachment(zip_name, content)])
+                     attachments=[] if link else [Attachment(zip_name, content)])
 
     # -- sending ------------------------------------------------------------------------
     def _audit(self, email: Email, mode: str, result: str, detail: str = "", backend: str = "") -> None:
@@ -378,10 +381,20 @@ class Dispatcher:
         return report
 
     def deliver(self, order: dict[str, Any], title: str, zip_path: Path) -> str:
-        """Email a purchased dataset. Returns ``delivered`` or ``dry_run``; raises on send failure."""
+        """Email a purchased dataset. Returns ``delivered`` or ``dry_run``; raises on send failure.
+
+        A file too big to attach goes as a private download link (``tools/download_links.py``)."""
+        if zip_path.stat().st_size > MAX_ATTACHMENT_BYTES:
+            from tools import download_links
+
+            if not download_links.available(self.config):
+                raise ValueError(f"{zip_path.name} is too large to attach ({zip_path.stat().st_size} bytes) and no public URL is "
+                                 "set up for download links")
+            rel = str(zip_path.resolve().relative_to(Path(self.config.data_dir).resolve()))
+            link = download_links.issue(self.state, self.config, rel, order["email"])
+            email = self.compose_delivery(order["email"], title, zip_path.name, b"", order, link=link)
+            return self.send_transactional(email, audit_key=f"order:{order['id']}")
         content = zip_path.read_bytes()
-        if len(content) > MAX_ATTACHMENT_BYTES:
-            raise ValueError(f"{zip_path.name} is too large to attach ({len(content)} bytes)")
         email = self.compose_delivery(order["email"], title, zip_path.name, content, order)
         return self.send_transactional(email, audit_key=f"order:{order['id']}")
 

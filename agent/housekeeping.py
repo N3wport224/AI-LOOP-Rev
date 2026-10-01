@@ -35,6 +35,7 @@ WEBHOOK_KEEP_DAYS = 90
 
 def prune_logs(state: Any, cfg: Any) -> dict[str, int]:
     from tools import contact_policy as contact
+    from tools import download_links
 
     now = state.clock()
 
@@ -49,6 +50,7 @@ def prune_logs(state: Any, cfg: Any) -> dict[str, int]:
         "webhook events": state._exec("DELETE FROM webhook_events WHERE received_at < ? AND status != 'processing'",
                                       (before(WEBHOOK_KEEP_DAYS),)).rowcount,
         "contact log": state._exec("DELETE FROM contact_log WHERE sent_at < ?", (before(CONTACT_KEEP_DAYS),)).rowcount,
+        "download links": download_links.prune(state),
     }
 
 

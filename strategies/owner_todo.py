@@ -70,6 +70,9 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
     for f in (state.get("security_audit") or {}).get("findings", []):
         if f["status"] == "fail" or f["name"] == "Stripe key type":
             add(2 if f["status"] == "fail" else 9, f"Security: {f['name']}", f["detail"], 10, f["fix"])
+    for d in (state.get("payment_guard") or {}).get("open_duplicates", []):
+        add(3, f"Check a double purchase by {d['email']}", f"{d['title']} was bought twice (orders {d['first']} and {d['second']})",
+            3, "if it was an accident: Stripe → Payments → refund the second one")
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

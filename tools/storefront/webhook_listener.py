@@ -439,6 +439,18 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         return await asyncio.get_running_loop().run_in_executor(executor, held, fn, *args)
 
     recovery_endpoint.mount(app, processor.tools, run_in_pool, client_ip, executor, held, pending)
+
+    async def download(request: web.Request) -> web.StreamResponse:
+        from tools import download_links
+
+        path, why = await run_in_pool(download_links.redeem, processor.tools.state, processor.tools.files,
+                                      request.match_info.get("token", ""))
+        if path is None:
+            return web.Response(status=404, text=why, headers={"Cache-Control": "no-store"})
+        return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{path.name}"',
+                                               "Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+    app.router.add_get("/d/{token}", download)
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

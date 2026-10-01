@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 777 tests, ~40 s, no network
+pytest                     # 788 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 52 tasks now (Phases 20-49 added twenty-two). An old `automonetize.toml` that pins
+The plan has 54 tasks now (Phases 20-54 added twenty-four). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -1234,6 +1234,36 @@ Purchases, receipts, support replies and referral rewards are not marketing and 
 * Flags misspelt settings in `automonetize.toml`, with "did you mean …?" (otherwise they're
   silently ignored).
 * Flags out-of-range values and malformed emails and URLs.
+
+## Delivery and payment safety (Phases 50-54)
+
+**Phase 50: download links for big files** (`tools/download_links.py`).
+* A dataset too big to attach (over 8 MB) is no longer marked "needs manual delivery". The email
+  carries a private link served by the agent's public server at `/d/<token>`.
+* The link expires after `download_link_days` (7) and works `download_link_uses` (5) times.
+* Only the token's hash is stored, and only files inside the data folder can be served.
+* Order recovery issues fresh links the same way.
+
+**Phase 51: webhook health** (`strategies/webhook_health.py`, task `check_webhook`, every 6 h when
+live).
+* Checks that the public URL answers (the tunnel is up).
+* Checks that Stripe's endpoint for it exists, is enabled and has every event. If not, it's
+  repaired with setup's own code, and a new signing secret means a reload.
+* Alerts once a day if Stripe failed to deliver events. Polling still picks up the orders.
+
+**Phase 52: card-testing guard** (`strategies/payment_guard.py`, task `guard_payments`).
+* `card_testing_threshold` (10) or more failed charges in an hour raises an alert, at most every
+  6 hours, with the Radar rules to turn on.
+* Deactivating a link stays your decision, because it stops real sales too.
+
+**Phase 53: duplicate purchases.** The same buyer paying twice for the same dataset within 7 days
+gets one alert and a to-do item with both order ids. The refund stays your decision.
+
+**Phase 54: Stripe Tax.**
+* When Stripe Tax is active on the account, new Payment Links get `automatic_tax` and existing
+  live links are switched over once.
+* When it isn't, the doctor tells you, because whether you must collect sales tax or VAT depends
+  on where you and your buyers are.
 
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
@@ -1537,6 +1567,8 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `download_link_days` / `download_link_uses` | `7` / `5` | Private links for files too big to attach |
+| `webhook_check_hours` / `card_testing_threshold` | `6` / `10` | Webhook check interval; failed charges per hour that alert |
 | `log_keep_days` / `keep_versions` | `90` / `3` | Housekeeping: log retention, dataset versions kept (sold ones always kept) |
 | `disk_warn_gb` / `disk_critical_gb` | `2` / `0.5` | Disk guard thresholds |
 | `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
@@ -1610,7 +1642,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 777 tests, ~40 s, no network
+pytest     # 788 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
