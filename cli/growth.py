@@ -321,7 +321,7 @@ def factory_main(argv: list[str]) -> int:
         say(GREEN, f"✔ Wrote {path}")
         return 0
     if "--next" in argv:
-        cand = pf.next_candidate(state, config)
+        cand = pf.next_candidate(state, config, peek=True)
         print(f"Next: {cand['title']} ({len(cand['rows'])} postings, {cand['companies']} companies)" if cand else
               "No new slice clears the quality floor yet.")
         return 0

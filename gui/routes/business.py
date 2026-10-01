@@ -55,7 +55,7 @@ def products(gctx: Any) -> dict[str, Any]:
     from strategies.sales_channels import leaderboard
 
     state, cfg = gctx.state, gctx.fresh_config()
-    cand = pf.next_candidate(state, cfg) if cfg.product_factory else None
+    cand = pf.next_candidate(state, cfg, peek=True) if cfg.product_factory else None
     return {"catalog": pf.catalog(state), "interval_minutes": int(cfg.factory_interval_seconds) // 60,
             "factory_on": bool(cfg.product_factory),
             "next": {"title": cand["title"], "rows": len(cand["rows"]) if cand.get("rows") else 0} if cand else None,

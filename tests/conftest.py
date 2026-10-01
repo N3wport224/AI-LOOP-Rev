@@ -176,6 +176,8 @@ def config(tmp_path: Path) -> Config:
         http_rate_per_minute=6000,
         min_leads_for_asset=2,
         lead_sources=["remoteok", "arbeitnow", "hn_hiring"],  # the newer boards have their own tests (test_job_sources.py)
+        # the original product types; the kinds added from Phase 245 have their own tests (test_kinds_*.py)
+        factory_types=["slice", "salary", "top", "remote_first", "fast_hiring", "pack"],
         pivot_after_iterations=3,
         max_consecutive_errors=3,
         sender_name="Sam Dev",

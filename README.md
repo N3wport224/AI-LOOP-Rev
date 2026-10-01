@@ -2172,6 +2172,26 @@ products by kind of job (`strategies/kinds_roles.py`):
 * **Phase 249, family trends:** the trends page also shows new postings per role family, week by
   week.
 
+## Countries (Phases 250-254)
+
+From `strategies/kinds_countries.py`:
+
+* **Phase 250, the country of a posting:** read from its location, using country names, US states
+  and the big tech cities.
+  * "Remote" alone has no country; "Remote, Germany" does.
+  * Matching is on whole words only, so "Indiana" isn't India.
+* **Phase 251, country datasets** (`country-<code>`): every current posting in a country, e.g.
+  "Companies Hiring Software Engineers in Germany".
+* **Phase 252, technology by country** (`country-<code>-<tech>`): e.g. "Rust Jobs in Germany:
+  Companies Hiring", when there are enough postings.
+* **Phase 253, where companies are hiring:** the trends page lists the countries with the most new
+  postings in the last four weeks.
+* **Phase 254, a country column:** posting-level datasets now include a `country` column.
+
+Also fixed in this batch: previewing the next product (control panel, `automonetize factory
+--next`, `AM CATALOG`) moved the factory's rotation, so the product made next could differ from the
+one shown. Previews no longer move it.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

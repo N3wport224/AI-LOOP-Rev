@@ -232,3 +232,14 @@ def test_candidates_work_on_a_fresh_database(state, config):
 
     assert product_types.pack_candidates(state) == []  # audit: crashed before the factory had made anything
     assert all(v == [] for v in product_types.all_candidates(state, config).values())
+
+
+def test_a_preview_does_not_move_the_rotation(kit, state, config, clock, transport):
+    from strategies import product_types as pt
+
+    unique_links(transport)
+    salaried(state, clock, 90, ["rust"], "r")
+    state.set(pt.TURN, pt.TYPES.index("salary"))
+    preview = pf.next_candidate(state, config, peek=True)
+    assert pf.next_candidate(state, config, peek=True)["slug"] == preview["slug"] == "salary-rust"
+    assert pf.tick(kit, force=True)["made"]["slug"] == preview["slug"]  # what was previewed is what gets made

@@ -183,7 +183,7 @@ def overlaps(keys: set[str], made: list[dict[str, Any]] | list[tuple[str, set[st
     return None
 
 
-def next_candidate(state: Any, cfg: Any) -> dict[str, Any] | None:
+def next_candidate(state: Any, cfg: Any, peek: bool = False) -> dict[str, Any] | None:
     """The best new product, taking product types in turn (slices, salaries, top companies,
     remote-first employers, starter packs) so the catalog grows in every direction."""
     from strategies import product_types
@@ -209,7 +209,8 @@ def next_candidate(state: Any, cfg: Any) -> dict[str, Any] | None:
                 continue
             cand["keys"] = set(keys)
             cand.setdefault("type", kind)
-            product_types.advance(state, kind)
+            if not peek:  # a preview mustn't move the rotation, or it would show one product and make another
+                product_types.advance(state, kind)
             return cand
     return None
 
@@ -235,8 +236,10 @@ def slice_content(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, An
     ``strategies/product_types.py`` and return the same shape)."""
     from strategies.dataset_extras import fields_md, jsonl, quality_md, schema_sql, top20_md
 
-    rows = sorted(cand["rows"], key=lambda r: str(r.get("posted_at") or ""), reverse=True)
-    fields = list(EXPORT_FIELDS)
+    from strategies.kinds_countries import country_column
+
+    rows = country_column(sorted(cand["rows"], key=lambda r: str(r.get("posted_at") or ""), reverse=True))  # Phase 254
+    fields = list(EXPORT_FIELDS) + ["country"]
     title = cand["title"]
     readme = (f"# {title}\n\n{len(rows)} job postings from {cand['companies']} companies, collected from public job boards "
               f"and filtered to: {_describe(cand['filters'])}.\n\nBuilt {now:%Y-%m-%d}. Every row links to its public "

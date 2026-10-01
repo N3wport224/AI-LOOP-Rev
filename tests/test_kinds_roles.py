@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+import pytest
+
 from strategies import kinds_roles as kr
 from strategies import market_trends as mt
 from strategies import product_factory as pf
@@ -11,6 +13,11 @@ from tests import test_business_ops
 from tests.test_product_factory import unique_links
 
 kit = test_business_ops.kit  # the same live-mode toolkit fixture
+
+
+@pytest.fixture(autouse=True)
+def every_kind(config):
+    config.factory_types = []  # every kind, including the ones added from Phase 245
 
 
 def titled(state, clock, n, title, location="Berlin, Germany", prefix="t", companies=12, days_ago=3, stack=("python",)):

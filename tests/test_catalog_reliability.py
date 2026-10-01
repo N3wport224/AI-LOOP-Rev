@@ -40,6 +40,7 @@ def test_retired_products_get_a_noindex_stub_with_alternatives(kit, state, confi
     unique_links(transport)
     postings(state, clock, 30, ["rust"])
     postings(state, clock, 25, ["rust"], location="Austin, TX, United States", prefix="us")
+    config.factory_types = ["slice"]
     a = pf.tick(kit, force=True)["made"]
     b = pf.tick(kit, force=True)["made"]
     state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), a["slug"]))

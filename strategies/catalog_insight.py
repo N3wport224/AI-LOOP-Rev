@@ -97,7 +97,7 @@ def email_summary(state: Any, cfg: Any) -> str:
     best = [r for r in leaderboard(state) if r["orders"]][:5]
     if best:
         lines += ["", "Best sellers:", *[f"- {r['title']}: {r['orders']} order(s), ${r['revenue_cents'] / 100:,.2f}" for r in best]]
-    nxt = next_candidate(state, cfg) if cfg.product_factory else None
+    nxt = next_candidate(state, cfg, peek=True) if cfg.product_factory else None
     lines += ["", f"Next: {nxt['title']}" if nxt else "Next: waiting for more postings."]
     return "\n".join(lines)
 

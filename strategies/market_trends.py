@@ -94,7 +94,10 @@ def trends(state: Any, force: bool = False) -> dict[str, Any]:
     counts = weekly_counts(leads, now)
     from strategies.kinds_roles import family_counts
 
-    out = {"at": state.now(), "counts": counts, "families": family_counts(leads, now, WEEKS), **classify(counts)}
+    from strategies.kinds_countries import hiring_by_country
+
+    out = {"at": state.now(), "counts": counts, "families": family_counts(leads, now, WEEKS),
+           "countries": hiring_by_country(leads, now), **classify(counts)}
     state.set(KEY, out)
     return out
 
@@ -127,6 +130,7 @@ def trends_page(state: Any, shell: Any) -> str:
             "<h2>Rising</h2>" + items(t.get("rising") or [], "+") + "<h2>Cooling</h2>" + items(t.get("falling") or [], "−")
             + "<h2>The busiest technologies</h2><div style=\"overflow-x:auto\"><table><thead><tr><th>Technology</th>" + head
             + "</tr></thead><tbody>" + rows + "</tbody></table></div>" + _families_table(t.get("families") or {}, head)
+            + _countries_list(t.get("countries") or [])
             + f"<p class=\"muted\">Updated {html.escape(t['at'][:10])}.</p>")
     return shell("Hiring trends by technology", body, "Which technologies companies are hiring for more, and less, week by week, "
                                                       "from public job postings.")
@@ -140,6 +144,15 @@ def _families_table(families: dict[str, list[int]], head: str) -> str:
                    for name, weeks in sorted(families.items(), key=lambda kv: (-sum(kv[1]), kv[0])))
     return ("<h2>By kind of role</h2><div style=\"overflow-x:auto\"><table><thead><tr><th>Role</th>" + head
             + "</tr></thead><tbody>" + rows + "</tbody></table></div>")
+
+
+def _countries_list(countries: list[Any]) -> str:
+    """Phase 253: where the new postings of the last four weeks are."""
+    if not countries:
+        return ""
+    return ("<h2>Where companies are hiring</h2><p class=\"muted\">New postings in the last four weeks, by country (remote "
+            "roles without a country aren't counted).</p><ol>"
+            + "".join(f"<li>{html.escape(str(c))}: {int(n)}</li>" for c, n in countries) + "</ol>")
 
 
 # ------------------------------------------------------------------ Phase 223

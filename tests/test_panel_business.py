@@ -16,11 +16,12 @@ def test_products_tab_shows_the_catalog_and_can_make_one(gui, state, config, clo
     async def scenario(client):
         csrf = await test_gui.login(client)
         d = await (await client.get("/api/products")).json()
-        assert d["catalog"] == {} and d["next"]["title"] == "Companies Hiring Rust Engineers" and d["interval_minutes"] == 10
+        assert d["catalog"] == {} and d["next"]["title"] and d["interval_minutes"] == 10
+        upcoming = d["next"]["title"]
         r = await client.post("/api/products/make", json={})
         assert r.status == 403  # no CSRF token
         r = await (await client.post("/api/products/make", json={}, headers={"X-CSRF-Token": csrf})).json()
-        assert r["ok"] and r["message"].startswith("Made Companies Hiring Rust Engineers")
+        assert r["ok"] and r["message"].startswith(f"Made {upcoming}")  # what the tab said comes next
         d = await (await client.get("/api/products")).json()
         assert sum(d["catalog"].values()) == 1
 

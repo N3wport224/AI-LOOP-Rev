@@ -84,7 +84,8 @@ def test_weekly_line(kit, state, clock, transport):
 
 # ------------------------------------------------------------------ Phase 239
 def test_product_types_can_be_switched_off(kit, state, config, clock, transport):
-    assert ci.enabled_types(config) == list(pt.TYPES)
+    config.factory_types = []
+    assert ci.enabled_types(config) == list(pt.TYPES)  # empty: every kind
     config.factory_types = ["salary", "nonsense"]
     assert ci.enabled_types(config) == ["salary"]
     unique_links(transport)
