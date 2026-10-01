@@ -73,6 +73,11 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
     for d in (state.get("payment_guard") or {}).get("open_duplicates", []):
         add(3, f"Check a double purchase by {d['email']}", f"{d['title']} was bought twice (orders {d['first']} and {d['second']})",
             3, "if it was an accident: Stripe → Payments → refund the second one")
+    suggestion = state.get("goal_suggestion")
+    if suggestion and int(suggestion["cents"]) > int(cfg.daily_target_cents):
+        dollars = int(suggestion["cents"]) // 100
+        add(9, f"Raise your daily goal to ${dollars}", f"you've been on goal {suggestion['streak']} days in a row; a higher goal "
+            "keeps the agent pushing (pricing, new niches)", 1, f"automonetize goal {dollars}")
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

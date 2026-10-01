@@ -28,6 +28,7 @@ from strategies.offer_tuner import OfferTuner
 from strategies.webhook_health import WebhookHealth
 from strategies.payment_guard import PaymentGuard
 from strategies.plans import Plans
+from strategies.payout_watch import PayoutWatch
 from strategies.owner_reports import OwnerReports
 from strategies.support_desk import SupportDesk
 from strategies.retention_engine import RetentionEngine
@@ -49,11 +50,11 @@ def default_strategies() -> list[Strategy]:
         ShareKit(), BuyerFollowup(), Bookkeeping(), StorefrontHealth(), ReleaseAnnouncer(), GoalPacing(), FreshnessGuard(),
         LaunchPromos(), RefreshOffers(), Referrals(), WinBack(),
         BundleUpgrade(), SampleOffer(), SeasonalSale(), BounceGuard(), OfferTuner(),
-        WebhookHealth(), PaymentGuard(), Plans(),
+        WebhookHealth(), PaymentGuard(), Plans(), PayoutWatch(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "WebhookHealth", "PaymentGuard", "Plans", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "WebhookHealth", "PaymentGuard", "Plans", "PayoutWatch", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]

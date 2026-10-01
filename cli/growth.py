@@ -97,18 +97,72 @@ def connections_main(argv: list[str]) -> int:
     return 1 if any(c.status == "fail" for c in conns) else 0
 
 
+def expense_main(argv: list[str]) -> int:
+    """`automonetize expense add AMOUNT "what" [--date YYYY-MM-DD] [--category c]` | `expense list [YYYY-MM]` | `expense delete ID`."""
+    from strategies.bookkeeping import period_bounds, tz_of
+    from tools import expenses
+
+    config, state, _ = _setup()
+    if argv[:1] == ["add"] and len(argv) >= 3:
+        opts = dict(zip(argv[3::2], argv[4::2]))
+        try:
+            cents = expenses.parse_amount(argv[1])
+            day = opts.get("--date") or state.clock().astimezone(tz_of(config)).date().isoformat()
+            eid = expenses.add(state, cents, argv[2], day, opts.get("--category", "general"))
+        except ValueError as exc:
+            say(RED, f"Not recorded: {exc}")
+            return 1
+        say(GREEN, f"✔ Expense #{eid}: ${cents / 100:,.2f} on {day} ({argv[2]})")
+        return 0
+    if argv[:1] == ["delete"] and len(argv) == 2 and argv[1].isdigit():
+        ok = expenses.delete(state, int(argv[1]))
+        say(GREEN if ok else RED, f"✔ Expense #{argv[1]} deleted" if ok else f"No expense #{argv[1]}")
+        return 0 if ok else 1
+    if argv[:1] == ["list"]:
+        period = argv[1] if len(argv) > 1 else state.clock().astimezone(tz_of(config)).strftime("%Y-%m")
+        start, end = period_bounds(period, tz_of(config))
+        rows = expenses.between(state, start.date().isoformat(), end.date().isoformat())
+        for e in rows:
+            print(f"  #{e['id']:<4} {e['spent_on']}  ${e['amount_cents'] / 100:>9,.2f}  {e['category']:<10} {e['description']}")
+        say(BOLD, f"{len(rows)} expense(s) in {period}: ${sum(e['amount_cents'] for e in rows) / 100:,.2f}")
+        return 0
+    say(RED, 'Use: automonetize expense add 12.00 "domain renewal" [--date 2026-09-03] [--category tools] | list [YYYY-MM] | delete ID')
+    return 1
+
+
+def goal_main(argv: list[str]) -> int:
+    """`automonetize goal DOLLARS`: change the daily net revenue goal."""
+    from agent.setup_autonomous import load_env_into
+    from agent.tunnel import update_env_file
+    from cli.go_live import restart
+
+    config, state, _ = _setup()
+    if not argv or not re.fullmatch(r"\d{1,6}(\.\d{1,2})?", argv[0]):
+        print(f"The daily goal is ${config.daily_target_cents / 100:,.2f}. Change it with: automonetize goal 15")
+        return 0 if not argv else 1
+    cents = round(float(argv[0]) * 100)
+    update_env_file(ROOT / ".env", {"AUTOMONETIZE_DAILY_TARGET_CENTS": str(cents)})
+    state.set("goal_suggestion", None)
+    say(GREEN, f"✔ Daily goal set to ${cents / 100:,.2f}")
+    restart(load_env_into(ROOT / ".env"))
+    return 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 
     argv = sys.argv[1:] if argv is None else argv
     config, state, files = _setup()
     month = argv[0] if argv else previous_month(state.clock().astimezone(tz_of(config)))
-    if not re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", month):
-        say(RED, "Give the month as YYYY-MM, e.g. automonetize books 2026-09")
+    if not re.fullmatch(r"20\d\d(-(0[1-9]|1[0-2]))?", month):
+        say(RED, "Give a month (YYYY-MM) or a year (YYYY), e.g. automonetize books 2026-09")
         return 1
+    from strategies.bookkeeping import summary_lines
+
     path, _, totals = save_books(state, config, files, month)
-    say(GREEN, f"✔ {month}: {totals['rows']} entries · gross ${totals['gross_cents'] / 100:,.2f} · "
-               f"fees ${totals['fee_cents'] / 100:,.2f} · net ${totals['net_cents'] / 100:,.2f}")
+    say(GREEN, f"✔ {month}: {totals['rows']} revenue entries")
+    for line in summary_lines(totals, config):
+        print(f"  {line}")
     print(f"  Saved to {path}")
     return 0
 

@@ -69,6 +69,7 @@ PLAN: list[tuple[str, int]] = [
     ("optimize_pricing", 60),
     ("sync_refunds", 46),
     ("sync_finance", 48),
+    ("watch_payouts", 49),
     ("answer_support", 49),
     ("publish_bundle", 59),
     ("publish_team_license", 57),

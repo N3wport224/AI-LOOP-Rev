@@ -296,6 +296,10 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Money admin (Phases 85-89)
+    tax_set_aside_pct: int = 25              # books suggest setting this share of profit aside for taxes
+    payout_watch_days: int = 30              # alert if money sits in Stripe this long without a payout
+
     # Site trust (Phases 80-84)
     refund_policy_days: int = 14             # stated on the refunds page and in the FAQ
     google_site_verification: str = ""       # the code Google Search Console gives you

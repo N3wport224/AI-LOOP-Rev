@@ -180,6 +180,7 @@ def test_books_list_last_months_rows_with_totals(kit, state, config):
     state.record_revenue("manual", "unverified", 500, 0, 500, False, "2026-09-05T10:00:00+00:00")
     text, totals = build_books(state, config, "2026-09")
     rows = list(csv.reader(io.StringIO(text)))
+    rows = rows[:rows.index([])] if [] in rows else rows  # the revenue section (profit and tax lines follow)
     assert rows[0][:3] == ["date", "source", "reference"] and len(rows) == 4
     assert rows[1][2] == "cs_a" and rows[2][3] == "refund of cs_a" and rows[2][6] == "-19.00"
     assert rows[-1][0] == "TOTAL" and rows[-1][6] == "-0.85" and totals["net_cents"] == -85

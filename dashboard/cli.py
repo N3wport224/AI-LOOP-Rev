@@ -870,6 +870,18 @@ def cmd_version(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_expense(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import expense_main
+
+    return expense_main(list(args.args))
+
+
+def cmd_goal(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import goal_main
+
+    return goal_main([args.dollars] if args.dollars else [])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -1088,8 +1100,14 @@ def build_parser() -> argparse.ArgumentParser:
     cn.set_defaults(func=cmd_connections)
     vv = sub.add_parser("version", help="which version is running")
     vv.set_defaults(func=cmd_version)
+    ex = sub.add_parser("expense", help='business expenses for the books: add 12.00 "what" [--date YYYY-MM-DD] | list | delete ID')
+    ex.add_argument("args", nargs=argparse.REMAINDER)
+    ex.set_defaults(func=cmd_expense)
+    gl2 = sub.add_parser("goal", help="show or change the daily net revenue goal (in dollars)")
+    gl2.add_argument("dollars", nargs="?")
+    gl2.set_defaults(func=cmd_goal)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
-    bo.add_argument("month", nargs="?", help="YYYY-MM")
+    bo.add_argument("month", nargs="?", help="YYYY-MM, or YYYY for a whole year")
     bo.set_defaults(func=cmd_books)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "

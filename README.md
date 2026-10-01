@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 847 tests, ~40 s, no network
+pytest                     # 853 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -990,6 +990,8 @@ automonetize uninstall [--deactivate-links] [--delete-data]   # stop and remove 
 automonetize setup                                   # guided setup: only what's missing
 automonetize connections                             # check every outside service (read-only)
 automonetize version                                 # which version is running
+automonetize expense add|list|delete                 # business expenses for the books
+automonetize goal [DOLLARS]                          # show or change the daily goal
 automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
@@ -1443,6 +1445,28 @@ link still lands somewhere useful.
 The site audit (Phase 65) checks all of these. It caught a wrong-depth footer link during this
 batch before it shipped.
 
+## Money admin (Phases 85-89)
+
+**Phase 85: expenses** (`tools/expenses.py`).
+* `automonetize expense add 12.00 "domain renewal" [--date YYYY-MM-DD] [--category tools]`, plus
+  `expense list [YYYY-MM]` and `expense delete ID`.
+* Stripe's fees are already in the revenue rows: don't add them here.
+
+**Phase 86: profit and tax set-aside.**
+* Monthly books now list expenses, then profit (net revenue minus expenses), then a suggested tax
+  set-aside of `tax_set_aside_pct` (25%) of profit. That's a rule of thumb, not tax advice.
+* The books email leads with profit.
+
+**Phase 87: year-end books.** In January, the agent emails the whole previous year as one CSV with
+the same totals. `automonetize books 2026` builds any year by hand.
+
+**Phase 88: payout watch** (`strategies/payout_watch.py`, task `watch_payouts`). An alert when a
+payout to your bank fails or is canceled, and when money has sat in Stripe for `payout_watch_days`
+(30) without a payout (a manual schedule or an unverified bank account).
+
+**Phase 89: goal ladder.** After 7 days in a row on goal, the to-do list suggests a goal 50% higher,
+rounded up to $5. `automonetize goal 15` sets it. It's never raised automatically.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1745,6 +1769,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `tax_set_aside_pct` / `payout_watch_days` | `25` / `30` | Books' tax set-aside; days before idle Stripe money alerts |
 | `refund_policy_days` | `14` | Stated on the refunds page and in the FAQ |
 | `google_site_verification` / `bing_site_verification` | empty | Search Console / Bing verification codes |
 | `NTFY_TOPIC` (`ntfy_topic`) / `ntfy_server` | empty / ntfy.sh | Phone notifications (`automonetize phone`) |
@@ -1778,7 +1803,7 @@ automonetize doctor [--fix]                         # plain-words health check; 
 automonetize autostart                              # macOS: start at login, restart if stopped
 automonetize backup [list] | restore NAME [--yes]   # daily backups happen by themselves
 automonetize share                                   # this week's ready-to-paste posts with tracked links
-automonetize books [YYYY-MM]                         # revenue spreadsheet for a month (default: last month)
+automonetize books [YYYY-MM|YYYY]                    # books for a month (default: last month) or a year
 automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
 automonetize evolution [status|log|show ID [--output]|diagnose [--diff]|resume]   # self-evolution audit
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
@@ -1829,7 +1854,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 847 tests, ~40 s, no network
+pytest     # 853 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

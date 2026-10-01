@@ -83,6 +83,25 @@ def describe(pace: dict[str, Any] | None) -> str:
             + (f"; {best}" if best else "") + f"\nNext step: {pace['next_step']}")
 
 
+LADDER_DAYS = 7
+
+
+def next_goal(goal_cents: int) -> int:
+    """50% higher, rounded up to whole $5."""
+    target = goal_cents * 1.5
+    return int(-(-target // 500) * 500)
+
+
+def ladder(state: Any, cfg: Any, pace: dict[str, Any]) -> None:
+    """Phase 89: after LADDER_DAYS days in a row on goal, suggest a higher one (it's your call)."""
+    streak = int(state.get("goal_streak") or 0) + 1 if (pace.get("progress") or 0) >= 1 else 0
+    state.set("goal_streak", streak)
+    if streak >= LADDER_DAYS:
+        state.set("goal_suggestion", {"cents": next_goal(int(cfg.daily_target_cents)), "streak": streak})
+    elif streak == 0:
+        state.set("goal_suggestion", None)
+
+
 class GoalPacing(Strategy):
     name = "goal_pacing"
     tasks = ("pace_goal",)
@@ -94,4 +113,5 @@ class GoalPacing(Strategy):
             return TaskResult(True, "pace up to date", {})
         pace = compute_pace(state, ctx.tools.config)
         state.set(KEY, pace)
+        ladder(state, ctx.tools.config, pace)
         return TaskResult(True, describe(pace).replace("\n", " · ")[:300], {"progress": pace["progress"]})
