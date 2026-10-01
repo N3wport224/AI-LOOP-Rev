@@ -225,3 +225,10 @@ def test_a_narrower_slice_is_not_a_duplicate_of_its_parent():
     parent = [{"slug": "hiring-rust", "status": "live", "keys_sample": json.dumps([str(i) for i in range(90)])}]
     assert pf.overlaps({str(i) for i in range(30)}, parent) is None          # Rust in Europe: a third of Rust
     assert pf.overlaps({str(i) for i in range(88)}, parent) == "hiring-rust"  # nearly the same postings
+
+
+def test_candidates_work_on_a_fresh_database(state, config):
+    from strategies import product_types
+
+    assert product_types.pack_candidates(state) == []  # audit: crashed before the factory had made anything
+    assert all(v == [] for v in product_types.all_candidates(state, config).values())

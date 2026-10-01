@@ -160,15 +160,18 @@ def existing(state: Any) -> list[dict[str, Any]]:
     return state._all("SELECT * FROM factory_products ORDER BY created_at")
 
 
-def overlaps(keys: set[str], made: list[dict[str, Any]]) -> str | None:
-    for m in made:
-        if m["status"] == "retired":
-            continue
-        other = set(json.loads(m["keys_sample"]))
+def key_sets(made: list[dict[str, Any]]) -> list[tuple[str, set[str]]]:
+    """Each live or staged product's postings, parsed once per tick (not once per candidate)."""
+    return [(m["slug"], set(json.loads(m["keys_sample"]))) for m in made if m["status"] != "retired"]
+
+
+def overlaps(keys: set[str], made: list[dict[str, Any]] | list[tuple[str, set[str]]]) -> str | None:
+    pairs = key_sets(made) if made and isinstance(made[0], dict) else made
+    for slug, other in pairs:
         # Jaccard: near-identical sets only. A sub-slice ("Rust in Europe" inside "Rust") is a
         # different product for a different buyer, so containment alone doesn't count.
         if other and keys and len(keys & other) / len(keys | other) >= OVERLAP_MAX:
-            return m["slug"]
+            return slug
     return None
 
 
@@ -183,12 +186,13 @@ def next_candidate(state: Any, cfg: Any) -> dict[str, Any] | None:
     if live >= int(cfg.factory_max_live):
         return None
     by_type = product_types.all_candidates(state, cfg)
+    made_keys = key_sets(made)
     for kind in product_types.rotation(state):
         for cand in by_type.get(kind, []):
             if cand["slug"] in taken:
                 continue
             keys = cand.get("keys") or {str(r.get("dedupe_key")) for r in cand["rows"]}
-            if overlaps(set(keys), made):
+            if overlaps(set(keys), made_keys):
                 continue
             cand["keys"] = set(keys)
             cand.setdefault("type", kind)
@@ -442,7 +446,7 @@ class ProductFactory(Strategy):
         due = 1 if not last else int((state.clock() - datetime.fromisoformat(last)).total_seconds()
                                      // max(60, int(cfg.factory_interval_seconds)))
         made, why = [], ""
-        for i in range(min(6, due)):
+        for _ in range(min(6, due)):
             out = tick(tools, force=True)
             if not out.get("made"):
                 why = out.get("why", "")

@@ -212,6 +212,9 @@ def build_company_list(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[st
 
 # ------------------------------------------------------------------ Phase 153: starter packs
 def pack_candidates(state: Any) -> list[dict[str, Any]]:
+    from strategies.product_factory import ensure
+
+    ensure(state)
     live = state._all("SELECT slug, title, filters, asset_id FROM factory_products WHERE status = 'live'")
     by_tech: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in live:

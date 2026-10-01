@@ -1909,6 +1909,22 @@ Automatic plays whose effect can't be measured, such as the blog, are never paus
 * **Phase 194:** `automonetize marketing report` shows it all in one place: funnel, title tests,
   strategy scores, return on time and paused strategies.
 
+### Audit after Phase 194
+
+This review covered:
+* static analysis with security rules on all the new modules;
+* a review of the new public surface: the catalog endpoint, sponsor lines, gift codes and the
+  checkout answers of custom requests;
+* both test suites (Python 3.11 and 3.13) and the simulator;
+* a load test of the factory with 5,000 postings and 300 existing products.
+
+At that size there are about 670 possible products, and choosing the next one takes about 1 second.
+
+Fixed:
+* Product ideas crashed on a fresh database, before the factory had made anything.
+* The duplicate check re-read every existing product for each candidate, which would have slowed
+  each tick to minutes at a few hundred products. It now reads each product once per tick.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

@@ -199,7 +199,7 @@ def scores(state: Any, days: int = SCORE_DAYS) -> dict[str, dict[str, Any]]:
         total_plays += plays
         out[key] = {"name": s["name"], "mode": s["mode"], "plays": plays, "orders": int(orders["n"]),
                     "revenue_cents": int(orders["gross"]), "checkouts": checkouts}
-    for key, row in out.items():
+    for row in out.values():
         n = max(1, row["plays"])
         mean = row["revenue_cents"] / n
         row["score"] = round(mean + 500 * math.sqrt(2 * math.log(max(2, total_plays)) / n), 1)  # UCB: try the untried
