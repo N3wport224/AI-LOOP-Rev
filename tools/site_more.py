@@ -61,13 +61,17 @@ def compare_page(pages: list[Any], shell: Any) -> str:
                                            "update and price.")
 
 
+SITEMAP_PAGES = ("trends/", "search/", "catalog/", "status/", "changes/")  # Phases 222-229
+
+
 def sitemap_extra(out: dict[str, Any]) -> list[str]:
     """Site paths beyond products and intel pages that belong in the sitemap."""
     keep = []
     for rel in sorted(out):
         if not rel.endswith("index.html") or rel == "index.html" or rel.startswith(("thanks/", "intel/")):
             continue
-        if rel.count("/") == 1 and not rel.startswith(("pricing/", "compare/", "contact/", "hiring/", "more/", "affiliates/", "blog/", "embed/", "sources/", "request/")):
+        if rel.count("/") == 1 and not rel.startswith(("pricing/", "compare/", "contact/", "hiring/", "more/", "affiliates/", "blog/", "embed/", "sources/", "request/",
+                                                                *SITEMAP_PAGES)):
             continue  # product pages are already listed
         keep.append(rel[: -len("index.html")])
     return keep

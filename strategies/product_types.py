@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 from statistics import median, quantiles
 from typing import Any
 
-TYPES = ("slice", "salary", "top", "remote_first", "pack")
+TYPES = ("slice", "salary", "top", "remote_first", "fast_hiring", "pack")
 TURN = "factory_turn"
 SALARY_MIN_ROWS = 15
 TOP_MIN_COMPANIES = 25
@@ -258,7 +258,13 @@ def _insight(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return insight(rows)
 
 
-BUILDERS = {"salary": build_salary, "top": build_company_list, "remote_first": build_company_list}
+def _build_fast(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any]:
+    from strategies.market_trends import build_fast_hiring
+
+    return build_fast_hiring(cand, cfg, now)
+
+
+BUILDERS = {"salary": build_salary, "top": build_company_list, "remote_first": build_company_list, "fast_hiring": _build_fast}
 
 
 # ------------------------------------------------------------------ rotation
@@ -267,11 +273,15 @@ def all_candidates(state: Any, cfg: Any) -> dict[str, list[dict[str, Any]]]:
 
     leads = fresh_leads(state, int(cfg.factory_max_age_days))
     tagged = [(lead, facets(lead)) for lead in leads]
+    from strategies.market_trends import fast_hiring_candidates, favour_rising, rising_techs
+
     by_type = {"slice": candidates(state, cfg, leads), "salary": salary_candidates(tagged), "top": top_candidates(tagged),
-               "remote_first": remote_first_candidates(tagged), "pack": pack_candidates(state)}
-    for kind in ("salary", "top", "remote_first", "pack"):
+               "remote_first": remote_first_candidates(tagged), "fast_hiring": fast_hiring_candidates(tagged, state.clock()),
+               "pack": pack_candidates(state)}
+    for kind in ("salary", "top", "remote_first", "fast_hiring", "pack"):
         by_type[kind].sort(key=lambda c: (-c["score"], c["slug"]))
-    return by_type
+    rising = rising_techs(state)  # Phase 223: within each type, rising technologies first
+    return {kind: favour_rising(cands, rising) for kind, cands in by_type.items()}
 
 
 def rotation(state: Any) -> list[str]:

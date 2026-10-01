@@ -37,6 +37,7 @@ FILE_LIST = {"slice": ["leads.csv", "leads-excel.csv", "leads.json", "leads.json
              "salary": ["salaries.csv", "SALARIES.md", "README.md"],
              "top": ["companies.csv", "companies.json", "companies.jsonl", "schema.sql", "README.md"],
              "remote_first": ["companies.csv", "companies.json", "companies.jsonl", "schema.sql", "README.md"],
+             "fast_hiring": ["companies.csv", "companies.json", "companies.jsonl", "schema.sql", "README.md"],
              "pack": ["one folder per dataset", "README.md"]}
 
 

@@ -161,11 +161,11 @@ def test_the_factory_rotates_through_product_types(kit, state, config, clock, tr
     unique_links(transport)
     salaried(state, clock, 90, ["rust"], "r")
     kinds = []
-    for _ in range(4):
+    for _ in range(5):
         made = pf.tick(kit, force=True)["made"]
         assert made, "each type had a product to make"
         kinds.append(json.loads(state._one("SELECT filters FROM factory_products WHERE slug = ?", (made["slug"],))["filters"])["type"])
-    assert kinds == ["slice", "salary", "top", "remote_first"]
+    assert kinds == ["slice", "salary", "top", "remote_first", "fast_hiring"]
     by = {r["slug"]: r for r in state._all("SELECT * FROM factory_products")}
     sal = state.get_asset(by["salary-rust"]["asset_id"])
     zf = zipfile.ZipFile(io.BytesIO(kit.files.read_bytes(sal["path"])))

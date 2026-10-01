@@ -2032,6 +2032,25 @@ Fixed:
 * A malformed JSON post to `/v1/requests` answered with a server error; it now gets a 400.
 * Automatic price rises (Phase 212) were missing from the Money tab's price history.
 
+## Market trends (Phases 220-224)
+
+From `strategies/market_trends.py`:
+
+* **Phase 220, weekly counts:** new postings per technology per week for the last 8 weeks, by
+  posting date. They are worked out at most every 6 hours.
+* **Phase 221, rising and falling:** the last two weeks are compared with the two weeks before.
+  * Rising: at least 10 recent postings and up 25% or more.
+  * Cooling: down 25% or more.
+* **Phase 222, trends page:** `trends/` on the site lists rising and cooling technologies, with an
+  8-week table for the 20 busiest.
+* **Phase 223, the factory follows demand:** within each product type, products about a rising
+  technology are made first.
+* **Phase 224, fastest-hiring companies** (`fast-hiring-<tech>`, $9): a sixth product type.
+  * It lists companies with 3 or more new roles for a technology in the last 14 days, ranked by new
+    roles.
+  * It needs 8 such companies.
+  * It takes its turn in the factory's rotation like the other types.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

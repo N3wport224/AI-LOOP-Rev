@@ -364,6 +364,10 @@ class InboundSyndicator(Strategy):
         from strategies.job_sources import sources_page
 
         extra["sources/index.html"] = sources_page(cfg, shell)
+        from strategies.market_trends import trends_page
+
+        if trends_page(tools.state, shell):  # Phase 222
+            extra["trends/index.html"] = trends_page(tools.state, shell)
         from strategies.buyer_experience import library_page, request_page
 
         extra["library/index.html"] = library_page(cfg, shell)
