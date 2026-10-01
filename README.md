@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 696 tests, ~40 s, no network
+pytest                     # 716 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 38 tasks now (Phases 20-27 added eight). An old `automonetize.toml` that pins
+The plan has 41 tasks now (Phases 20-31 added eleven). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -980,7 +980,8 @@ cut short.
 * On the 1st of each month (in `subscription_timezone`) the agent writes last month's verified
   revenue (sales, subscription payments, refunds, disputes and fees) to
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
-* `automonetize pace                                    # 7-day pace vs the daily goal, and the next step
+* `automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
+automonetize pace                                    # 7-day pace vs the daily goal, and the next step
 automonetize books [YYYY-MM]` builds any month by hand.
 
 ## Store care (Phases 24-27)
@@ -1024,6 +1025,49 @@ automonetize books [YYYY-MM]` builds any month by hand.
 * Stale datasets are left out of the share kit and the release emails. They stay on sale with
   their "data updated" date; taking them down is your call.
 * The mark clears by itself when postings flow again.
+
+## Protecting buyers and repeat sales (Phases 28-31)
+
+**Phase 28: heartbeat** (`agent/heartbeat.py`, task `send_heartbeat`).
+* The agent can only email you while it runs. If the Mac is off, asleep or offline, or the agent
+  crashed, an outside service has to notice.
+* Each cycle the agent pings `HEALTHCHECK_URL`. A free check at healthchecks.io emails you when
+  the pings stop.
+* Setup: run `automonetize heartbeat`, which prints the three steps. Then run
+  `automonetize heartbeat <ping URL>`: it tests the URL, saves it and restarts the agent. The URL
+  can also be set in the control panel (Settings → Monitoring, which also has your report email).
+* `automonetize doctor` warns until a heartbeat is set.
+
+**Phase 29: release gate** (`strategies/release_gate.py`, used by the packager). Before a new
+dataset version replaces the one on sale, it's checked:
+* More than `release_gate_max_drop` (50%) of rows lost → held. If the drop still holds after
+  `release_gate_hold_days` (3), it's treated as real and released.
+* Over 20% of rows without a company or job title → held until fixed (a parser problem). Time
+  never releases this one.
+* While held, buyers keep getting the previous version. You get one alert, and the hold shows in
+  the doctor and the daily report.
+
+**Phase 30: refresh offers** (`strategies/refresh_offers.py`, task `offer_refresh`). A buyer gets
+one offer to buy the current dataset at `refresh_discount_pct` (50%) off when:
+* their copy is at least `refresh_after_days` (30) old; and
+* the dataset now has at least `refresh_min_new_rows` (25) more rows than theirs.
+
+The email shows real numbers ("your copy has 140 rows; today's has 212").
+* The code is a single-use Stripe promotion code for that product, valid 14 days. Its link
+  applies the code at checkout.
+* Never sent for refunded or disputed orders, to suppressed addresses, to buyers who already
+  bought a newer copy, or for stale datasets.
+* Shares the one-email-per-14-days limit with the new-release emails.
+* In dry run, the email is logged with a placeholder code and nothing is created in Stripe.
+
+**Phase 31: launch codes** (`strategies/launch_promos.py`, task `create_launch_promos`).
+* Each newly released niche gets one code: `launch_discount_pct` (20%) off that product only, for
+  `launch_promo_days` (7) after the release. Stripe enforces the expiry, so the deadline in the
+  copy is true.
+* The new-release emails and the share kit show the code, with links that apply it. The share
+  kit drops it when it expires.
+* Live mode only. Payment Links get `allow_promotion_codes` switched on when their first code is
+  created.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
@@ -1315,6 +1359,10 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `storefront_check_hours` | `6` | How often checkout links, product pages and downloads are checked |
 | `release_announcements` / `announce_min_gap_days` | `true` / `14` | New-niche emails to past buyers |
 | `stale_after_days` | `7` | Days without new postings before a dataset stops being promoted |
+| `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
+| `release_gate_max_drop` / `release_gate_hold_days` | `0.5` / `3` | Hold a new version that lost rows |
+| `refresh_offers` / `refresh_after_days` / `refresh_min_new_rows` / `refresh_discount_pct` | `true` / `30` / `25` / `50` | Discounted update offers to past buyers |
+| `launch_promos` / `launch_discount_pct` / `launch_promo_days` | `true` / `20` / `7` | Launch code for each new niche |
 | `imap_host` / `imap_username` / `IMAP_PASSWORD` | from the SMTP login for Gmail, Fastmail, Outlook, iCloud | Support inbox (read-only) |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
@@ -1382,7 +1430,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 696 tests, ~40 s, no network
+pytest     # 716 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

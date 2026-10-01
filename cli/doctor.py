@@ -166,6 +166,20 @@ class Doctor:
         if stale:
             out.append(Finding("Fresh data", "warn", f"no new job postings lately for: {', '.join(stale)} (not promoted)",
                                "usually a job board changed; the agent keeps retrying and self-evolution can adapt parsers"))
+        from strategies.release_gate import held
+
+        for niche, hold in held(state).items():
+            out.append(Finding("New versions", "warn", f"{niche}: update held since {hold['since'][:10]} ({hold['reason']}); "
+                               "buyers get the previous version", "nothing to do unless it persists; see the Logs tab"))
+        if not cfg.heartbeat_url:
+            out.append(Finding("Heartbeat", "warn", "nobody is told if the Mac or the agent stops",
+                               "automonetize heartbeat (free, 2 minutes)"))
+        else:
+            beat = state.get("last_heartbeat_at")
+            fresh = beat and state.clock() - datetime.fromisoformat(beat) < timedelta(seconds=2 * cfg.interval_seconds + 600)
+            out.append(Finding("Heartbeat", "ok" if fresh else "warn",
+                               f"last ping {beat[:16]}" if beat else "no ping sent yet",
+                               "" if fresh else "check the URL with: automonetize heartbeat <url>"))
         pace = state.get("goal_pace")
         if pace:
             out.append(Finding("Goal pace", "ok" if (pace.get("progress") or 0) >= 1 else "warn",

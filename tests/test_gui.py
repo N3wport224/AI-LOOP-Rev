@@ -163,10 +163,10 @@ def test_settings_never_send_secrets_to_the_browser(gui):
         assert by["STRIPE_SECRET_KEY"]["set"] and by["STRIPE_SECRET_KEY"]["hint"] == "•••• WXYZ"
         assert by["STRIPE_SECRET_KEY"]["value"] == "" and by["STRIPE_MODE"]["value"] == "test"
         assert by["SMTP_PASSWORD"]["secret"] and by["SMTP_PASSWORD"]["set"]
-        assert {g["id"] for g in data["groups"]} == {"stripe", "mailer", "syndication", "tunnel", "compliance", "evolution"}
+        assert {g["id"] for g in data["groups"]} == {"stripe", "mailer", "syndication", "tunnel", "compliance", "monitoring", "evolution"}
         for key in ("STRIPE_WEBHOOK_SECRET", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SENDGRID_API_KEY", "POSTMARK_SERVER_TOKEN",
                     "DEVTO_API_KEY", "HASHNODE_TOKEN", "GITHUB_TOKEN", "TUNNEL_HOSTNAME", "CAN_SPAM_POSTAL_ADDRESS",
-                    "CAN_SPAM_UNSUBSCRIBE_EMAIL"):
+                    "CAN_SPAM_UNSUBSCRIBE_EMAIL", "OWNER_EMAIL", "HEALTHCHECK_URL"):
             assert key in by
     run(gui, s)
 

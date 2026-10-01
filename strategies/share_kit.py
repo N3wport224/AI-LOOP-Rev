@@ -8,6 +8,8 @@ and a direct message, built only from real numbers in the current dataset.
 * Every link is attributed (``utm_source`` on the product page, or ``client_reference_id`` on the
   checkout link), so the dashboard shows which channel sold.
 * Datasets the freshness guard marked stale are left out.
+* A product with an active launch code (``strategies/launch_promos.py``) shows the code and links
+  straight to checkout with it applied; the kit is rebuilt when the code expires.
 * Rebuilt when the products or prices change, and at least once a week.
 * Where to find it: the Monday daily report email, the control panel's **Share** tab (copy
   buttons) and ``automonetize share``.
@@ -16,7 +18,7 @@ and a direct message, built only from real numbers in the current dataset.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
@@ -66,11 +68,19 @@ def facts(files: Any, niche: str) -> list[str]:
     return out
 
 
-def posts_for(product: dict[str, Any], niche_facts: list[str]) -> list[dict[str, str]]:
+def posts_for(product: dict[str, Any], niche_facts: list[str], promo: dict[str, Any] | None = None) -> list[dict[str, str]]:
+    from tools.attribution import checkout_link
+    from tools.promo import promo_link
+
     title, price = product["title"], money(product["price_cents"])
     lead = ", ".join(niche_facts[:3])  # the short form, for X and DMs
     full = ", ".join(niche_facts)
-    links = {ch: link_for(product, ch) for ch, _ in CHANNELS}
+    if promo:  # a launch code: the link goes straight to checkout with it applied
+        until = datetime.fromtimestamp(int(promo["expires_at"]), tz=timezone.utc).strftime("%b %d")
+        price = f"{price} ({promo['percent_off']}% off with {promo['code']} until {until})"
+        links = {ch: promo_link(checkout_link(product["url"], ch, CAMPAIGN), promo["code"]) for ch, _ in CHANNELS}
+    else:
+        links = {ch: link_for(product, ch) for ch, _ in CHANNELS}
     linkedin = "\n".join(filter(None, [
         f"I put together {title}: a spreadsheet of companies actively hiring, refreshed by an automated pipeline.",
         f"This week: {full}." if full else "",
@@ -99,8 +109,20 @@ def posts_for(product: dict[str, Any], niche_facts: list[str]) -> list[dict[str,
             for ch, label in CHANNELS]
 
 
-def fingerprint(products: list[dict[str, Any]]) -> str:
-    raw = "|".join(f"{p['url']}:{p['price_cents']}:{p.get('lander_url', '')}" for p in products)
+def promos_for(state: Any, products: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    from strategies.launch_promos import active_code
+
+    out = {}
+    for p in products:
+        promo = active_code(state, niche_of(state, p["id"]))
+        if promo:
+            out[p["id"]] = promo
+    return out
+
+
+def fingerprint(products: list[dict[str, Any]], promos: dict[int, dict[str, Any]] | None = None) -> str:
+    raw = "|".join(f"{p['url']}:{p['price_cents']}:{p.get('lander_url', '')}:{(promos or {}).get(p['id'], {}).get('code', '')}"
+                   for p in products)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -108,10 +130,11 @@ def build_kit(state: Any, files: Any) -> dict[str, Any]:
     from strategies.freshness_guard import promotable
 
     products = promotable(state)[:MAX_PRODUCTS]  # stale datasets are not advertised
+    promos = promos_for(state, products)
     posts: list[dict[str, str]] = []
     for p in products:
-        posts += posts_for(p, facts(files, niche_of(state, p["id"])))
-    return {"generated_at": state.now(), "fingerprint": fingerprint(products), "posts": posts}
+        posts += posts_for(p, facts(files, niche_of(state, p["id"])), promos.get(p["id"]))
+    return {"generated_at": state.now(), "fingerprint": fingerprint(products, promos), "posts": posts}
 
 
 def as_text(kit: dict[str, Any] | None) -> str:
@@ -132,7 +155,8 @@ class ShareKit(Strategy):
 
         state = ctx.tools.state
         current = state.get(KEY) or {}
-        fp = fingerprint(promotable(state)[:MAX_PRODUCTS])
+        products = promotable(state)[:MAX_PRODUCTS]
+        fp = fingerprint(products, promos_for(state, products))
         age_ok = current.get("generated_at") and \
             state.clock() - datetime.fromisoformat(current["generated_at"]) < timedelta(days=REFRESH_DAYS)
         if current.get("fingerprint") == fp and age_ok:

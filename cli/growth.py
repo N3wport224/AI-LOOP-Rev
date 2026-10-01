@@ -1,4 +1,4 @@
-"""`automonetize share` (ready-to-paste posts), `automonetize pace` (goal pace) and `automonetize books [YYYY-MM]`."""
+"""`automonetize share`, `pace`, `books [YYYY-MM]` and `heartbeat [URL]`."""
 
 from __future__ import annotations
 
@@ -56,4 +56,39 @@ def books_main(argv: list[str] | None = None) -> int:
     say(GREEN, f"✔ {month}: {totals['rows']} entries · gross ${totals['gross_cents'] / 100:,.2f} · "
                f"fees ${totals['fee_cents'] / 100:,.2f} · net ${totals['net_cents'] / 100:,.2f}")
     print(f"  Saved to {path}")
+    return 0
+
+
+def heartbeat_main(argv: list[str] | None = None, transport=None) -> int:
+    """`automonetize heartbeat [URL]`: test a ping URL, save it to .env and restart the agent."""
+    from agent.setup_autonomous import load_env_into
+    from agent.tunnel import update_env_file
+    from cli.go_live import restart
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    argv = sys.argv[1:] if argv is None else argv
+    config, state, _ = _setup()
+    if not argv:
+        if config.heartbeat_url:
+            say(GREEN, f"Heartbeat is on: {config.heartbeat_url}")
+        else:
+            say(YELLOW, "No heartbeat yet. It emails you if the agent stops (Mac off, asleep or offline). One-time setup:")
+            print("  1. Go to https://healthchecks.io and sign up (free).")
+            print("  2. Add a check: Period 1 hour, Grace 1 hour. Copy its ping URL.")
+            print("  3. Run: automonetize heartbeat https://hc-ping.com/YOUR-ID")
+        return 0
+    url = argv[0].strip()
+    if not url.startswith("https://") or " " in url:
+        say(RED, "That doesn't look like a ping URL (it starts with https://).")
+        return 1
+    try:
+        tools = build_toolkit(config, state, CircuitBreaker(100, 100, 100), transport=transport, sleep=lambda s: None)
+        tools.http.get(url, check_robots=False, attempts=2)
+    except Exception as exc:  # noqa: BLE001
+        say(RED, f"The URL didn't answer ({exc}). Check you copied the whole ping URL.")
+        return 1
+    update_env_file(ROOT / ".env", {"HEALTHCHECK_URL": url})
+    say(GREEN, "✔ Ping received and saved. You'll get an email from healthchecks.io if the agent goes quiet.")
+    restart(load_env_into(ROOT / ".env"))
     return 0

@@ -16,6 +16,8 @@ from strategies.storefront_health import StorefrontHealth
 from strategies.release_announcer import ReleaseAnnouncer
 from strategies.goal_pacing import GoalPacing
 from strategies.freshness_guard import FreshnessGuard
+from strategies.launch_promos import LaunchPromos
+from strategies.refresh_offers import RefreshOffers
 from strategies.owner_reports import OwnerReports
 from strategies.support_desk import SupportDesk
 from strategies.retention_engine import RetentionEngine
@@ -35,10 +37,11 @@ def default_strategies() -> list[Strategy]:
         InboundSyndicator(), SubscriptionEngine(), LeadMagnet(), PricingStrategy(),
         SourceDiscovery(), SatelliteOrchestrator(), DossierEngine(), RetentionEngine(), OwnerReports(), Finance(), SupportDesk(), BundleEngine(), Refunds(),
         ShareKit(), BuyerFollowup(), Bookkeeping(), StorefrontHealth(), ReleaseAnnouncer(), GoalPacing(), FreshnessGuard(),
+        LaunchPromos(), RefreshOffers(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]

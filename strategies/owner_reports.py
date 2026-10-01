@@ -162,6 +162,10 @@ class OwnerReports(Strategy):
         broken = [p for p in (state.get(HEALTH) or {}).get("products", []) if not p["ok"]]
         if broken:
             lines += ["", "Can't be bought right now:", *[f"- {p['title']}: {', '.join(p['problems'])}" for p in broken]]
+        from strategies.release_gate import held
+
+        for niche, hold in held(state).items():
+            lines.append(f"Update held for {niche} ({hold['reason']}): buyers get the previous version.")
         stale = stale_titles(state)
         if stale:
             lines.append(f"Not being promoted (no new job postings lately): {', '.join(stale)}")

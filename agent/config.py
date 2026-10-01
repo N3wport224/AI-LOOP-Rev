@@ -269,6 +269,18 @@ class Config:
     announce_min_gap_days: int = 14          # at most one announcement per buyer in this many days
     stale_after_days: int = 7                # a dataset with no new postings this long is not promoted
 
+    # Heartbeat, release gate, refresh offers, launch codes (Phases 28-31)
+    heartbeat_url: str = ""                  # e.g. https://hc-ping.com/<uuid>: emails you if the agent goes quiet
+    release_gate_max_drop: float = 0.5       # hold a new version that lost more than this share of rows
+    release_gate_hold_days: int = 3          # ...unless the drop persists this long (then it's real)
+    refresh_offers: bool = True              # past buyers get the updated dataset at a discount
+    refresh_after_days: int = 30             # earliest, after their purchase
+    refresh_min_new_rows: int = 25           # only when the dataset grew by at least this many rows
+    refresh_discount_pct: int = 50
+    launch_promos: bool = True               # time-limited launch code for each new niche
+    launch_discount_pct: int = 20
+    launch_promo_days: int = 7
+
     # Backups (agent/backup.py)
     backups_enabled: bool = True
     backup_dir: str = ""                     # "" = ~/Library/Application Support/AutoMonetize/backups (macOS)
@@ -359,6 +371,7 @@ _PLAIN_ENV = {
     "PUBLIC_WEBHOOK_URL": "public_webhook_url",
     "ENABLE_AUTONOMOUS_CODE_EVOLUTION": "enable_autonomous_code_evolution",
     "OWNER_EMAIL": "owner_email",
+    "HEALTHCHECK_URL": "heartbeat_url",
     # Aliases accepted for hand-edited .env files (and the names the GUI shows).
     "STRIPE_API_KEY": "stripe_secret_key",
     "SMTP_HOST": "smtp_host",

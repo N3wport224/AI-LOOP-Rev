@@ -795,6 +795,12 @@ def cmd_pace(args: argparse.Namespace, console: Console) -> int:
     return pace_main([])
 
 
+def cmd_heartbeat(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import heartbeat_main
+
+    return heartbeat_main([args.url] if args.url else [])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -979,6 +985,9 @@ def build_parser() -> argparse.ArgumentParser:
     sh.set_defaults(func=cmd_share)
     pa = sub.add_parser("pace", help="7-day revenue pace vs the daily goal, and the one next step that would help most")
     pa.set_defaults(func=cmd_pace)
+    hb = sub.add_parser("heartbeat", help="get an email if the agent stops: shows setup, or tests and saves a ping URL")
+    hb.add_argument("url", nargs="?", help="ping URL, e.g. https://hc-ping.com/<id>")
+    hb.set_defaults(func=cmd_heartbeat)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)

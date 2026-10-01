@@ -8,6 +8,9 @@ Produces, per version:
 * ``assets/<niche>/v<N>/listing.json``: listing (title, summary, tiered price)
 * ``assets/<niche>/v<N>/sample.json``: 5 sanitized records for the public showcase
 
+A new version is built only if ``strategies/release_gate.py`` finds it healthy (no sudden loss of
+rows, no blank companies/titles); otherwise the previous version stays on sale.
+
 Publishing (checkout + lander + showcase) is handled by ``distribution_engine``. For the Gumroad
 fallback, a product whose name equals the listing title is linked automatically.
 """
@@ -172,6 +175,17 @@ class DigitalAssetPackager(Strategy):
                 ok=True,
                 summary=f"v{latest['version']} is current ({len(leads)} leads)",
                 metrics={"built": False, "version": latest["version"], "product_linked": linked},
+            )
+
+        from strategies.release_gate import gate
+
+        hold = gate(tools.state, cfg, niche, latest, leads)
+        if hold:
+            linked = self._link_product(ctx, latest) if latest else False
+            return TaskResult(
+                ok=True,
+                summary=f"new version held by the release gate ({hold}); v{latest['version'] if latest else 0} stays on sale",
+                metrics={"built": False, "held": hold, "product_linked": linked},
             )
 
         version = (latest["version"] + 1) if latest else 1

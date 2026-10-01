@@ -74,11 +74,14 @@ PLAN: list[tuple[str, int]] = [
     ("follow_up_buyers", 53),
     ("guard_freshness", 56),
     ("refresh_share_kit", 57),
-    ("announce_releases", 54),
+    ("create_launch_promos", 54),
+    ("announce_releases", 55),
+    ("offer_refresh", 62),
     ("check_storefront", 61),
     ("pace_goal", 95),
     ("monthly_books", 96),
     ("backup_data", 97),
+    ("send_heartbeat", 94),
     ("report_owner", 98),
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
 ]
@@ -142,6 +145,9 @@ class Engine:
             from agent.backup import Backups
 
             self.handlers["backup_data"] = Backups()
+            from agent.heartbeat import Heartbeat
+
+            self.handlers["send_heartbeat"] = Heartbeat()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online
