@@ -12,7 +12,8 @@
   in ``HEAVY_TASKS`` (dataset builds, site builds, source discovery, code evolution) wait until it's
   plugged in again; sales, deliveries and email keep running. ``battery_saver = false`` turns it off.
 
-All three appear in ``automonetize doctor`` and the Health tab.
+All three appear in ``automonetize doctor`` and the Health tab. Phases 215-218 (factory health, database
+growth, slow tasks) run here too: see ``agent/scale_checks.py``.
 """
 
 from __future__ import annotations
@@ -143,5 +144,11 @@ class OpsChecks(Strategy):
         if saving:
             notes.append(f"on battery ({power['percent']}%): heavy builds wait" if power["percent"] is not None
                          else "on battery: heavy builds wait")
+        # 215, 217, 218: factory health, database growth, slow tasks
+        from agent.scale_checks import check as scale_check
+
+        scale, scale_notes = scale_check(state, cfg, _daily)
+        record["scale"] = scale
+        notes += scale_notes
         state.set(KEY, record)
         return TaskResult(True, "ops: " + ("; ".join(notes) or "all fine"), {"sources_down": len(bad), "battery_saving": saving})

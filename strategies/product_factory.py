@@ -69,6 +69,7 @@ def ensure(state: Any) -> None:
     cols = {r["name"] for r in state._all("PRAGMA table_info(factory_products)")}
     if "refreshed_at" not in cols:  # Phase 154
         state._exec("ALTER TABLE factory_products ADD COLUMN refreshed_at TEXT")
+    state._exec("CREATE INDEX IF NOT EXISTS idx_factory_status ON factory_products (status, published_at)")  # Phase 216
 
 
 def label(tech: str) -> str:
@@ -381,6 +382,7 @@ def retire_unsold(tools: Any) -> list[str]:
 
 # ------------------------------------------------------------------ Phase 148: cadence
 LAST = "factory_last_product_at"
+MADE = "factory_last_made_at"  # Phase 215: LAST also moves when nothing could be made
 
 
 def tick(tools: Any, force: bool = False) -> dict[str, Any]:
@@ -411,6 +413,7 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     made = build(tools, cand)
     status = publish(tools, made["slug"])
     state.set(LAST, state.now())
+    state.set(MADE, state.now())
     state.log_action(int(state.get("iteration", 0)), None, "product_factory", "ok",
                      f"new product: {made['title']} ({made['rows']} rows, ${made['price_cents'] / 100:.2f}, {status})")
     return {"made": made, "status": status, "published": published, "retired": retired, "refreshed": refreshed}
@@ -425,13 +428,17 @@ def catalog(state: Any) -> dict[str, int]:
 def run_worker(tools: Any, stop: Any, is_stopped: Any = None) -> None:
     """The supervisor's ``factory`` worker: one tick every ``factory_interval_seconds``."""
     interval = max(60, int(tools.config.factory_interval_seconds))
+    from agent.scale_checks import record_factory_tick
+
     while not stop.is_set():
         try:
             if not (is_stopped and is_stopped()[0]):
                 tools.breaker.begin_cycle()
-                tick(tools)
+                out = tick(tools)
+                record_factory_tick(tools.state, True, "made one" if out.get("made") else str(out.get("why") or ""))
         except Exception as exc:  # noqa: BLE001 - the factory must never take the agent down
             tools.state.log_error("product_factory", f"factory tick failed: {exc!r}")
+            record_factory_tick(tools.state, False, repr(exc)[:200])
         stop.wait(interval)
 
 

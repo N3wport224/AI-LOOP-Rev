@@ -335,6 +335,9 @@ CREATE INDEX IF NOT EXISTS idx_experiments_asset ON price_experiments (asset_id,
 CREATE INDEX IF NOT EXISTS idx_experiments_ref ON price_experiments (product_ref);
 CREATE INDEX IF NOT EXISTS idx_revenue_hyp ON revenue (hypothesis_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_leads_first_seen ON leads (first_seen);
+CREATE INDEX IF NOT EXISTS idx_orders_asset ON orders (asset_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_assets_niche ON assets (niche, status);
+CREATE INDEX IF NOT EXISTS idx_actions_time ON actions (created_at, name);
 """
 
 # Columns added after the first release; applied to existing databases on open.

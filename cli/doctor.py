@@ -195,6 +195,18 @@ class Doctor:
             off = abs(float(ops["clock_skew_s"])) > 120
             out.append(Finding("Clock", "warn" if off else "ok", f"{ops['clock_skew_s']:+.0f}s from internet time",
                                "System Settings → General → Date & Time → Set time automatically" if off else ""))
+        scale = ops.get("scale") or {}
+        if scale.get("factory"):
+            f = scale["factory"]
+            out.append(Finding("Product factory", "ok" if f["ok"] else "warn", f["detail"], f["fix"]))
+        if scale.get("db"):
+            db = scale["db"]
+            out.append(Finding("Database size", "warn" if db["warn"] else "ok",
+                               db["warn"] or f"{db['mb']:,.0f} MB, {db['per_day_mb']:+,.1f} MB/day",
+                               "housekeeping prunes old logs nightly; if it keeps growing, check the Logs tab for a task logging in a loop" if db["warn"] else ""))
+        for name, secs in (scale.get("slow") or {}).items():
+            out.append(Finding(f"Task {name}", "warn", f"slow: over {secs / 60:.0f} min on each of its last runs",
+                               "it still runs; everything after it waits"))
         if ops.get("battery_saving"):
             out.append(Finding("Power", "warn", "on battery: dataset and site builds wait for power", "plug the Mac in"))
         from agent.task_cooldown import resting

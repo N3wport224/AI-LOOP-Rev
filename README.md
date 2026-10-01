@@ -2000,6 +2000,23 @@ Every action needs the panel's sign-in and CSRF token. The panel only listens on
 * **Phase 214, current numbers at checkout:** each refresh updates the Stripe product's description
   with the new row count.
 
+## Ops at scale (Phases 215-219)
+
+These run inside `ops_checks` and show in `automonetize doctor` (`agent/scale_checks.py`).
+
+* **Phase 215, factory health:** the factory worker records every run. You get one alert a day if:
+  * it hasn't run for 3 intervals (at least 30 minutes);
+  * its last run failed;
+  * it hasn't made a new product for 24 hours (with its reason, usually "waiting for more postings").
+* **Phase 216, indexes:** the queries a large catalog runs most (orders by product, products by
+  slug, factory products by status, recent task runs) use database indexes.
+* **Phase 217, database growth:** the database size is recorded daily. Growth over 200 MB a day, or a
+  database over 2 GB, gets one alert a day.
+* **Phase 218, slow tasks:** a task that took over 5 minutes on each of its last 3 runs (a very
+  large site build, say) gets one alert a day; it still runs.
+* **Phase 219, scale test:** a test builds a catalog of 1,500 products with 4,500 orders and checks
+  that the hot paths stay fast and indexed.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
