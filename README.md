@@ -2207,6 +2207,22 @@ From `strategies/kinds_attributes.py`:
 * **Phase 259, work from anywhere and four-day weeks** (`work-from-anywhere[-<tech>]`,
   `four-day-week`). The four-day week list is rarer, so it needs only 10 postings from 5 companies.
 
+## Stack maps (Phases 260-264)
+
+From `strategies/kinds_stacks.py`:
+
+* **Phase 260, co-occurrence:** for each technology, how often each other technology appears in the
+  same postings.
+* **Phase 261, stack maps** (`stack-map-<tech>`, $9): one row per company hiring for a technology,
+  with its full stack.
+  * Comes with `STACK.md` (what the technology is used with, and how often) and `stack.json`.
+  * Needs 10 companies.
+* **Phase 262, technology pairs** (`pair-<a>-<b>`): postings that mention both technologies, e.g.
+  "Companies Using AWS and Rust Together".
+* **Phase 263, on the trends page:** the pairs seen together most often in the last four weeks.
+* **Phase 264, "often used with":** a technology dataset's README lists what else its postings
+  mention most.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

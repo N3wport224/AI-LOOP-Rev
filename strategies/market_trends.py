@@ -97,7 +97,7 @@ def trends(state: Any, force: bool = False) -> dict[str, Any]:
     from strategies.kinds_countries import hiring_by_country
 
     out = {"at": state.now(), "counts": counts, "families": family_counts(leads, now, WEEKS),
-           "countries": hiring_by_country(leads, now), **classify(counts)}
+           "countries": hiring_by_country(leads, now), "pairs": _recent_pairs(leads, now), **classify(counts)}
     state.set(KEY, out)
     return out
 
@@ -130,7 +130,7 @@ def trends_page(state: Any, shell: Any) -> str:
             "<h2>Rising</h2>" + items(t.get("rising") or [], "+") + "<h2>Cooling</h2>" + items(t.get("falling") or [], "−")
             + "<h2>The busiest technologies</h2><div style=\"overflow-x:auto\"><table><thead><tr><th>Technology</th>" + head
             + "</tr></thead><tbody>" + rows + "</tbody></table></div>" + _families_table(t.get("families") or {}, head)
-            + _countries_list(t.get("countries") or [])
+            + _countries_list(t.get("countries") or []) + _pairs_list(t.get("pairs") or [])
             + f"<p class=\"muted\">Updated {html.escape(t['at'][:10])}.</p>")
     return shell("Hiring trends by technology", body, "Which technologies companies are hiring for more, and less, week by week, "
                                                       "from public job postings.")
@@ -153,6 +153,21 @@ def _countries_list(countries: list[Any]) -> str:
     return ("<h2>Where companies are hiring</h2><p class=\"muted\">New postings in the last four weeks, by country (remote "
             "roles without a country aren't counted).</p><ol>"
             + "".join(f"<li>{html.escape(str(c))}: {int(n)}</li>" for c, n in countries) + "</ol>")
+
+
+def _recent_pairs(leads: list[dict[str, Any]], now: datetime) -> list[Any]:
+    from strategies.kinds_stacks import top_pairs
+
+    since = now - timedelta(days=28)
+    return top_pairs([lead for lead in leads if (_when(lead) or since - timedelta(days=1)) >= since])
+
+
+def _pairs_list(pairs: list[Any]) -> str:
+    """Phase 263: technologies seen together most often in the last four weeks."""
+    if not pairs:
+        return ""
+    return ("<h2>Often used together</h2><ol>" + "".join(f"<li>{html.escape(str(p))}: {int(n)} postings</li>" for p, n in pairs)
+            + "</ol>")
 
 
 # ------------------------------------------------------------------ Phase 223

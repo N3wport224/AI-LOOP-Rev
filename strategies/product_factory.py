@@ -247,7 +247,11 @@ def slice_content(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, An
               "`schema.sql` (SQLite/Postgres), `QUALITY.md`, `FIELDS.md`, `TOP20.md`.\n")
     from strategies.posting_quality import listed_line, sources_line
 
-    extra = " ".join(x for x in (sources_line(rows), listed_line(rows, now)) if x)  # Phases 233-234
+    from strategies.kinds_stacks import with_line
+
+    tech = str(cand["filters"].get("tech") or "")
+    extra = " ".join(x for x in (sources_line(rows), listed_line(rows, now),
+                                 with_line(rows, tech) if tech else "") if x)  # Phases 233-234, 264
     if extra:
         readme += f"\n{extra}\n"
     content = {
