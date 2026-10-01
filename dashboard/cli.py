@@ -753,6 +753,12 @@ def cmd_go_live(args: argparse.Namespace, console: Console) -> int:
     return go_live(["--link"] if args.link else [])
 
 
+def cmd_connect_marketing(args: argparse.Namespace, console: Console) -> int:
+    from cli.connect_marketing import main as connect
+
+    return connect([])
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -908,6 +914,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "prints your checkout link")
     gl.add_argument("--link", action="store_true", help="just print the live checkout link(s)")
     gl.set_defaults(func=cmd_go_live)
+
+    cm = sub.add_parser("connect-marketing", help="paste a Dev.to key and a GitHub token: creates your public site, "
+                        "switches on automatic articles and pages")
+    cm.set_defaults(func=cmd_connect_marketing)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")
