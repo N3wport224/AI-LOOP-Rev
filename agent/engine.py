@@ -101,6 +101,7 @@ PLAN: list[tuple[str, int]] = [
     ("check_disk", 5),  # first: a full disk pauses builds before they start
     ("ops_checks", 6),  # job sources, clock, battery (heavy builds wait on battery)
     ("tune_offers", 68),
+    ("plan_marketing", 69),  # traffic plays: automatic ones run, drafts wait for you
     ("process_bounces", 44),
     ("guard_payments", 46),
     ("check_webhook", 62),

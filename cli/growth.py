@@ -173,6 +173,37 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def marketing_main(argv: list[str]) -> int:
+    """`automonetize marketing [plan | scores | done ID | skip ID]` (Phases 170-174)."""
+    from strategies import marketing_engine as me
+
+    _, state, _ = _setup()
+    if argv[:1] in (["done"], ["skip"]) and len(argv) > 1 and argv[1].isdigit():
+        ok = me.mark(state, int(argv[1]), "posted" if argv[0] == "done" else "skipped")
+        say(GREEN if ok else YELLOW, f"✔ Play {argv[1]} marked {'posted' if argv[0] == 'done' else 'skipped'}" if ok
+            else "No queued play with that number.")
+        return 0
+    if argv[:1] == ["plan"]:
+        for day, name in me.calendar(state):
+            print(f"{day}  {name}")
+        return 0
+    if argv[:1] == ["scores"]:
+        paused = me.paused(state)
+        for key, r in sorted(me.scores(state).items(), key=lambda kv: -kv[1]["revenue_cents"]):
+            flag = "  (paused)" if key in paused else ""
+            print(f"{r['name']:<28} {r['mode']:<7} {r['plays']:>3} plays {r['checkouts']:>3} checkouts {r['orders']:>3} orders "
+                  f"${r['revenue_cents'] / 100:>8,.2f}{flag}")
+        return 0
+    items = me.queue(state)
+    if not items:
+        print("No drafts waiting. The engine queues new ones daily (automonetize marketing plan shows the week).")
+    for p in items:
+        say(BOLD, f"\n#{p['id']}  {me.PLAYBOOK.get(p['strategy'], {}).get('name', p['strategy'])}: {p['title']}")
+        print(p["body"])
+        print(f"→ after posting: automonetize marketing done {p['id']}   (or: skip {p['id']})")
+    return 0
+
+
 def marketplace_main(argv: list[str]) -> int:
     """`automonetize marketplace-export` (Phase 165)."""
     from strategies.sales_channels import marketplace_export

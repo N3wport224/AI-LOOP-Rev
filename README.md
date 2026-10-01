@@ -1566,6 +1566,7 @@ Two changes elsewhere:
 * **Phase 113, task timings:** `automonetize marketplace-export          # listing kits to upload to Gumroad / Lemon Squeezy / data marketplaces
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
+automonetize marketing [plan|scores|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
 automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
@@ -1808,6 +1809,32 @@ use up the API budget.
 * **Phase 169, product leaderboard:** `automonetize products` ranks every product by revenue and
   flags the ones that never sold.
 
+## Marketing strategy engine (Phases 170-174)
+
+* **Phase 170, playbook:** every traffic strategy the agent knows. Each turns the current catalog
+  (best sellers first, then the newest products) into concrete *plays*:
+  * **automatic plays** run by themselves: articles, feeds, teasers, SEO pages, the newsletter, and
+    more added by the next phases;
+  * **draft plays** are ready-to-post texts for places that don't allow bots or need your account:
+    Reddit, LinkedIn, X, Show HN, Indie Hackers, Product Hunt and newsletter pitches. Each reminds
+    you of that community's rules.
+* **Every play is tracked:** its link carries `utm_source=<channel>&utm_campaign=mkt<id>`, so its
+  checkouts and sales are counted.
+* **Phase 171, scheduler** (`plan_marketing`, daily):
+  * each strategy runs at its own rhythm (X daily, LinkedIn every 2 days, Reddit every 4, Show HN
+    every 90...);
+  * at most `marketing_drafts_per_day` (3) drafts are queued, chosen by score.
+* **Phase 172, scoring:** per strategy over 60 days: plays, checkouts, kept orders and revenue per
+  play, plus a bonus for strategies tried only a few times. Strategies that earn get scheduled more.
+* **Phase 173, weekly calendar:** Monday's report and `automonetize marketing plan` show the next 7
+  days of plays.
+* **Phase 174, daily line:** the daily report says how many automatic plays ran, which drafts wait
+  for you, and the best strategy this month.
+
+To see your drafts, run `automonetize marketing`. Post one, then run
+`automonetize marketing done <id>`, or `skip <id>`. `automonetize marketing scores` shows what's
+working.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -1914,6 +1941,7 @@ and shows its last runs.
 | 66 | `offer_sample_upgrade` | Offer free-sample subscribers the full dataset. |
 | 67 | `run_sale` | Run the quarterly sale. |
 | 68 | `tune_offers` | Adjust discounts by what they sold. |
+| 69 | `plan_marketing` | Plan the day's traffic plays: automatic ones run, drafts wait for you to post. |
 | 92 | `housekeeping` | Tidy logs, old versions and the database; delete data nobody needs. |
 | 93 | `audit_security` | Fix file permissions; report exposed secrets and risky settings. |
 | 94 | `send_heartbeat` | Ping your heartbeat URL so you hear if the Mac stops. |

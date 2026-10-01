@@ -291,6 +291,9 @@ class OwnerReports(Strategy):
             lines.append(f"Not being promoted (no new job postings lately): {', '.join(stale)}")
         if drafts:
             lines.append(f"Sales emails waiting for your OK: {drafts} (control panel → Outreach)")
+        from strategies.marketing_engine import CALENDAR, describe as describe_marketing
+
+        lines += ["", describe_marketing(state)]
         if problems:
             lines += ["", "Problems in the last 24 hours:", *[problem_line(p) for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):
@@ -308,6 +311,9 @@ class OwnerReports(Strategy):
                 lines += ["", asks]
             from strategies.money_insight import abandoned, describe_abandoned, describe_trends, niche_trends
 
+            week = (state.get(CALENDAR) or {}).get("items") or []
+            if week:
+                lines += ["", "Marketing this week:", *[f"- {d}: {name}" for d, name in week[:14]]]
             for line in (describe_trends(niche_trends(state)), describe_abandoned(abandoned(state))):
                 if line:
                     lines += ["", line]

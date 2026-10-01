@@ -835,6 +835,12 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_marketing(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import marketing_main
+
+    return marketing_main(args.rest)
+
+
 def cmd_marketplace(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import marketplace_main
 
@@ -1204,6 +1210,9 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    mk = sub.add_parser("marketing", help="drafts to post; plan = the week; scores = what works; done/skip ID")
+    mk.add_argument("rest", nargs="*")
+    mk.set_defaults(func=cmd_marketing)
     me = sub.add_parser("marketplace-export", help="ready-to-upload listing kits for Gumroad, Lemon Squeezy and data marketplaces")
     me.set_defaults(func=cmd_marketplace)
     af = sub.add_parser("affiliate", help="affiliates: what you owe; add EMAIL approves one; paid CODE records a payout")
