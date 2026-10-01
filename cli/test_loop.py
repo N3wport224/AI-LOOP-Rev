@@ -377,6 +377,7 @@ def factory(loop: Loop) -> str:
             "stack": ["rust", "aws"], "seniority": "senior", "url": f"https://jobs.example/rust/{i}", "posted_at": when,
             "source": "remoteok"})
     tools.config.product_factory = True
+    tools.config.link_checks = False  # the sandbox's postings link to pages that don't exist
     out = pf.tick(tools, force=True)
     made = out.get("made")
     assert made and out.get("status") == "live", out.get("why") or out.get("status")

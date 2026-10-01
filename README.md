@@ -2304,6 +2304,22 @@ The datasets come from public job postings, but a company may still prefer not t
 * **Phase 288, confirmation:** on approval the requester gets one email saying it's done.
 * **Phase 289, in the privacy policy:** the privacy page explains this and links the form.
 
+## Posting hygiene (Phases 290-294)
+
+Applied to the postings every factory product is built from (`strategies/posting_hygiene.py`).
+
+* **Phase 290, tidy titles:** "Sr." becomes "Senior" and "Jr." becomes "Junior". Gender tags like
+  "(m/w/d)" go, as does a trailing place or work mode (" - Remote", " | Berlin"). SHOUTED titles
+  are put in title case.
+* **Phase 291, no personal emails:** `contact_email` is kept only for role mailboxes such as `jobs@`
+  or `careers@`. A person's address is removed.
+* **Phase 292, clean links:** tracking parameters (`utm_*`, `ref`, `gclid`...) and fragments are
+  removed from posting links.
+* **Phase 293, one posting, one row:** the same posting found on two job boards is kept once. The copy
+  with a salary wins, otherwise the newer one. Two openings on the same board stay two rows.
+* **Phase 294, dead links** (`link_checks`): once a day the factory checks 20 posting links (HEAD
+  request, robots.txt respected). A link that answers 404 or 410 marks its posting as gone.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

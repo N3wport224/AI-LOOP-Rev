@@ -163,6 +163,7 @@ class Config:
     factory_retire_days: int = 60            # a product with no sale after this long is retired
     factory_prices: list[int] = field(default_factory=lambda: [500, 900, 1400])  # cents: <60 rows, <200, larger
     factory_types: list[str] = field(default_factory=list)  # kinds of product the factory makes; empty = every kind
+    link_checks: bool = True                 # check a few posting links a day and drop postings whose page is gone
     # More ways to get paid (strategies/revenue_models.py)
     marketing_engine: bool = True            # plan traffic plays daily: automatic ones run, drafts wait for you
     marketing_drafts_per_day: int = 3        # most ready-to-post drafts queued per day

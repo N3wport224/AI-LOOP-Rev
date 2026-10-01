@@ -178,6 +178,7 @@ def config(tmp_path: Path) -> Config:
         lead_sources=["remoteok", "arbeitnow", "hn_hiring"],  # the newer boards have their own tests (test_job_sources.py)
         # the original product types; the kinds added from Phase 245 have their own tests (test_kinds_*.py)
         factory_types=["slice", "salary", "top", "remote_first", "fast_hiring", "pack"],
+        link_checks=False,  # the fake network answers 404 to unknown links; tests/test_posting_hygiene.py covers it
         pivot_after_iterations=3,
         max_consecutive_errors=3,
         sender_name="Sam Dev",

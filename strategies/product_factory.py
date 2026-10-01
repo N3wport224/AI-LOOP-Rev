@@ -106,7 +106,9 @@ def fresh_leads(state: Any, max_age_days: int) -> list[dict[str, Any]]:
 
     from strategies.opt_out import drop_excluded
 
-    return drop_excluded(state, drop_unlisted(out))  # Phases 230, 287
+    from strategies.posting_hygiene import clean
+
+    return clean(state, drop_excluded(state, drop_unlisted(out)))  # Phases 230, 287, 290-294
 
 
 def slice_spec(tech: str, region: str = "", level: str = "") -> dict[str, Any]:
@@ -432,6 +434,9 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     from strategies.product_types import refresh_due
 
     check_integrity(tools)  # Phase 243: a missing download is rebuilt by the refresh just below
+    from strategies.posting_hygiene import check_links
+
+    check_links(tools)  # Phase 294: daily
     refreshed = refresh_due(tools)
     last = state.get(LAST)
     if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
