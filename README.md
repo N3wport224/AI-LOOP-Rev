@@ -1512,6 +1512,28 @@ Every new dataset zip also contains:
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
+## Conversion (Phases 100-104)
+
+* **Phase 100, trust row:** under the buy buttons, every product page says "🔒 Secure checkout by
+  Stripe · Instant delivery by email · N-day refund", linking to the refunds page
+  (`refund_policy_days`).
+* **Phases 101-102, 1-click ratings:** the buyer follow-up email carries 😀 / 😐 / ☹️ links.
+  * Each link opens a page with one confirm button, so mail-scanner clicks don't count as votes.
+  * Each order can be rated once. The token is random and only its hash is stored.
+  * "Not good" raises an alert and adds "Reach out to N unhappy buyer(s)" to the to-do list.
+  * "Great" invites a quotable one-liner.
+  * Monday's report shows the counts.
+* **Phase 103, most popular:** the dataset with the most orders kept (not refunded or disputed) in
+  30 days, with at least two, is badged on the home and pricing pages.
+* **Phase 104, per-dataset feed:** `<dataset>/changelog/feed.xml` gets one RSS item per version, and
+  the product page advertises it.
+
+**Tunnel routes: re-run the tunnel setup once.**
+* Download links (`/d/…`) and rating links (`/r/…`) are now routed through the Cloudflare tunnel.
+  Earlier configs didn't route the download links, so buyers clicking them got a 404 from Cloudflare.
+* If your config predates this, the to-do list says so. Re-run
+  `bash deploy/tunnel/setup_tunnel.sh <your hostname>` to fix it.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to

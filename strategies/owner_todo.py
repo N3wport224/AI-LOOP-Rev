@@ -83,6 +83,19 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
     for k in overdue(state):
         add(9, f"Roll your {k['label']}", f"it's been in use {k['age_days']} days; a fresh one limits the damage if the old one "
             "ever leaked", 5, k["how"])
+    if cfg.lead_capture_base:
+        from agent.tunnel import missing_paths
+
+        gone = missing_paths()
+        if gone:
+            add(3, "Re-run the tunnel setup", f"download and rating links ({', '.join(gone)}) don't reach the agent yet", 2,
+                "bash deploy/tunnel/setup_tunnel.sh <your hostname>")
+    from strategies.ratings import unhappy
+
+    sad = unhappy(state)
+    if sad:
+        add(3, f"Reach out to {len(sad)} unhappy buyer(s)", f"rated \"not good\" recently (e.g. {sad[0]['email']})", 5,
+            "reply to their follow-up email and ask what went wrong")
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

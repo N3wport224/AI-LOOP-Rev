@@ -28,13 +28,15 @@ WINDOW_DAYS = 10
 PER_CYCLE = 20
 
 
-def followup_email(cfg: Any, order: dict[str, Any], title: str, ref_link: str = "") -> Email:
+def followup_email(cfg: Any, order: dict[str, Any], title: str, ref_link: str = "", rating_links: dict[int, str] | None = None) -> Email:
     mailbox = cfg.unsubscribe_email or cfg.sender_email
     lines = [
         "Hi,",
         "",
         f"A few days ago you bought {title}. Did everything arrive and open fine?",
         "",
+        *([f"How was it? One click: 😀 {rating_links[3]}  ·  😐 {rating_links[2]}  ·  ☹️ {rating_links[1]}", ""]
+          if rating_links else []),
         "If anything is missing, just reply \"resend\" and it goes out again right away.",
         "And if there's a company, field or niche you'd like in the next version, reply and tell me: I read every answer.",
         "",
@@ -95,7 +97,10 @@ class BuyerFollowup(Strategy):
 
                 url = str((asset or {}).get("checkout_url") or "")
                 ref = referral_link(state, email, url) if cfg.referrals and url.startswith("https://") else ""
-                tools.dispatcher.send_transactional(followup_email(cfg, order, asset["title"] if asset else "your dataset", ref),
+                from strategies.ratings import links as rating_links
+
+                tools.dispatcher.send_transactional(followup_email(cfg, order, asset["title"] if asset else "your dataset", ref,
+                                                                   rating_links(state, cfg, order)),
                                                     audit_key=f"followup:{order['id']}")
             except Exception as exc:  # noqa: BLE001 - retried next cycle
                 state.log_error("buyer_followup", f"follow-up to order {order['id']} failed: {exc!r}")

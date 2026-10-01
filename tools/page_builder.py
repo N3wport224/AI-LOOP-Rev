@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 from tools.attribution import FIRST_TOUCH_DAYS, STORAGE_KEY
 from tools.attribution import LANDER_ATTRIBUTION_JS as ATTRIBUTION_JS
 from tools.seo_assets import badge_for, render_badge_svg, render_og_png, render_og_svg
-from tools.site_extras import banner_html, faq_html, footer_links
+from tools.site_extras import POPULAR_BADGE, banner_html, faq_html, footer_links, trust_html
 
 if TYPE_CHECKING:  # pragma: no cover
     from agent.config import Config
@@ -91,6 +91,8 @@ class ProductPage:
     annual_url: str = ""           # yearly subscription
     annual_price_cents: int = 0
     versions: list[dict[str, Any]] = field(default_factory=list)  # [{version, date, rows}] newest first (changelog page)
+    refund_days: int = 0           # trust row under the buy buttons (0 = no refund mention)
+    popular: bool = False          # "Most popular" badge on the home and pricing pages
 
     @property
     def slug(self) -> str:
@@ -293,6 +295,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
     if page.team_url and page.team_price_cents:
         cta += (f'<p class="muted">Buying for a team? <a data-checkout href="{html.escape(page.team_url)}" rel="noopener">'
                 f"Team license for up to {page.team_seats} people: ${page.team_price_cents / 100:.0f}</a></p>")
+    if page.checkout_url:
+        cta += trust_html(page.refund_days)
     proof = []
     if page.data_updated_at:
         proof.append(f'Updated <time class="ago" datetime="{html.escape(page.data_updated_at)}">'
@@ -311,6 +315,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
     canonical = f'<link rel="canonical" href="{html.escape(url)}">' if url.startswith("http") else ""
     feed_href = f"{base_url.rstrip('/')}/{FEED_PATH}" if base_url else f"../{FEED_PATH}"
     feed = f'<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="{html.escape(feed_href)}">'
+    if page.versions and page.kind == "dataset":
+        feed += f'<link rel="alternate" type="application/rss+xml" title="{title} updates" href="changelog/feed.xml">'
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
@@ -623,7 +629,8 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 
 def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "") -> str:
     items = "\n".join(
-        f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>: {html.escape(p.summary[:160])} '
+        f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
+        f'{html.escape(p.summary[:160])} '
         f"(${p.price_cents / 100:.2f})</li>"
         for p in pages
     )
@@ -747,10 +754,12 @@ class SiteBuilder:
         out["404.html"] = not_found_page(pages, lambda title, body, root: _shell(title, body, cfg.site_title, noindex=True,
                                                                                  root=root), self.base_url)
         from tools.offer_pages import render_changelog
+        from tools.site_extras import changelog_feed
 
         for p in pages:
             if p.kind == "dataset" and p.versions:
                 out[f"{p.slug}/changelog/index.html"] = render_changelog(p, cfg.site_title)
+                out[f"{p.slug}/changelog/feed.xml"] = changelog_feed(p, self.base_url, cfg.site_title)
         from tools.offer_pages import render_pricing, render_thanks
 
         out["thanks/index.html"] = render_thanks(pages, cfg.site_title)

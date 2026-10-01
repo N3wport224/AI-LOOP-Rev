@@ -152,6 +152,7 @@ def test_build_site_task_submits_to_indexnow_after_publishing(toolkit, transport
     config.github_token, config.github_pages_repo, config.pages_base_url = "ghp_x", "me/datasets", BASE
     config.seo_min_companies = 2
     toolkit.github.token = "ghp_x"  # the fixture built the client before the token was set
+    toolkit.breaker.max_api_calls_per_cycle = 200  # the whole small site in one cycle (budget spill is tested elsewhere)
 
     def contents(method, url, headers):
         if method == "GET":

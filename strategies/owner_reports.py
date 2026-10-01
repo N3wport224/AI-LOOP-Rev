@@ -224,6 +224,11 @@ class OwnerReports(Strategy):
             lines += ["", "Tip: `automonetize connect-marketing` puts your products on a public website and turns on articles."]
         if local.weekday() == 0:
             from strategies.customer_requests import summary as request_summary
+            from strategies.ratings import summary as rating_summary
+
+            stars = rating_summary(state)
+            if stars:
+                lines += ["", stars]
 
             asks = request_summary(state)
             if asks:

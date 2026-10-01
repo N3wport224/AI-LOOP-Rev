@@ -511,7 +511,7 @@ def test_render_and_parse_config_round_trip_with_restricted_ingress():
     assert s["hostnames"] == ["hooks.example.com"]
     assert s["paths"] == ["^/webhook$", "^/healthz$", "^/lead\\-magnet/capture$", "^/lead\\-magnet/confirm$",
                           "^/lead\\-magnet/unsubscribe$", "^/v1/.*$", "^/openapi\\.json$", "^/docs/api$",
-                          "^/docs/api/console\\.js$", "^/t/e$"]
+                          "^/docs/api/console\\.js$", "^/t/e$", "^/d/.*$", "^/r/.*$"]
     assert s["services"] == ["http://127.0.0.1:8443"] and s["catch_all_404"]
 
 

@@ -451,6 +451,26 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
                                                "Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
 
     app.router.add_get("/d/{token}", download)
+
+    async def rating(request: web.Request) -> web.Response:
+        from strategies import ratings
+
+        token = request.match_info.get("token", "")
+        try:
+            score = int(request.match_info.get("score", "0"))
+        except ValueError:
+            score = 0
+        state, cfg = processor.tools.state, processor.tools.config
+        if request.method == "GET":  # a confirm button: link scanners don't vote
+            status, body = await run_in_pool(lambda: ratings.confirm_page(cfg, token, score, ratings.lookup(state, token)))
+        else:
+            outcome = await run_in_pool(ratings.record, state, token, score)
+            status, body = ratings.thanks_page(cfg, score, outcome)
+        return web.Response(status=status, text=body, content_type="text/html",
+                            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+    app.router.add_route("GET", "/r/{token}/{score}", rating)
+    app.router.add_route("POST", "/r/{token}/{score}", rating)
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

@@ -87,7 +87,10 @@ def render_changelog(page: Any, site_title: str) -> str:
 def render_pricing(pages: list[Any], site_title: str) -> str:
     rows = []
     for p in sorted((p for p in pages if p.kind == "dataset" and p.checkout_url), key=lambda p: p.title):
-        cells = [f"<b>{html.escape(p.title)}</b>", _a(p.checkout_url, _money(p.price_cents))]
+        from tools.site_extras import POPULAR_BADGE
+
+        cells = [f"<b>{html.escape(p.title)}</b>{POPULAR_BADGE if getattr(p, 'popular', False) else ''}",
+                 _a(p.checkout_url, _money(p.price_cents))]
         cells.append(_a(p.subscription_url, f"{_money(p.subscription_price_cents)}/{p.subscription_interval}")
                      if p.subscription_url and p.subscription_price_cents else "<span class=muted>-</span>")
         cells.append(_a(p.annual_url, f"{_money(p.annual_price_cents)}/year") if p.annual_url and p.annual_price_cents

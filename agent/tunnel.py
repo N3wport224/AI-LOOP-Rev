@@ -32,7 +32,9 @@ from typing import Any, Iterable
 DEFAULT_TUNNEL_NAME = "automonetize"
 # A trailing "/*" exposes everything under that prefix.
 EXPOSED_PATHS = ("/webhook", "/healthz", "/lead-magnet/capture", "/lead-magnet/confirm", "/lead-magnet/unsubscribe",
-                 "/v1/*", "/openapi.json", "/docs/api", "/docs/api/console.js", "/t/e")
+                 "/v1/*", "/openapi.json", "/docs/api", "/docs/api/console.js", "/t/e",
+                 "/d/*", "/r/*")  # download links (Phase 51) and 1-click ratings (Phase 101)
+DEFAULT_CONFIG = Path.home() / ".cloudflared" / f"{DEFAULT_TUNNEL_NAME}.yml"
 ENV_KEY_URL = "PUBLIC_WEBHOOK_URL"
 _LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -157,6 +159,23 @@ def summarize_config(cfg: dict[str, Any]) -> dict[str, Any]:
         "services": sorted({r["service"] for r in rules if "service" in r and not r["service"].startswith("http_status:")}),
         "catch_all_404": catch_all and last.get("service", "").startswith("http_status:404"),
     }
+
+
+def missing_paths(path: Path | None = None) -> list[str]:
+    """Paths the agent serves publicly that an installed tunnel config doesn't route yet (a config
+    written by an older version). [] when there's no config or it can't be read."""
+    path = path or DEFAULT_CONFIG
+    try:
+        routed = set(summarize_config(parse_config(path.read_text()))["paths"])
+    except (OSError, TunnelConfigError, ValueError, KeyError):
+        return []
+    want = []
+    for p in EXPOSED_PATHS:
+        clean = "/" + p.lstrip("/")
+        rx = f"^{re.escape(clean[:-1])}.*$" if clean.endswith("/*") else f"^{re.escape(clean)}$"
+        if rx not in routed:
+            want.append(p)
+    return want
 
 
 # ----------------------------------------------------------------------------- cloudflared output

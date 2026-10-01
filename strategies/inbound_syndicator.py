@@ -115,6 +115,9 @@ def site_pages(tools) -> list[ProductPage]:
     api = api_asset(tools.state)
     policy = tools.state.get("copy_policy") or {}
     bandit = cfg.copy_bandit_enabled and bool(cfg.lead_capture_base)
+    from tools.site_extras import popular_niche
+
+    popular = popular_niche(tools.state)
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
@@ -141,6 +144,8 @@ def site_pages(tools) -> list[ProductPage]:
         from strategies.testimonials import approved_for
 
         page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
+        page.refund_days = int(cfg.refund_policy_days or 0)
+        page.popular = kind == "dataset" and niche == popular
         if kind == "dataset":
             from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for
 

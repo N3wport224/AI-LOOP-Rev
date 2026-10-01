@@ -12,6 +12,12 @@
   ``bing_site_verification`` add the meta tag Search Console / Bing Webmaster Tools ask for.
 * **404 page** (Phase 84): ``404.html`` (GitHub Pages serves it for missing URLs) with links to
   every dataset and the pricing page, so an old link still leads somewhere.
+* **Trust row** (Phase 100): under the buy buttons, "Secure checkout by Stripe · Instant delivery
+  by email · N-day refund", with N from ``refund_policy_days``.
+* **Most popular** (Phase 103): the dataset with the most kept (not refunded or disputed) orders in
+  the last 30 days, if it has at least two, gets a badge on the home and pricing pages.
+* **Per-dataset feed** (Phase 104): ``<dataset>/changelog/feed.xml`` has one item per version, so
+  a buyer can follow one dataset in a feed reader without the site-wide radar feed.
 
 These pages state facts from your configuration only; they're templates, not legal advice. Read
 them once (``site/legal/`` in the data folder) and adjust the wording in ``refund_policy_days`` or
@@ -76,6 +82,57 @@ def legal_pages(cfg: Any, shell: Any) -> dict[str, str]:
         "contact/index.html": shell("Contact", contact, f"How to reach {_business(cfg)} about an order, the data or a "
                                                         "subscription; replies usually within a day."),
     }
+
+
+def trust_html(refund_days: int) -> str:
+    """Phase 100: what a first-time buyer wants to know before clicking buy."""
+    parts = ["🔒 Secure checkout by Stripe", "Instant delivery by email"]
+    if refund_days > 0:
+        parts.append(f'<a href="../legal/refunds/">{int(refund_days)}-day refund</a>')
+    return f'<p class="muted trust">{" · ".join(parts)}</p>'
+
+
+POPULAR_MIN = 2
+
+
+def popular_niche(state: Any, days: int = 30) -> str:
+    """Phase 103: the niche with the most kept orders lately ("" if none has POPULAR_MIN)."""
+    from datetime import timedelta
+
+    since = (state.clock() - timedelta(days=days)).isoformat(timespec="seconds")
+    row = state._one("SELECT a.niche AS niche, COUNT(*) AS n FROM orders o JOIN assets a ON a.id = o.asset_id "
+                     "WHERE o.status NOT IN ('refunded', 'disputed') AND o.occurred_at >= ? AND a.niche IS NOT NULL "
+                     "GROUP BY a.niche ORDER BY n DESC, a.niche LIMIT 1", (since,))
+    return row["niche"] if row and int(row["n"]) >= POPULAR_MIN else ""
+
+
+POPULAR_BADGE = ('<span style="background:#1d4ed8;color:#fff;border-radius:4px;padding:1px 6px;font-size:.8rem;'
+                 'font-weight:600;margin-left:6px">Most popular</span>')
+
+
+def changelog_feed(page: Any, base_url: str, site_title: str) -> str:
+    """Phase 104: RSS 2.0 for one dataset's versions."""
+    import xml.etree.ElementTree as ET
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+
+    home = f"{base_url.rstrip('/')}/{page.slug}/" if base_url else f"{page.slug}/"
+    rss = ET.Element("rss", version="2.0")
+    ch = ET.SubElement(rss, "channel")
+    ET.SubElement(ch, "title").text = f"{page.title}: updates ({site_title})"
+    ET.SubElement(ch, "link").text = home
+    ET.SubElement(ch, "description").text = f"A new item whenever a new version of {page.title} is built."
+    for v in page.versions[:30]:
+        el = ET.SubElement(ch, "item")
+        ET.SubElement(el, "title").text = f"{page.title} v{int(v['version'])}: {int(v['rows']):,} rows"
+        ET.SubElement(el, "link").text = home
+        ET.SubElement(el, "guid", isPermaLink="false").text = f"{page.slug}-v{int(v['version'])}"
+        try:
+            when = datetime.fromisoformat(str(v["date"])[:10]).replace(tzinfo=timezone.utc)
+            ET.SubElement(el, "pubDate").text = format_datetime(when)
+        except ValueError:
+            pass
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(rss, encoding="unicode") + "\n"
 
 
 def banner_html(text: str) -> str:
