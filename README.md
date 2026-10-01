@@ -2686,6 +2686,22 @@ From `tools/data_retention.py`:
   data, how many records it holds, and how long they're kept.
 * **Phase 394, in the panel:** the Health tab's data includes the same inventory.
 
+## Crash safety (Phases 395-399)
+
+File writes were already atomic: written to a temporary file, then renamed. This covers the rest
+(`strategies/crash_safety.py`):
+
+* **Phase 395, leftover temporary files:** a write interrupted by a crash leaves a `.tmp-*` file.
+  Housekeeping deletes those older than 6 hours.
+* **Phase 396, one factory run at a time:** the factory worker, the cycle's catch-up and
+  `automonetize factory --now` (a separate process) share an atomic, expiring lease in the database.
+  Two runs can never build the same product or open two checkouts for it.
+* **Phase 397, half-made products:** a product folder that no product refers to (a build interrupted
+  before it was recorded) is deleted after 24 hours.
+* **Phase 398, waiting products without their download:** a product waiting for its checkout whose
+  download is missing is removed. The factory makes it again when its postings allow.
+* **Phase 399, tested:** tests run three factory runs at once and interrupt a build.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

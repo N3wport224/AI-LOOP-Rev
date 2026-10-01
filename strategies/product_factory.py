@@ -450,8 +450,19 @@ MADE = "factory_last_made_at"  # Phase 215: LAST also moves when nothing could b
 
 
 def tick(tools: Any, force: bool = False) -> dict[str, Any]:
-    """One factory step: publish anything staged, retire stale products, then make one new product
-    if the interval has passed (or ``force``)."""
+    """One factory step, holding the factory lease (Phase 396): two runs at once (the worker, the
+    cycle's catch-up, a CLI ``--now``) would build the same product twice."""
+    from strategies.crash_safety import lease
+
+    with lease(tools.state, "factory") as mine:
+        if not mine:
+            return {"made": None, "why": "another factory run is in progress"}
+        return _tick(tools, force)
+
+
+def _tick(tools: Any, force: bool = False) -> dict[str, Any]:
+    """Publish anything staged, retire stale products, then make one new product if the interval has
+    passed (or ``force``)."""
     state, cfg = tools.state, tools.config
     if not cfg.product_factory:
         return {"made": None, "why": "product_factory = false"}

@@ -189,6 +189,10 @@ class Housekeeping(Strategy):
             from strategies.catalog_hygiene import prune_retired
 
             retired_dirs = prune_retired(state, tools.files)  # Phase 213
+            from strategies.crash_safety import recover, sweep_tmp
+
+            pruned["leftover temporary files"] = sweep_tmp(Path(cfg.data_dir))  # Phase 395
+            pruned.update(recover(state, tools.files))  # Phases 397-398
             from tools.data_retention import prune as prune_retention
 
             pruned.update(prune_retention(state, tools.files))  # Phase 392
