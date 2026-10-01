@@ -21,6 +21,9 @@
     <button role="tab" data-tab="share" aria-selected="false">Share</button>
     <button role="tab" data-tab="health" aria-selected="false">Health</button>
     <button role="tab" data-tab="sent" aria-selected="false">Sent</button>
+    <button role="tab" data-tab="products" aria-selected="false">Products</button>
+    <button role="tab" data-tab="marketing" aria-selected="false">Marketing <span id="marketing-count" class="muted"></span></button>
+    <button role="tab" data-tab="money" aria-selected="false">Money</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
     <button id="logout" class="link">Sign out</button>
@@ -163,6 +166,66 @@
       <h2>Sent emails</h2>
       <p class="muted">Every email the agent sent (or, in dry run, would have sent), newest first. Click one to read it.</p>
       <div id="sent-list"></div>
+    </div>
+  </section>
+
+  <section id="tab-products" class="tab" hidden>
+    <div class="card">
+      <h2>Product factory</h2>
+      <p class="muted" id="factory-summary"></p>
+      <p><button class="primary" id="factory-make">Make a product now</button> <span class="message" id="factory-message" role="status"></span></p>
+      <p class="muted" id="factory-next"></p>
+    </div>
+    <div class="card" id="leaky-card" hidden>
+      <h2>Checkouts but no sales</h2>
+      <p class="muted">Buyers started paying and stopped: look at these products' price, description and preview.</p>
+      <ul id="leaky-list"></ul>
+    </div>
+    <div class="card">
+      <h2>Products by revenue <span class="muted">(90 days)</span></h2>
+      <div class="table-wrap"><table id="products-table"><thead><tr><th>Product</th><th>Orders</th><th>Revenue</th><th>Last sale</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-marketing" class="tab" hidden>
+    <div class="card">
+      <h2>Drafts for you to post</h2>
+      <p class="muted">The agent can't post these itself (your account, or the community's rules). Copy, post, then mark it posted so its sales are counted.</p>
+      <p class="message" id="marketing-message" role="status"></p>
+      <div id="drafts-list"></div>
+    </div>
+    <div class="card">
+      <h2>This week</h2>
+      <ul id="marketing-plan"></ul>
+      <ul id="marketing-notes" class="muted"></ul>
+    </div>
+    <div class="card">
+      <h2>What works <span class="muted">(60 days)</span></h2>
+      <div class="table-wrap"><table id="marketing-scores"><thead><tr><th>Strategy</th><th>Plays</th><th>Checkouts</th><th>Orders</th><th>Revenue</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-money" class="tab" hidden>
+    <div class="card">
+      <h2>This month</h2>
+      <p id="money-forecast"></p>
+    </div>
+    <div class="card">
+      <h2>Offers</h2>
+      <ul id="money-offers"></ul>
+    </div>
+    <div class="card">
+      <h2>Sponsorships</h2>
+      <p class="muted">Nothing shows on the site until you approve the sponsor's line (max 90 characters) and https link.</p>
+      <p class="message" id="sponsor-message" role="status"></p>
+      <div id="sponsor-list"></div>
+    </div>
+    <div class="card">
+      <h2>Affiliates</h2>
+      <form id="affiliate-form"><label for="affiliate-email">Approve an affiliate (email)</label>
+        <input id="affiliate-email" type="email" autocomplete="off" required> <button class="primary" type="submit">Approve and send links</button></form>
+      <p class="message" id="affiliate-message" role="status"></p>
+      <div class="table-wrap"><table id="affiliate-table"><thead><tr><th>Code</th><th>Email</th><th>Orders</th><th>Earned</th><th>You owe</th></tr></thead><tbody></tbody></table></div>
     </div>
   </section>
 

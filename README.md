@@ -1942,6 +1942,29 @@ Four more public job feeds are on by default:
 Remove a board from `lead_sources` to stop using it. An existing `automonetize.toml` that lists
 `lead_sources` keeps its own list: add the new names there to use them.
 
+## Control panel: products, marketing, money (Phases 200-204)
+
+Three new tabs in `automonetize gui`:
+* **Phase 200, Products:**
+  * the factory's catalog (on sale, waiting, retired) and what it makes next;
+  * a "Make a product now" button;
+  * products ranked by revenue;
+  * products with checkouts but no sales.
+* **Phase 201, Marketing:**
+  * drafts waiting for you, with the full text and tracked link, plus "I posted it" and "Skip"
+    buttons;
+  * the week's plan, what works, and the optimiser's notes.
+* **Phase 202, Money:**
+  * the month's forecast and the offers with their links;
+  * affiliates and what you owe them, plus a form that approves an affiliate and emails them their
+    links.
+* **Phase 203, sponsor approval:** paid sponsorships wait in the Money tab. Enter their line and
+  https link and approve; nothing shows on the site before that.
+* **Phase 204, `AM DRAFTS <code>` email command:** replies with the drafts waiting to be posted, so
+  you can post from your phone.
+
+Every action needs the panel's sign-in and CSRF token. The panel only listens on this Mac.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

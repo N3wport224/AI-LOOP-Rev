@@ -62,6 +62,9 @@
     if (name === "share") { loadShare(); loadQuotes(); }
     if (name === "health") loadHealth();
     if (name === "sent") loadSent();
+    if (name === "products") loadProducts();
+    if (name === "marketing") loadMarketing();
+    if (name === "money") loadMoney();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -235,6 +238,101 @@
       el("summary", {}, el("b", { text: m.subject || "(no subject)" }),
         el("span", { class: "muted", text: `  →  ${m.to || ""} · ${m.kind || ""} · ${m.mode === "live" ? m.result : "dry run"} · ${shortTime(m.ts || "")}` })),
       el("pre", { class: "log", text: m.body || "" }))));
+  }
+
+  // ------------------------------------------------------------------ products (Phase 200)
+  async function loadProducts() {
+    let d;
+    try { d = await api("/api/products"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const c = d.catalog || {};
+    $("#factory-summary").textContent = d.factory_on
+      ? `${c.live || 0} on sale, ${c.staged || 0} waiting for checkout, ${c.retired || 0} retired. One new product every ${d.interval_minutes} min.`
+      : "The product factory is off (product_factory = false).";
+    $("#factory-next").textContent = d.next ? `Next: ${d.next.title} (${d.next.rows} postings)` : "No new product idea clears the quality floor yet: waiting for more postings.";
+    const leaks = d.leaky || [];
+    $("#leaky-card").hidden = !leaks.length;
+    $("#leaky-list").replaceChildren(...leaks.map((r) => el("li", { text: `${r.title}: ${r.checkouts} checkouts, no sale` })));
+    $("#products-table tbody").replaceChildren(...(d.leaderboard || []).map((r) => el("tr", {},
+      el("td", { text: r.title }), el("td", { text: String(r.orders) }), el("td", { text: money(r.revenue_cents) }),
+      el("td", { text: r.never_sold ? "never sold" : r.last_sale }))));
+  }
+
+  async function makeProduct() {
+    const msg = $("#factory-message");
+    msg.textContent = "Working…";
+    const r = await api("/api/products/make", { method: "POST", body: {} });
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+    loadProducts();
+  }
+
+  // ------------------------------------------------------------------ marketing (Phase 201)
+  async function loadMarketing() {
+    let d;
+    try { d = await api("/api/marketing"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const drafts = d.drafts || [];
+    $("#marketing-count").textContent = drafts.length ? `(${drafts.length})` : "";
+    $("#drafts-list").replaceChildren(...(drafts.length ? drafts.map((p) => el("details", { class: "card draft" },
+      el("summary", {}, el("b", { text: p.strategy + ": " }), p.title),
+      el("pre", { class: "log", text: p.body }),
+      el("p", {}, el("button", { class: "primary", "data-mark": "posted", "data-id": String(p.id), text: "I posted it" }), " ",
+        el("button", { "data-mark": "skipped", "data-id": String(p.id), text: "Skip" })))) :
+      [el("p", { class: "muted", text: "No drafts waiting. New ones arrive daily." })]));
+    $("#marketing-plan").replaceChildren(...(d.plan || []).map((p) => el("li", { text: `${p.date}: ${p.what}` })));
+    $("#marketing-notes").replaceChildren(...(d.notes || []).map((n) => el("li", { text: n })));
+    $("#marketing-scores tbody").replaceChildren(...(d.scores || []).map((r) => el("tr", {},
+      el("td", { text: r.name + ((d.paused || []).includes(r.key) ? " (resting)" : "") }), el("td", { text: String(r.plays) }),
+      el("td", { text: String(r.checkouts) }), el("td", { text: String(r.orders) }), el("td", { text: money(r.revenue_cents) }))));
+  }
+
+  async function markDraft(id, status) {
+    const r = await api("/api/marketing/mark", { method: "POST", body: { id: Number(id), status } });
+    const msg = $("#marketing-message");
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+    loadMarketing();
+  }
+
+  // ------------------------------------------------------------------ money (Phase 202)
+  async function loadMoney() {
+    let d;
+    try { d = await api("/api/money"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const f = d.forecast || {};
+    $("#money-forecast").textContent = `${f.month || ""} so far ${money(f.mtd_cents)}; at the recent pace it ends near ${money(f.projected_cents)} against a ${money(f.goal_cents)} goal.`;
+    $("#money-offers").replaceChildren(...((d.offers || []).length ? d.offers.map((o) => el("li", {}, o.title + ": ",
+      o.url ? el("a", { href: o.url, target: "_blank", rel: "noopener", text: "checkout link" }) : el("span", { text: o.status || "" }))) :
+      [el("li", { class: "muted", text: "Offers appear once live payments and email work." })]));
+    $("#sponsor-list").replaceChildren(...((d.sponsors || []).length ? d.sponsors.map((s) => s.status === "live"
+      ? el("p", { text: `Live until ${(s.ends || "").slice(0, 16)}: "${s.line}" → ${s.url}` })
+      : el("form", { class: "sponsor-form", "data-id": String(s.id) },
+        el("p", { text: `Order ${s.id} from ${s.email}` }),
+        el("input", { name: "line", placeholder: "Sponsor line (max 90 characters)" }), " ",
+        el("input", { name: "url", placeholder: "https://…" }), " ",
+        el("button", { class: "primary", type: "submit", text: "Approve" }))) :
+      [el("p", { class: "muted", text: "No sponsorships waiting." })]));
+    $("#affiliate-table tbody").replaceChildren(...(d.affiliates || []).map((a) => el("tr", {},
+      el("td", { text: a.code }), el("td", { text: a.email }), el("td", { text: String(a.orders) }),
+      el("td", { text: money(a.earned_cents) }), el("td", { text: money(a.owed_cents) }))));
+  }
+
+  async function approveSponsor(form) {
+    const r = await api("/api/sponsor/approve", { method: "POST", body: {
+      id: Number(form.dataset.id), line: form.elements.line.value, url: form.elements.url.value } });
+    const msg = $("#sponsor-message");
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    if (r.ok) loadMoney();
+  }
+
+  async function addAffiliate(email) {
+    const r = await api("/api/affiliate/add", { method: "POST", body: { email } });
+    const msg = $("#affiliate-message");
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    if (r.ok) { $("#affiliate-email").value = ""; loadMoney(); }
   }
 
   // ------------------------------------------------------------------ health
@@ -487,6 +585,16 @@
       if (b) healthFix(b.dataset.fix);
     });
     $("#health-refresh").addEventListener("click", loadHealth);
+    $("#factory-make").addEventListener("click", makeProduct);
+    $("#drafts-list").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-mark]");
+      if (b) markDraft(b.dataset.id, b.dataset.mark);
+    });
+    $("#sponsor-list").addEventListener("submit", (e) => {
+      const form = e.target.closest(".sponsor-form");
+      if (form) { e.preventDefault(); approveSponsor(form); }
+    });
+    $("#affiliate-form").addEventListener("submit", (e) => { e.preventDefault(); addAffiliate($("#affiliate-email").value); });
     $("#quiet-toggle").addEventListener("click", toggleQuiet);
     $("#quotes-list").addEventListener("click", (e) => {
       const b = e.target.closest("[data-quote]");

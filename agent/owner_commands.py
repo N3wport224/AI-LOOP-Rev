@@ -31,7 +31,7 @@ CODE_KEY = "owner_command_code"
 SEEN = "owner_commands_handled"
 POLL_KEY = "owner_commands_polled_at"
 POLL_MINUTES = 5
-COMMANDS = ("status", "todo", "report", "pause", "resume", "quiet", "loud", "help")
+COMMANDS = ("status", "todo", "report", "drafts", "pause", "resume", "quiet", "loud", "help")
 # "AM QUIET 7 CODE": an optional number of days (Phase 136) between the command and the code.
 SUBJECT_RE = re.compile(r"^\s*(?:(?:re|fwd?)\s*:\s*)*am\s+([a-z]+)(?:\s+(\d{1,3}))?\s+([A-Z0-9]{6})\b", re.I)
 
@@ -50,7 +50,8 @@ def owner_address(cfg: Any) -> str:
 
 def help_text(cfg: Any, state: Any) -> str:
     return (f"Control the agent by email: write to {cfg.sender_email} from {owner_address(cfg)} with the subject "
-            f"\"AM <COMMAND> {code(state)}\". Commands: STATUS, TODO, REPORT (today's full report), PAUSE, RESUME, "
+            f"\"AM <COMMAND> {code(state)}\". Commands: STATUS, TODO, REPORT (today's full report), DRAFTS (posts to copy), "
+            "PAUSE, RESUME, "
             f"QUIET (hold marketing email; \"AM QUIET 7 {code(state)}\" for 7 days), LOUD (let it go out again), HELP.")
 
 
@@ -97,6 +98,15 @@ def execute(tools: Any, command: str, engine: Any = None, days: int | None = Non
         else:
             state.set("paused", None)
         return "Resumed: cycles run again."
+    if command == "drafts":  # Phase 204: post from your phone
+        from strategies.marketing_engine import PLAYBOOK, queue
+
+        items = queue(state, 10)
+        if not items:
+            return "No drafts waiting. New ones arrive daily."
+        parts = [f"#{p['id']} {PLAYBOOK.get(p['strategy'], {}).get('name', p['strategy'])}: {p['title']}\n\n{p['body']}" for p in items]
+        return ("Drafts to post (after posting, mark them in the control panel's Marketing tab or with "
+                "`automonetize marketing done <id>`):\n\n" + "\n\n----------\n\n".join(parts))
     if command == "report":
         from strategies.owner_reports import OwnerReports, local_now
 
