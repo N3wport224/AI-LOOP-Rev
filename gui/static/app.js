@@ -100,6 +100,7 @@
       : fin.error ? "couldn't read: " + fin.error
       : `${money(fin.available_cents)} ready · ${money(fin.pending_cents)} on the way` +
         (fin.last_payout ? ` · last payout ${money(fin.last_payout.amount_cents)} (${fin.last_payout.status}, ${fin.last_payout.arrival_date})` : "");
+    $("#version-line").textContent = s.version || "";
     const items = s.todo || [];
     $("#todo-card").hidden = !items.length;
     $("#todo-list").replaceChildren(...items.map((i) => el("li", {},

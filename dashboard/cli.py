@@ -850,6 +850,26 @@ def cmd_uninstall(args: argparse.Namespace, console: Console) -> int:
                                             ("--deactivate-links", args.deactivate_links)) if on])
 
 
+def cmd_setup(args: argparse.Namespace, console: Console) -> int:
+    from cli.setup_wizard import main as setup
+
+    return setup([])
+
+
+def cmd_connections(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import connections_main
+
+    return connections_main([])
+
+
+def cmd_version(args: argparse.Namespace, console: Console) -> int:
+    from tools.version import describe, info
+
+    v = info()
+    console.print(describe(v) + (f"\n{v['subject']}" if v.get("subject") else "") + (f"\nbranch {v['branch']}" if v.get("branch") else ""))
+    return 0
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -1062,6 +1082,12 @@ def build_parser() -> argparse.ArgumentParser:
     un.add_argument("--delete-data", action="store_true", help="also delete the data folder and backups")
     un.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     un.set_defaults(func=cmd_uninstall)
+    sw = sub.add_parser("setup", help="guided setup: asks only about what's still missing, most important first")
+    sw.set_defaults(func=cmd_setup)
+    cn = sub.add_parser("connections", help="check every outside service the agent uses (read-only)")
+    cn.set_defaults(func=cmd_connections)
+    vv = sub.add_parser("version", help="which version is running")
+    vv.set_defaults(func=cmd_version)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)

@@ -88,8 +88,20 @@ def build_status(gctx) -> dict[str, Any]:
         "finance": state.get("stripe_finance") or {},
         "pace": state.get("goal_pace") or {},
         "todo": _todo(state, cfg),
+        "version": _version(),
         "dry_run": cfg.dry_run,
     }
+
+
+_VERSION: dict = {}
+
+
+def _version() -> str:
+    from tools.version import describe, info
+
+    if not _VERSION:  # once per GUI process: the code doesn't change under a running panel
+        _VERSION["text"] = describe(info())
+    return _VERSION["text"]
 
 
 def _todo(state, cfg) -> list[dict]:

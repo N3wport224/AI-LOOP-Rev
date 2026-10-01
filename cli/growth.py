@@ -82,6 +82,21 @@ def customers_main(argv: list[str]) -> int:
     return 0
 
 
+def connections_main(argv: list[str]) -> int:
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+    from tools.connections import check_all, summary
+
+    config, state, _ = _setup()
+    conns = check_all(config, build_toolkit(config, state, CircuitBreaker(100, 100, 100)).http)
+    marks = {"ok": (GREEN, "✔"), "fail": (RED, "✘"), "skip": (YELLOW, "-")}
+    for c in conns:
+        colour, mark = marks[c.status]
+        say(colour, f"{mark} {c.name}: {c.detail}" + (f"  → {c.fix}" if c.status != "ok" and c.fix else ""))
+    say(BOLD, summary(conns))
+    return 1 if any(c.status == "fail" for c in conns) else 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 

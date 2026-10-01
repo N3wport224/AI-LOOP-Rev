@@ -151,6 +151,7 @@ def canary_tick(state: Any, config: Any, run: Callable[..., Any] = subprocess.ru
         canary["cycles"] = int(canary.get("cycles", 0)) + 1
     if state.clock() >= datetime.fromisoformat(canary["until"]) and int(canary.get("cycles", 0)) >= 1:
         canary.update(status="passed")
+        state.set("whats_new", {"target": canary["target"], "changes": data.get("changes") or [], "at": state.now(), "sent": False})
         state.log_action(int(state.get("iteration", 0)), None, "self_update", "ok", f"{canary['target'][:12]} healthy after the canary window")
     data["canary"] = canary
     state.set(KEY, data)
@@ -220,7 +221,8 @@ class SelfUpdate(Strategy):
         day_ago = (state.clock() - timedelta(hours=24)).isoformat(timespec="seconds")
         failing = sorted({r["source"] for r in state._all("SELECT DISTINCT source FROM errors WHERE kind = 'operational_failure' "
                                                             "AND created_at >= ?", (day_ago,))})
-        data.update(status=f"updated to {target[:12]} ({behind} commit(s))", installed_at=state.now(), canary={
+        changes = [s for s in up.git("log", "--no-merges", "--format=%s", f"{head}..{target}", check=False).splitlines() if s][:30]
+        data.update(status=f"updated to {target[:12]} ({behind} commit(s))", installed_at=state.now(), changes=changes, canary={
             "status": "monitoring", "previous": head, "target": target, "upstream": upstream, "files": changed,
             "until": (state.clock() + timedelta(minutes=int(cfg.evolution_canary_minutes))).isoformat(timespec="seconds"),
             "iteration": int(state.get("iteration", 0)), "error_id": int(last_error), "failing_before": failing})

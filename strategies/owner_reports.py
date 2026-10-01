@@ -52,7 +52,7 @@ class OwnerReports(Strategy):
             state.set("owner_last_alert_id", _max_id(state, "errors", "WHERE kind = 'alert'"))
             state.set("owner_report_started", state.now())
         sent = []
-        for name, step in (("sales", self.sales), ("alerts", self.alerts), ("digest", self.digest)):
+        for name, step in (("sales", self.sales), ("alerts", self.alerts), ("whats_new", self.whats_new), ("digest", self.digest)):
             try:
                 if step(tools, to):
                     sent.append(name)
@@ -102,6 +102,22 @@ class OwnerReports(Strategy):
             state.set("owner_last_order_id", int(orders[-1]["id"]))
         if subs:
             state.set("owner_last_subscriber_id", int(subs[-1]["id"]))
+        return True
+
+    # -- what's new (Phase 73) ----------------------------------------------------------------------
+    def whats_new(self, tools: Any, to: str) -> bool:
+        """After a self-update passes its canary: one email with what changed."""
+        state = tools.state
+        news = state.get("whats_new")
+        if not news or news.get("sent"):
+            return False
+        changes = news.get("changes") or ["(no details)"]
+        body = "\n".join([f"The agent installed an update by itself ({news['target'][:12]}) and it has run cleanly since. "
+                          "What changed:", "", *[f"- {c}" for c in changes[:20]], "",
+                          "Nothing for you to do. `automonetize version` shows what's running.", "", "AutoMonetize"])
+        tools.dispatcher.send_transactional(Email(to=to, subject=f"✨ AutoMonetize updated ({len(changes)} change(s))", body=body,
+                                                  kind="delivery"), audit_key=f"owner:whats_new:{news['target']}")
+        state.set("whats_new", {**news, "sent": True})
         return True
 
     # -- alerts -----------------------------------------------------------------------------------
@@ -222,5 +238,8 @@ class OwnerReports(Strategy):
             from agent.owner_commands import help_text
 
             lines += ["", help_text(cfg, state)]
-        lines += ["", "AutoMonetize"]
+        from tools.version import describe as describe_version
+        from tools.version import info as version_info
+
+        lines += ["", describe_version(version_info())]
         return "\n".join(lines)

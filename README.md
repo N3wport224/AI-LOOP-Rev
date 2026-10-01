@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 828 tests, ~40 s, no network
+pytest                     # 836 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -987,6 +987,9 @@ automonetize quiet on|off                            # hold or release all marke
 automonetize commands [--new]                        # the code for email commands (AM STATUS <code>)
 automonetize customers [--report]                   # customer CSV; repeat rate and lifetime value
 automonetize uninstall [--deactivate-links] [--delete-data]   # stop and remove the background service
+automonetize setup                                   # guided setup: only what's missing
+automonetize connections                             # check every outside service (read-only)
+automonetize version                                 # which version is running
 automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
@@ -1359,6 +1362,40 @@ alive, and fresh content for search engines.
 * Keeps your data unless you add `--delete-data` (which asks you to type DELETE).
 * `--deactivate-links` also switches off every live Payment Link, so nobody can buy what will no
   longer be delivered.
+
+## First run (Phases 70-74)
+
+**Phase 70: `automonetize setup`.** One guided command that only asks about what's still missing,
+most important first. It's safe to run again: finished steps are just ticked off. In order:
+1. Python version.
+2. Real payments (`go-live`).
+3. Postal address and report email.
+4. Public site and articles (`connect-marketing`).
+5. Phone notifications and heartbeat.
+6. Start at login.
+7. A connections check and the remaining to-do list.
+
+**Phase 71: `automonetize connections`** (`tools/connections.py`). A read-only check of every
+outside service, with what to do when one fails. Nothing is created or sent:
+* Stripe (live or test);
+* SMTP login and IMAP login;
+* the public URL through the tunnel and the website;
+* GitHub and Dev.to;
+* the heartbeat.
+
+**Phase 72: "agent started" notice** (`agent/startup_notice.py`). The first cycle after every
+start sends you one email (and a phone notification): which Mac, which version, connection results
+and how many to-do items are left. At most one every 6 hours.
+
+**Phase 73: version and what's new.**
+* `automonetize version` shows what's running. The control panel and the daily report show it too.
+* After a self-update passes its canary, you get one email listing what changed.
+
+**Phase 74: crash-loop rollback** (`agent/last_good.py`).
+* A commit that runs 24 hours without a crashed cycle becomes "last known good".
+* Three crashed cycles in a row on any other commit reset the checkout to it (`git reset --keep`,
+  never over uncommitted edits). The agent then reloads, self-update skips that version, and you
+  get an alert.
 
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
@@ -1744,7 +1781,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 828 tests, ~40 s, no network
+pytest     # 836 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

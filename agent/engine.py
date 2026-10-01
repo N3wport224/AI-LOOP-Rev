@@ -315,6 +315,11 @@ class Engine:
             from agent.owner_commands import poll
 
             poll(self.tools, engine=self)
+            if not getattr(self, "_start_noticed", False):
+                self._start_noticed = True
+                from agent.startup_notice import maybe_notify
+
+                maybe_notify(self.tools)
         cycle = self.state.incr("iteration")
         self.state.set("last_cycle_at", self.state.now())
         if self.state.get("started_at") is None:
@@ -510,6 +515,13 @@ class Engine:
                 self._save_breaker()
                 report = CycleReport(self.current_cycle(), "crashed", message=repr(exc))
             self._canary(report.cycle if report.status != "crashed" else None)
+            if getattr(self, "_full_plan", False):
+                try:
+                    from agent.last_good import tick
+
+                    tick(self.state, self.config, report.status)
+                except Exception as exc:  # noqa: BLE001 - the watchdog must never take the loop down
+                    self.state.log_error("last_good", f"check failed: {exc!r}")
             if on_cycle is not None:
                 on_cycle(report)
             ran += 1
