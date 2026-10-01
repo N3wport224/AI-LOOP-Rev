@@ -411,6 +411,9 @@ class Dispatcher:
         for a in email.attachments:
             if len(a.content) > MAX_ATTACHMENT_BYTES:
                 raise ValueError(f"{a.filename} is too large to attach ({len(a.content)} bytes)")
+        from tools.email_lint import check as lint
+
+        lint(email, self.config, self.state, audit_key)  # Phase 140: raises EmailLintError, nothing is sent
         backend = self.backend_for("delivery")
         if not self.live or backend is None:
             logged = set(map(str, self.state.get("delivery_dry_run_logged", [])))

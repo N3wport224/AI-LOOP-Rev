@@ -835,6 +835,12 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_audit(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import audit_main
+
+    return audit_main([])
+
+
 def cmd_explain(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import explain_main
 
@@ -1168,6 +1174,8 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    au = sub.add_parser("audit", help="every self-check in one report: security, settings, libraries, tunnel, site, backups")
+    au.set_defaults(func=cmd_audit)
     ex = sub.add_parser("explain", help="what a task does, where it runs in the cycle, and its last runs")
     ex.add_argument("task", nargs="?")
     ex.set_defaults(func=cmd_explain)

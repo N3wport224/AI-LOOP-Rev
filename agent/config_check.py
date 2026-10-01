@@ -7,6 +7,8 @@
 * **Out-of-range values:** percentages outside 1-90, negative or zero day counts, a daily target
   of $0, a backup period shorter than a day, and similar.
 * **Malformed values:** email addresses and URLs that can't work.
+* **Times and fractions** (Phase 141): a time zone Python doesn't know (reports would silently use
+  UTC), hours outside 0-23, weekdays outside 0-6, and rates that must be a fraction (0.10, not 10).
 """
 
 from __future__ import annotations
@@ -25,6 +27,9 @@ POSITIVE = ("daily_target_cents", "interval_seconds", "backup_keep_days", "buyer
             "promo_daily_cap", "storefront_check_hours", "auto_update_hours")
 EMAILS = ("sender_email", "owner_email", "unsubscribe_email")
 URLS = ("pages_base_url", "public_webhook_url", "heartbeat_url")
+HOURS = ("subscription_delivery_hour", "lead_nurture_hour", "owner_digest_hour")
+WEEKDAYS = ("subscription_delivery_weekday", "lead_nurture_weekday")
+FRACTIONS = ("refund_alert_rate", "source_max_error_rate")
 
 
 def toml_keys(path: Path) -> set[str]:
@@ -61,6 +66,25 @@ def problems(config: Any, toml_path: Path | None = None) -> list[str]:
         v = str(getattr(config, name, "") or "")
         if v and not v.startswith("https://"):
             out.append(f"{name} = '{v}' must start with https://")
+    tz = str(getattr(config, "subscription_timezone", "UTC") or "UTC")
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(tz)
+    except Exception:  # noqa: BLE001 - any failure means the name is unusable
+        out.append(f"subscription_timezone = '{tz}' isn't a known time zone (e.g. 'America/New_York'); UTC is used")
+    for name in HOURS:
+        v = getattr(config, name, None)
+        if v is not None and not 0 <= int(v) <= 23:
+            out.append(f"{name} = {v}: use an hour from 0 to 23")
+    for name in WEEKDAYS:
+        v = getattr(config, name, None)
+        if v is not None and not 0 <= int(v) <= 6:
+            out.append(f"{name} = {v}: use 0 (Monday) to 6 (Sunday)")
+    for name in FRACTIONS:
+        v = getattr(config, name, None)
+        if v is not None and not 0 < float(v) < 1:
+            out.append(f"{name} = {v}: use a fraction like 0.10 (for 10%)")
     if getattr(config, "bounce_pause_rate", 0.05) <= 0 or getattr(config, "bounce_pause_rate", 0.05) >= 1:
         out.append(f"bounce_pause_rate = {config.bounce_pause_rate}: use a fraction like 0.05")
     return out

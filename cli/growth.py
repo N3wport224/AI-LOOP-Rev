@@ -173,6 +173,22 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def audit_main(argv: list[str]) -> int:
+    """`automonetize audit` (Phase 144): every self-check; exit 1 if anything failed."""
+    from tools.self_audit import run_audit
+
+    config, state, _ = _setup()
+    findings = run_audit(config, state)
+    marks = {"fail": (RED, "✖"), "warn": (YELLOW, "!"), "ok": (GREEN, "✔")}
+    for f in findings:
+        colour, mark = marks.get(f["status"], (BOLD, "-"))
+        say(colour, f"{mark} {f['area']}: {f['detail']}")
+    failed = sum(1 for f in findings if f["status"] == "fail")
+    print(f"\n{failed} failed, {sum(1 for f in findings if f['status'] == 'warn')} warning(s), "
+          f"{sum(1 for f in findings if f['status'] == 'ok')} ok")
+    return 1 if failed else 0
+
+
 def explain_main(argv: list[str]) -> int:
     """`automonetize explain <task>` (Phase 135)."""
     from agent.engine import PLAN

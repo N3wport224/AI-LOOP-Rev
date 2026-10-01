@@ -488,6 +488,12 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         from api.server import mount
 
         mount(app, processor.tools, executor, held, client_ip)
+    async def baseline_headers(request: web.Request, response: web.StreamResponse) -> None:
+        # Phase 142: every public response, whichever route made it (tests/test_consistency.py checks all of them).
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+
+    app.on_response_prepare.append(baseline_headers)
     app.on_shutdown.append(drain)
     app.on_cleanup.append(release_executor)
     app[pending_key()] = pending

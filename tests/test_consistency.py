@@ -100,3 +100,37 @@ def test_feature_switches_are_real_settings():
     names = {f.name for f in dc_fields(Config)}
     assert [flag for _, _, flag, _ in FEATURES if flag and flag not in names] == []
     assert len({name for _, name, _, _ in FEATURES}) == len(FEATURES)
+
+
+def test_every_public_route_sends_the_baseline_security_headers(kit, config):
+    import asyncio
+
+    from aiohttp.test_utils import TestClient, TestServer
+
+    config.api_enabled = config.lead_magnet_enabled = config.copy_bandit_enabled = True
+    app = build_app(WebhookProcessor(kit, use_sdk=False), power=PowerManager(NullBackend()))
+    probes = []
+    for resource in app.router.resources():
+        path = re.sub(r"\{[^}:]+(:[^}]+)?\}", "x", resource.canonical)
+        for route in resource:
+            if route.method in ("GET", "POST"):
+                probes.append((route.method, path))
+
+    async def go():
+        async with TestClient(TestServer(app)) as client:
+            missing = []
+            for method, path in probes:
+                resp = await client.request(method, path, data=b"")
+                if resp.headers.get("X-Content-Type-Options") != "nosniff":
+                    missing.append(f"{method} {path} -> {resp.status}")
+            return missing
+
+    assert len(probes) > 15
+    assert asyncio.run(go()) == []
+
+
+def test_every_task_is_in_the_readme_task_table():
+    from agent.engine import PLAN
+
+    table = README.split("## Every task in a cycle", 1)[1].split("\n## ", 1)[0]
+    assert [t for t, _ in PLAN if f"`{t}`" not in table] == []

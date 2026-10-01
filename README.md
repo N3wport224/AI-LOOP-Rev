@@ -1563,7 +1563,8 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize explain TASK                 # what a task does and its last runs
+* **Phase 113, task timings:** `automonetize audit                        # every self-check in one report; exit 1 if anything failed
+automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
 automonetize mute SOURCE [--days N] | mute --list   # pause alert emails from one source (still logged)
 automonetize unmute SOURCE                # alert emails from that source again
@@ -1682,6 +1683,98 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
   dataset versions, installed updates, resting tasks and mutes.
 * **Phase 139:** `automonetize report --now` emails today's report right away; `--print` shows it
   in the terminal instead.
+
+## Safety and consistency (Phases 140-144)
+
+* **Phase 140, email lint:** a last check before any email leaves.
+  * Marketing email (follow-ups, releases, refresh and upgrade offers, win-back, sales, sample
+    offers) must carry an unsubscribe instruction, your postal address and a `List-Unsubscribe`
+    header, with no leftover template placeholders.
+  * Every email needs a clean subject.
+  * A failing email isn't sent: you get one alert for it, and the sending task retries.
+* **Phase 141, more setting checks:** `doctor` now flags:
+  * an unknown time zone;
+  * hours outside 0-23 and weekdays outside 0-6;
+  * rates written as percentages (`10` instead of `0.10`).
+* **Phase 142, security headers everywhere:** every response from the public server carries
+  `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. A test probes every route.
+* **Phase 143, every task documented:** the "Every task in a cycle" table below lists each task in
+  run order, and a test keeps it complete.
+* **Phase 144, `automonetize audit`:** every self-check in one report, exiting 1 if anything
+  failed:
+  * security;
+  * settings and libraries;
+  * tunnel routes;
+  * the site audit;
+  * the backup restore test;
+  * resting tasks, muted alerts and held emails.
+
+## Every task in a cycle
+
+Each cycle runs these in order (lower numbers first). `automonetize explain <task>` says more
+and shows its last runs.
+
+| Order | Task | What it does |
+|---|---|---|
+| 5 | `check_disk` | Free disk space; below the critical mark, dataset builds pause until there's room. |
+| 6 | `ops_checks` | Job-source health, clock check, battery saver. |
+| 10 | `aggregate_leads` | Collect job postings from the public boards and keep the ones matching the niche. |
+| 12 | `discover_sources` | Find and trial new public job sources before they feed the data. |
+| 15 | `build_intel` | Turn postings into company profiles: stack, open roles, hiring urgency. |
+| 20 | `package_asset` | Build the next dataset version (zip with CSV, JSON, Excel, SQL and reports). |
+| 25 | `publish_listing` | Create or update the product and its Stripe payment link. |
+| 29 | `tune_copy` | Learn which product-page wording sells (copy bandit). |
+| 30 | `publish_showcase` | Publish a 5-record preview with the checkout link (GitHub repo or Gist). |
+| 31 | `syndicate` | Post a data-driven article to Dev.to, Hashnode or GitHub Discussions. |
+| 32 | `build_site` | Build and publish the website: product, intel, pricing, compare and legal pages. |
+| 33 | `track_hn` | Publish a free monthly stack summary of HN's "Who is hiring?" thread as a Gist. |
+| 34 | `publish_subscription` | Offer weekly updates as a subscription. |
+| 35 | `stage_outreach` | Draft outreach emails for your review (never sent without your OK). |
+| 36 | `publish_api_tier` | Offer the developer API as a subscription. |
+| 37 | `publish_dossier_tier` | Offer per-company dossiers. |
+| 38 | `publish_annual_plan` | Offer a yearly plan. |
+| 40 | `dispatch_outreach` | Send the outreach emails you approved, within limits. |
+| 44 | `process_bounces` | Read bounces; pause marketing email if too many bounce. |
+| 45 | `sync_revenue` | Record new sales from Stripe (and other storefronts). |
+| 46 | `guard_payments` | Watch for card testing and duplicate charges. |
+| 46 | `sync_refunds` | Record refunds and disputes. |
+| 46 | `sync_subscriptions` | Keep subscription statuses in step with Stripe. |
+| 47 | `run_dunning` | Remind subscribers whose payment failed. |
+| 48 | `sync_finance` | Read the Stripe balance and payouts. |
+| 49 | `answer_support` | Re-send files to buyers who say they didn't get them; pass everything else to you. |
+| 49 | `watch_payouts` | Alert if a Stripe payout fails or is late. |
+| 50 | `deliver_orders` | Deliver every paid order by email. |
+| 51 | `deliver_subscriptions` | Send subscribers their weekly update. |
+| 52 | `nurture_leads` | Send free-sample subscribers their weekly sample. |
+| 53 | `follow_up_buyers` | One "did it arrive?" email per order, with 1-click ratings. |
+| 54 | `create_launch_promos` | Create a launch discount code for a new dataset. |
+| 55 | `announce_releases` | Tell past buyers about a new version. |
+| 55 | `collect_metrics` | Record views, impressions and purchases per niche. |
+| 56 | `guard_freshness` | Stop promoting a dataset that has no new postings. |
+| 57 | `publish_team_license` | Offer a team license. |
+| 57 | `refresh_share_kit` | Write this week's ready-to-paste posts with tracked links. |
+| 58 | `run_satellites` | Work the smaller niches alongside the main one. |
+| 59 | `publish_bundle` | Offer all datasets as one bundle. |
+| 60 | `optimize_pricing` | Test prices and keep the one that earns most. |
+| 61 | `check_storefront` | Check every product can be bought and downloaded. |
+| 62 | `check_webhook` | Check the Stripe webhook and tunnel answer; repair if possible. |
+| 62 | `offer_refresh` | Offer past buyers the newer version at a discount. |
+| 63 | `checkout_thank_you` | Send buyers to the thank-you page after paying. |
+| 63 | `reward_referrals` | Send a free update to buyers whose link sold. |
+| 64 | `win_back` | Invite cancelled subscribers back, once. |
+| 65 | `offer_bundle_upgrade` | Offer buyers the bundle with what they paid counted. |
+| 66 | `offer_sample_upgrade` | Offer free-sample subscribers the full dataset. |
+| 67 | `run_sale` | Run the quarterly sale. |
+| 68 | `tune_offers` | Adjust discounts by what they sold. |
+| 92 | `housekeeping` | Tidy logs, old versions and the database; delete data nobody needs. |
+| 93 | `audit_security` | Fix file permissions; report exposed secrets and risky settings. |
+| 94 | `send_heartbeat` | Ping your heartbeat URL so you hear if the Mac stops. |
+| 95 | `pace_goal` | Track progress against the daily goal. |
+| 96 | `monthly_books` | Email last month's books (revenue, fees, expenses, profit). |
+| 97 | `backup_data` | Daily backup; weekly restore test. |
+| 98 | `report_owner` | Your emails: sales, alerts, milestones, the daily report. |
+| 99 | `evolve_code` | Self-evolution (opt-in): propose, test and merge code improvements. |
+| 100 | `self_update` | Install updates that pass their checks; roll back if not. |
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
