@@ -99,6 +99,10 @@
       : fin.error ? "couldn't read: " + fin.error
       : `${money(fin.available_cents)} ready · ${money(fin.pending_cents)} on the way` +
         (fin.last_payout ? ` · last payout ${money(fin.last_payout.amount_cents)} (${fin.last_payout.status}, ${fin.last_payout.arrival_date})` : "");
+    const pace = s.pace || {};
+    $("#k-pace").textContent = pace.date ? money(pace.net_per_day_cents) + "/day" : "—";
+    $("#k-pace-bar").style.width = Math.min(100, Math.round((pace.progress || 0) * 100)) + "%";
+    $("#k-pace-sub").textContent = pace.date ? `goal ${money(pace.goal_cents)}/day · next: ${pace.next_step}` : "worked out after the next cycle";
     const paused = s.engine.flag === "paused";
     $("#btn-pause").hidden = paused;
     $("#btn-resume").hidden = !paused;

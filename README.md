@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 678 tests, ~40 s, no network
+pytest                     # 696 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 34 tasks now (Phases 20-23 added four). An old `automonetize.toml` that pins
+The plan has 38 tasks now (Phases 20-27 added eight). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -980,7 +980,50 @@ cut short.
 * On the 1st of each month (in `subscription_timezone`) the agent writes last month's verified
   revenue (sales, subscription payments, refunds, disputes and fees) to
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
-* `automonetize books [YYYY-MM]` builds any month by hand.
+* `automonetize pace                                    # 7-day pace vs the daily goal, and the next step
+automonetize books [YYYY-MM]` builds any month by hand.
+
+## Store care (Phases 24-27)
+
+**Phase 24: storefront health** (`strategies/storefront_health.py`, task `check_storefront`).
+* Every `storefront_check_hours` (6), for each product on sale, the agent checks three things:
+  * the Stripe Payment Link is still active;
+  * the public product page loads;
+  * the download file exists and is a readable zip.
+* A newly broken product sends you one alert. Recoveries are logged.
+* Results appear in `automonetize doctor` ("Checkout & downloads") and in the daily report.
+* Nothing is changed automatically.
+
+**Phase 25: new-release emails** (`strategies/release_announcer.py`, task `announce_releases`).
+* When a dataset for a **new niche** goes on sale, past buyers who don't own it get one short
+  email with a tracked link.
+* Who gets it:
+  * only people who bought before (not refunded or disputed), never anyone else;
+  * never suppressed addresses;
+  * at most one such email per buyer every `announce_min_gap_days` (14);
+  * only in the first 14 days after a release.
+* New versions of a niche don't count as new. Stale datasets are never announced.
+* The first run only records what's already on sale, so switching it on emails nobody about old
+  products.
+* Every email carries your postal address, a reply-"unsubscribe" opt-out and `List-Unsubscribe`.
+  Live sending waits for `CAN_SPAM_POSTAL_ADDRESS`.
+
+**Phase 26: goal pacing** (`strategies/goal_pacing.py`, task `pace_goal`).
+* Once a day it works out:
+  * the 7-day net per day against your goal, and the projected month;
+  * the best channel and niche;
+  * how many people reached checkout and how many paid.
+* It then names **one next step**, most basic first: go live, fix a broken product, get traffic
+  (connect marketing, post the share kit), fix the page or price, or do more of what works.
+* Shown in the daily report, the control panel (**Goal pace** card), `automonetize doctor` and
+  `automonetize pace`.
+
+**Phase 27: stale-data guard** (`strategies/freshness_guard.py`, task `guard_freshness`).
+* A dataset whose niche has had no new or re-seen job posting for `stale_after_days` (7) is marked
+  stale and sends you one alert.
+* Stale datasets are left out of the share kit and the release emails. They stay on sale with
+  their "data updated" date; taking them down is your call.
+* The mark clears by itself when postings flow again.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
@@ -1269,6 +1312,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `backups_enabled` / `backup_dir` / `backup_keep_days` | `true` / Application Support / `14` | Daily backups |
 | `buyer_followup` / `buyer_followup_days` | `true` / `3` | One check-in email per order after delivery |
 | `bookkeeping` | `true` | Monthly revenue CSV emailed to `owner_email` |
+| `storefront_check_hours` | `6` | How often checkout links, product pages and downloads are checked |
+| `release_announcements` / `announce_min_gap_days` | `true` / `14` | New-niche emails to past buyers |
+| `stale_after_days` | `7` | Days without new postings before a dataset stops being promoted |
 | `imap_host` / `imap_username` / `IMAP_PASSWORD` | from the SMTP login for Gmail, Fastmail, Outlook, iCloud | Support inbox (read-only) |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
@@ -1336,7 +1382,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 678 tests, ~40 s, no network
+pytest     # 696 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

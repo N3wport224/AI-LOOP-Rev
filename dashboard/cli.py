@@ -789,6 +789,12 @@ def cmd_share(args: argparse.Namespace, console: Console) -> int:
     return share_main([])
 
 
+def cmd_pace(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import pace_main
+
+    return pace_main([])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -971,6 +977,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sh = sub.add_parser("share", help="this week's ready-to-paste posts (LinkedIn, X, Reddit, DM) with tracked links")
     sh.set_defaults(func=cmd_share)
+    pa = sub.add_parser("pace", help="7-day revenue pace vs the daily goal, and the one next step that would help most")
+    pa.set_defaults(func=cmd_pace)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)

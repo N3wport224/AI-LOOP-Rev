@@ -126,6 +126,9 @@ class OwnerReports(Strategy):
     def digest_body(tools: Any, local: datetime) -> str:
         from dashboard.analytics import compute
         from strategies.finance import describe
+        from strategies.freshness_guard import stale_titles
+        from strategies.goal_pacing import describe as describe_pace
+        from strategies.storefront_health import KEY as HEALTH
         from tools.catalog import live_products
 
         cfg, state = tools.config, tools.state
@@ -148,6 +151,7 @@ class OwnerReports(Strategy):
             f"Yesterday: {money(int(yesterday.get('net_cents', 0)))} net (goal {money(cfg.daily_target_cents)}/day)",
             f"Last 7 days: {money(week)} net · MRR {money(mrr)}",
             describe(state.get("stripe_finance")),
+            describe_pace(state.get("goal_pace")),
             f"Agent: {cycles} cycles in the last 24 hours",
             "",
             f"On sale ({len(products)}):" if products else "On sale: nothing yet. Run `automonetize go-live` (see the README).",
@@ -155,6 +159,12 @@ class OwnerReports(Strategy):
             "",
             f"Free-sample leads: {leads.get('active', 0)} confirmed, {leads.get('pending', 0)} pending",
         ]
+        broken = [p for p in (state.get(HEALTH) or {}).get("products", []) if not p["ok"]]
+        if broken:
+            lines += ["", "Can't be bought right now:", *[f"- {p['title']}: {', '.join(p['problems'])}" for p in broken]]
+        stale = stale_titles(state)
+        if stale:
+            lines.append(f"Not being promoted (no new job postings lately): {', '.join(stale)}")
         if drafts:
             lines.append(f"Sales emails waiting for your OK: {drafts} (control panel → Outreach)")
         if problems:

@@ -7,6 +7,7 @@ and a direct message, built only from real numbers in the current dataset.
 
 * Every link is attributed (``utm_source`` on the product page, or ``client_reference_id`` on the
   checkout link), so the dashboard shows which channel sold.
+* Datasets the freshness guard marked stale are left out.
 * Rebuilt when the products or prices change, and at least once a week.
 * Where to find it: the Monday daily report email, the control panel's **Share** tab (copy
   buttons) and ``automonetize share``.
@@ -41,9 +42,9 @@ def link_for(product: dict[str, Any], channel: str) -> str:
 
 
 def niche_of(state: Any, asset_id: int) -> str:
-    asset = state.get_asset(asset_id) or {}
-    hyp = state.get_hypothesis(asset["hypothesis_id"]) if asset.get("hypothesis_id") else None
-    return str(((hyp or {}).get("params") or {}).get("niche") or "")
+    from strategies.freshness_guard import niche_of as asset_niche
+
+    return asset_niche(state, state.get_asset(asset_id) or {})
 
 
 def facts(files: Any, niche: str) -> list[str]:
@@ -104,9 +105,9 @@ def fingerprint(products: list[dict[str, Any]]) -> str:
 
 
 def build_kit(state: Any, files: Any) -> dict[str, Any]:
-    from tools.catalog import live_products
+    from strategies.freshness_guard import promotable
 
-    products = live_products(state)[:MAX_PRODUCTS]
+    products = promotable(state)[:MAX_PRODUCTS]  # stale datasets are not advertised
     posts: list[dict[str, str]] = []
     for p in products:
         posts += posts_for(p, facts(files, niche_of(state, p["id"])))
@@ -127,11 +128,11 @@ class ShareKit(Strategy):
     tasks = ("refresh_share_kit",)
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
-        from tools.catalog import live_products
+        from strategies.freshness_guard import promotable
 
         state = ctx.tools.state
         current = state.get(KEY) or {}
-        fp = fingerprint(live_products(state)[:MAX_PRODUCTS])
+        fp = fingerprint(promotable(state)[:MAX_PRODUCTS])
         age_ok = current.get("generated_at") and \
             state.clock() - datetime.fromisoformat(current["generated_at"]) < timedelta(days=REFRESH_DAYS)
         if current.get("fingerprint") == fp and age_ok:

@@ -1,0 +1,122 @@
+"""New-release emails: tell past buyers when a new dataset goes on sale.
+
+People who already bought a dataset are the likeliest buyers of the next one. When the agent
+starts selling a dataset for a new niche, ``announce_releases`` emails each past buyer who doesn't
+own that niche yet, once:
+
+* Only past buyers (delivered one-off orders, not refunded or disputed), never anyone else, and
+  never a suppressed address. Every email has the postal address, a reply-"unsubscribe" opt-out
+  (the support desk honours it) and a ``List-Unsubscribe`` header.
+* At most one announcement per buyer every ``announce_min_gap_days`` (14), at most 50 per cycle,
+  and only during the first 14 days after the release. New versions of a niche you already sell
+  are not "new". Stale datasets (``strategies/freshness_guard.py``) are not announced.
+* The first run only records what's already on sale, so turning this on doesn't email anyone
+  about old products. Live sending waits until ``sender_postal_address`` is set. Off with
+  ``release_announcements = false``.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Any
+
+from strategies.base import Strategy, TaskContext, TaskResult
+from tools.dispatcher import Email
+
+RELEASES = "release_families"       # {niche: first seen on sale}
+LAST_SENT = "release_last_sent"     # {email: when}
+SENT_PREFIX = "release_sent:"       # + niche -> [emails]
+WINDOW_DAYS = 14
+PER_CYCLE = 50
+
+
+def families(state: Any) -> dict[str, dict[str, Any]]:
+    """niche -> newest promotable dataset of that niche."""
+    from strategies.freshness_guard import niche_of, promotable
+
+    out: dict[str, dict[str, Any]] = {}
+    for p in promotable(state):
+        if p["kind"] != "lead_directory":
+            continue
+        niche = niche_of(state, state.get_asset(p["id"]) or {})
+        if niche and niche not in out:
+            out[niche] = p
+    return out
+
+
+def buyers(state: Any) -> dict[str, set[str]]:
+    """email -> niches they own."""
+    from strategies.freshness_guard import niche_of
+
+    owned: dict[str, set[str]] = {}
+    rows = state._all("SELECT email, asset_id FROM orders WHERE status = 'delivered' AND kind = 'one_off' AND email IS NOT NULL")
+    for r in rows:
+        asset = state.get_asset(r["asset_id"]) if r.get("asset_id") else None
+        owned.setdefault(r["email"].lower(), set()).add(niche_of(state, asset) if asset else "")
+    return owned
+
+
+def announcement(cfg: Any, product: dict[str, Any], to: str) -> Email:
+    from strategies.share_kit import money
+    from tools.attribution import add_utm, checkout_link
+
+    link = add_utm(product["lander_url"], "announce", "email", "release") if product.get("lander_url") \
+        else checkout_link(product["url"], "announce", "release")
+    mailbox = cfg.unsubscribe_email or cfg.sender_email
+    lines = ["Hi,", "", "You bought one of my hiring datasets before, so a quick heads-up: a new one is out.", "",
+             f"{product['title']}: {money(product['price_cents'])}", link, "",
+             "Same format as the one you have: companies hiring now, their stack and how urgently they're hiring.", "",
+             "Thanks,", cfg.sender_name or "AutoMonetize", "", "--",
+             "You're getting this because you bought a dataset. Reply \"unsubscribe\" and you won't hear about new ones again."]
+    if cfg.sender_postal_address:
+        lines.append(cfg.sender_postal_address)
+    headers = {"List-Unsubscribe": f"<mailto:{mailbox}?subject=unsubscribe>"} if mailbox else {}
+    return Email(to=to, subject=f"New dataset: {product['title']}", body="\n".join(lines), kind="delivery", headers=headers)
+
+
+class ReleaseAnnouncer(Strategy):
+    name = "release_announcer"
+    tasks = ("announce_releases",)
+
+    def run(self, task: str, ctx: TaskContext) -> TaskResult:
+        tools, cfg, state = ctx.tools, ctx.tools.config, ctx.tools.state
+        if not cfg.release_announcements:
+            return TaskResult(True, "release announcements off", {"sent": 0})
+        now = state.clock()
+        current = families(state)
+        known: dict[str, str] = dict(state.get(RELEASES) or {})
+        first_run = state.get(RELEASES) is None
+        for niche in current:
+            if niche not in known:
+                # On the first run everything already on sale counts as old news.
+                known[niche] = (now - timedelta(days=WINDOW_DAYS + 1)).isoformat(timespec="seconds") if first_run else state.now()
+        state.set(RELEASES, known)
+        fresh = {n: p for n, p in current.items() if now - datetime.fromisoformat(known[n]) <= timedelta(days=WINDOW_DAYS)}
+        if not fresh:
+            return TaskResult(True, "no new releases to announce", {"sent": 0})
+        if tools.dispatcher.live and not cfg.sender_postal_address.strip():
+            return TaskResult(True, "release emails wait for sender_postal_address (CAN-SPAM)", {"sent": 0})
+        last_sent: dict[str, str] = dict(state.get(LAST_SENT) or {})
+        gap = timedelta(days=float(cfg.announce_min_gap_days))
+        sent = 0
+        owners = buyers(state)
+        for niche, product in sorted(fresh.items()):
+            done = set(state.get(SENT_PREFIX + niche) or [])
+            for email, owned in sorted(owners.items()):
+                if sent >= PER_CYCLE:
+                    break
+                if niche in owned or email in done or state.is_suppressed(email):
+                    continue
+                if email in last_sent and now - datetime.fromisoformat(last_sent[email]) < gap:
+                    continue
+                try:
+                    tools.dispatcher.send_transactional(announcement(cfg, product, email), audit_key=f"release:{niche}:{email}")
+                except Exception as exc:  # noqa: BLE001 - retried next cycle
+                    state.log_error("release_announcer", f"announcement to {email} failed: {exc!r}")
+                    continue
+                done.add(email)
+                last_sent[email] = state.now()
+                sent += 1
+            state.set(SENT_PREFIX + niche, sorted(done))
+        state.set(LAST_SENT, last_sent)
+        return TaskResult(True, f"release announcements: {sent} sent", {"sent": sent})

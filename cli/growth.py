@@ -1,4 +1,4 @@
-"""`automonetize share` (this week's ready-to-paste posts) and `automonetize books [YYYY-MM]`."""
+"""`automonetize share` (ready-to-paste posts), `automonetize pace` (goal pace) and `automonetize books [YYYY-MM]`."""
 
 from __future__ import annotations
 
@@ -30,6 +30,16 @@ def share_main(argv: list[str] | None = None) -> int:
         return 0
     say(BOLD, "Copy one of these and post it from your own account. Each link tracks which channel sold.\n")
     print(as_text(kit))
+    return 0
+
+
+def pace_main(argv: list[str] | None = None) -> int:
+    from strategies.goal_pacing import KEY, compute_pace, describe
+
+    config, state, _ = _setup()
+    pace = compute_pace(state, config)
+    state.set(KEY, pace)
+    say(GREEN if (pace.get("progress") or 0) >= 1 else YELLOW, describe(pace))
     return 0
 
 

@@ -154,6 +154,22 @@ class Doctor:
         fin = state.get("stripe_finance")
         if fin:
             out.append(Finding("Money", "warn" if fin.get("error") else "ok", describe(fin).replace("Stripe balance: ", "")))
+        from strategies.freshness_guard import stale_titles
+        from strategies.storefront_health import KEY as HEALTH, describe as describe_health
+
+        health = state.get(HEALTH)
+        if health:
+            bad = any(not p["ok"] for p in health.get("products", []))
+            out.append(Finding("Checkout & downloads", "warn" if bad else "ok", describe_health(health),
+                               "open the product in Stripe / on your site and fix what's listed" if bad else ""))
+        stale = stale_titles(state)
+        if stale:
+            out.append(Finding("Fresh data", "warn", f"no new job postings lately for: {', '.join(stale)} (not promoted)",
+                               "usually a job board changed; the agent keeps retrying and self-evolution can adapt parsers"))
+        pace = state.get("goal_pace")
+        if pace:
+            out.append(Finding("Goal pace", "ok" if (pace.get("progress") or 0) >= 1 else "warn",
+                               f"${pace['net_per_day_cents'] / 100:,.2f}/day of ${pace['goal_cents'] / 100:,.2f}", pace["next_step"]))
         last_backup = state.get("last_backup_at")
         if last_backup and state.clock() - datetime.fromisoformat(last_backup) < timedelta(days=2):
             out.append(Finding("Backups", "ok", f"last backup {last_backup[:16]}"))

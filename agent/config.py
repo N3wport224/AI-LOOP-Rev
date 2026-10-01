@@ -263,6 +263,12 @@ class Config:
     buyer_followup_days: int = 3             # days after delivery
     bookkeeping: bool = True                 # monthly revenue CSV emailed to owner_email
 
+    # Storefront health, release emails, freshness (Phases 24-27)
+    storefront_check_hours: float = 6.0      # how often checkout links, pages and downloads are checked
+    release_announcements: bool = True       # email past buyers when a new niche goes on sale
+    announce_min_gap_days: int = 14          # at most one announcement per buyer in this many days
+    stale_after_days: int = 7                # a dataset with no new postings this long is not promoted
+
     # Backups (agent/backup.py)
     backups_enabled: bool = True
     backup_dir: str = ""                     # "" = ~/Library/Application Support/AutoMonetize/backups (macOS)
