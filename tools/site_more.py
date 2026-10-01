@@ -61,7 +61,7 @@ def compare_page(pages: list[Any], shell: Any) -> str:
                                            "update and price.")
 
 
-SITEMAP_PAGES = ("trends/", "search/", "catalog/", "status/", "changes/", "new-employers/")  # Phases 222-229, 267
+SITEMAP_PAGES = ("trends/", "search/", "catalog/", "status/", "changes/", "new-employers/", "vs/")  # Phases 222-229, 267
 
 
 def sitemap_extra(out: dict[str, Any]) -> list[str]:

@@ -387,6 +387,10 @@ class InboundSyndicator(Strategy):
 
         extra.update(site_files(pages, tools.state, cfg, lambda title, body, desc, depth: _shell(  # Phases 225-229
             title, body, cfg.site_title, description=desc, depth=depth)))
+        from strategies.tech_compare import site_files as compare_files
+
+        extra.update(compare_files(tools.state, pages, lambda title, body, desc, depth: _shell(  # Phases 330-334
+            title, body, cfg.site_title, description=desc, depth=depth)))
         from strategies import widget
 
         if "search.json" in extra:  # Phases 300-304: the cards read the search index

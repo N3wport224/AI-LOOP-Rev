@@ -2438,6 +2438,29 @@ the catalog itself (`strategies/growth_plan.py`):
 * **Phase 329, where you see it:** `automonetize factory --plan`, a line in Monday's report, and the
   control panel's Products tab.
 
+## Technology comparisons (Phases 330-334)
+
+"Rust vs Go: who's hiring" pages, from real numbers (`strategies/tech_compare.py`).
+
+* **Phase 330, which pairs:** technologies people actually weigh against each other: languages,
+  frontend frameworks, clouds, databases, mobile, infrastructure, web frameworks and ML libraries.
+  * Both need 30 postings in the last 30 days.
+  * At most 40 pages, busiest first.
+* **Phase 331, the page:** `vs/<a>-vs-<b>/` compares, side by side:
+  * postings and companies;
+  * remote and senior share;
+  * median stated salary (when at least 10 postings state one);
+  * top countries and the trend;
+  * postings asking for both.
+
+  Each side links to its datasets.
+* **Phase 332, the index:** `vs/` lists every comparison. The home page links it and the sitemap
+  includes them all.
+* **Phase 333, week on week:** numbers are kept weekly, so pages show the change in postings since the
+  previous week.
+* **Phase 334, answers for search engines:** each page carries `FAQPage` data ("Which has more
+  openings?", "Which is more often remote?", "Which pays more?"), answered from the same numbers.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
