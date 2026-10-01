@@ -321,6 +321,11 @@ class OwnerReports(Strategy):
             newcomers = new_employers_line(state)  # Phase 269
             if newcomers:
                 lines += ["", newcomers]
+            from strategies.source_efficiency import describe as describe_boards
+
+            boards = describe_boards(state)  # Phase 299
+            if boards:
+                lines += ["", boards]
             from strategies.money_insight import abandoned, describe_abandoned, describe_trends, niche_trends
 
             week = (state.get(CALENDAR) or {}).get("items") or []

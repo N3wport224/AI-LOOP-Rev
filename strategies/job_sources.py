@@ -21,7 +21,7 @@ from __future__ import annotations
 import html
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from strategies.b2b_lead_aggregator import Lead, _clean, _note_shape, _ts
@@ -167,18 +167,18 @@ EXTRA_FETCHERS = {"remotive": fetch_remotive, "jobicy": fetch_jobicy, "himalayas
 
 # ------------------------------------------------------------------ Phase 199: cadence and credits
 def due(state: Any, source: str) -> bool:
-    hours = SOURCE_MIN_HOURS.get(source)
-    if not hours:
-        return True
+    """The board's cadence (with its fixed offset, Phase 298) and any back-off after failures (Phase 297)."""
+    from strategies.source_efficiency import due as efficient_due
+
     last = (state.get(FETCHED) or {}).get(source)
-    return not last or state.clock() - datetime.fromisoformat(last) >= timedelta(hours=hours)
+    return efficient_due(state, source, float(SOURCE_MIN_HOURS.get(source) or 0), last)
 
 
 def fetched(state: Any, source: str) -> None:
-    if source in SOURCE_MIN_HOURS:
-        stamps = dict(state.get(FETCHED) or {})
-        stamps[source] = state.now()
-        state.set(FETCHED, stamps)
+    """Every board's last attempt is kept: cadence and back-off both use it."""
+    stamps = dict(state.get(FETCHED) or {})
+    stamps[source] = state.now()
+    state.set(FETCHED, stamps)
 
 
 def sources_page(cfg: Any, shell: Any) -> str:

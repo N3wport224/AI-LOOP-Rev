@@ -1568,6 +1568,7 @@ automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe t
 automonetize products                     # every product ranked by revenue
 automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one product, by hand
 automonetize optout [approve ID|reject ID]  # companies asking to be left out of the datasets
+automonetize sources                      # what each job board brought, its speed, any back-off
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2319,6 +2320,20 @@ Applied to the postings every factory product is built from (`strategies/posting
   with a salary wins, otherwise the newer one. Two openings on the same board stay two rows.
 * **Phase 294, dead links** (`link_checks`): once a day the factory checks 20 posting links (HEAD
   request, robots.txt respected). A link that answers 404 or 410 marks its posting as gone.
+
+## Gentler, smarter fetching (Phases 295-299)
+
+From `strategies/source_efficiency.py`:
+
+* **Phase 295, only download what changed:** requests to job boards remember each response's `ETag`
+  and `Last-Modified`. A `304 Not Modified` answer reuses the saved copy in `data/cache/sources`.
+* **Phase 296, how long each board takes:** every fetch is timed; `automonetize sources` shows it.
+* **Phase 297, back off when a board fails:** after two failures in a row, a board waits 2, 4, 8 and
+  up to 24 hours before the next try, instead of every cycle.
+* **Phase 298, spread out:** boards on a fixed cadence each get a small fixed offset (up to ±10%) so
+  they aren't all fetched in the same cycle.
+* **Phase 299, what each board brings:** `automonetize sources` and Monday's report show, for the
+  last 30 days, new postings per board and how many no other board had.
 
 ## Safety and consistency (Phases 140-144)
 

@@ -316,6 +316,22 @@ def optout_main(argv: list[str]) -> int:
     return 0
 
 
+def sources_main(argv: list[str]) -> int:
+    """`automonetize sources` (Phases 296-299)."""
+    from strategies.job_sources import CREDITS
+    from strategies.source_efficiency import backoff_hours, contribution
+
+    config, state, _ = _setup()
+    rows = {r["source"]: r for r in contribution(state)}
+    for source in config.lead_sources:
+        r = rows.get(source) or {"new": 0, "only_here": 0, "avg_ms": None}
+        wait = backoff_hours(state, source)
+        print(f"{CREDITS.get(source, (source, ''))[0]:<28} {r['new']:>6} new  {r['only_here']:>6} only there"
+              + (f"  {r['avg_ms']} ms avg" if r.get("avg_ms") is not None else "")
+              + (f"  (backing off {wait:.0f} h after failures)" if wait else ""))
+    return 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

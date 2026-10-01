@@ -865,6 +865,12 @@ def cmd_optout(args: argparse.Namespace, console: Console) -> int:
     return optout_main(args.rest)
 
 
+def cmd_sources(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import sources_main
+
+    return sources_main([])
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1239,6 +1245,8 @@ def build_parser() -> argparse.ArgumentParser:
     oo = sub.add_parser("optout", help="companies asking to be left out: list; approve ID; reject ID")
     oo.add_argument("rest", nargs="*")
     oo.set_defaults(func=cmd_optout)
+    so = sub.add_parser("sources", help="what each job board brought in the last 30 days, how long it takes, back-offs")
+    so.set_defaults(func=cmd_sources)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")

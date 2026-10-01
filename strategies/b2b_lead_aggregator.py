@@ -372,6 +372,9 @@ class LeadAggregator(Strategy):
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
         from strategies.job_sources import due, fetched
+        from strategies.source_efficiency import ConditionalHttp, record as record_fetch, timed
+
+        http = ConditionalHttp(tools.http, tools.state, tools.files)  # Phase 295
 
         # Phase 199: some boards ask for a few requests a day; those wait their turn (not a failure).
         sources = [s for s in tools.config.lead_sources if s in self.fetchers and due(tools.state, s)]
@@ -387,14 +390,16 @@ class LeadAggregator(Strategy):
             try:
                 depth = int(ctx.params.get("depth", 1))
                 fetch = self.fetchers[source]
-                got = fetch(tools.http, depth=depth) if depth > 1 else fetch(tools.http)
+                got, took = timed(fetch, http, depth=depth) if depth > 1 else timed(fetch, http)
                 raw.extend(got)
                 fetched(tools.state, source)
+                record_fetch(tools.state, source, True, took)  # Phases 296-297
                 record_parse(tools.state, source, len(got), LAST_SHAPE.pop(source, None))
             except CircuitOpenError:
                 raise  # budget exhausted: stop the whole task, don't blame the source
             except Exception as exc:  # noqa: BLE001 - one bad source must not sink the others
                 fetched(tools.state, source)  # a rate-limited board waits its turn after a failure too
+                record_fetch(tools.state, source, False, 0.0)
                 failed_sources.append(source)
                 tools.state.log_error(f"lead_source:{source}", repr(exc))
                 record_parse(tools.state, source, 0, LAST_SHAPE.pop(source, None), error=repr(exc))

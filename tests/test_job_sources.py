@@ -54,7 +54,7 @@ def test_boards_are_fetched_at_most_every_six_hours(toolkit, state, config, tran
     calls = len(transport.calls_to("https://remotive.com/"))
     res = agg.run("aggregate_leads", TaskContext(toolkit, hyp, {}))
     assert res.ok and len(transport.calls_to("https://remotive.com/")) == calls  # waits its turn, not a failure
-    clock.advance(hours=6)
+    clock.advance(hours=6 * 1.11)  # the cadence, with the board's fixed offset (Phase 298)
     agg.run("aggregate_leads", TaskContext(toolkit, hyp, {}))
     assert len(transport.calls_to("https://remotive.com/")) == calls + 1
 
