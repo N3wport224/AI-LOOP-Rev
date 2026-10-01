@@ -154,6 +154,18 @@ def site_pages(tools) -> list[ProductPage]:
                     int(cfg.team_license_seats)
             if annual:
                 page.annual_url, page.annual_price_cents = annual["checkout_url"], int(annual["price_cents"])
+            from datetime import datetime as _dt
+            from datetime import timezone as _tz
+
+            from strategies.launch_promos import active_code
+            from strategies.seasonal_sale import active_sale
+            from tools.site_extras import faq
+
+            promo = active_code(tools.state, niche) or active_sale(tools.state)
+            if promo:
+                until = _dt.fromtimestamp(int(promo["expires_at"]), tz=_tz.utc).strftime("%b %d")
+                page.banner = f"{promo['percent_off']}% off with code {promo['code']} until {until} (enter it at checkout)."
+            page.faq = faq(cfg, page)
         if bandit and kind == "dataset":
             facts = {"label": niche_title(niche).replace(" Remote", ""), "companies": metrics.get("companies") or 0,
                      "hot": metrics.get("high_intent") or metrics.get("high_urgency") or 0,

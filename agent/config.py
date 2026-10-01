@@ -296,6 +296,11 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Site trust (Phases 80-84)
+    refund_policy_days: int = 14             # stated on the refunds page and in the FAQ
+    google_site_verification: str = ""       # the code Google Search Console gives you
+    bing_site_verification: str = ""         # the code Bing Webmaster Tools gives you
+
     # Remote control (Phases 60-64)
     ntfy_topic: str = ""                     # phone notifications via ntfy.sh (`automonetize phone`)
     ntfy_server: str = ""                    # "" = https://ntfy.sh

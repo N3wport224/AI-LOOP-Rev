@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 842 tests, ~40 s, no network
+pytest                     # 847 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -1417,6 +1417,32 @@ where to start, and a sorting tip.
   the technologies they mention. They still reach you as before.
 * Monday's report shows the last 30 days' count, the most-asked topics and the latest requests.
 
+## Site trust (Phases 80-84)
+
+`tools/site_extras.py`:
+
+**Phase 80: legal pages.**
+* `legal/terms/`, `legal/privacy/`, `legal/refunds/` and `contact/`, written from your settings
+  (name, contact email, postal address, `refund_policy_days`).
+* Linked from every page's footer.
+* Payment processors expect a visible refund policy and contact details. These are templates from
+  facts, not legal advice: read them once in `data/site/`.
+
+**Phase 81: sale banner.** While a sale or launch code runs, the product and pricing pages say so
+at the top.
+
+**Phase 82: FAQ on product pages.** Format, delivery, freshness, refunds, plus updates and team use
+when those exist, with `FAQPage` structured data.
+
+**Phase 83: search engine verification.** `google_site_verification` / `bing_site_verification`
+add the meta tags Search Console and Bing Webmaster Tools ask for.
+
+**Phase 84: 404 page.** `404.html` with absolute links to every dataset and pricing, so a stale
+link still lands somewhere useful.
+
+The site audit (Phase 65) checks all of these. It caught a wrong-depth footer link during this
+batch before it shipped.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1719,6 +1745,8 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `refund_policy_days` | `14` | Stated on the refunds page and in the FAQ |
+| `google_site_verification` / `bing_site_verification` | empty | Search Console / Bing verification codes |
 | `NTFY_TOPIC` (`ntfy_topic`) / `ntfy_server` | empty / ntfy.sh | Phone notifications (`automonetize phone`) |
 | `sale_alerts` / `owner_digest` | `each` / `daily` | Sale emails: each, daily or off; digest: daily, weekly or off |
 | `owner_commands` | `true` | Email commands from your owner address with the command code |
@@ -1801,7 +1829,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 842 tests, ~40 s, no network
+pytest     # 847 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

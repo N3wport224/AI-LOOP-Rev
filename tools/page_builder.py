@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 from tools.attribution import FIRST_TOUCH_DAYS, STORAGE_KEY
 from tools.attribution import LANDER_ATTRIBUTION_JS as ATTRIBUTION_JS
 from tools.seo_assets import badge_for, render_badge_svg, render_og_png, render_og_svg
+from tools.site_extras import banner_html, faq_html, footer_links
 
 if TYPE_CHECKING:  # pragma: no cover
     from agent.config import Config
@@ -82,6 +83,8 @@ class ProductPage:
     copy_targets: dict[str, str] = field(default_factory=dict)   # cta variant -> href
     telemetry_url: str = ""
     testimonials: list[str] = field(default_factory=list)  # approved customer quotes (strategies/testimonials.py)
+    banner: str = ""               # sale / launch offer line (tools/site_extras.py)
+    faq: list[tuple[str, str]] = field(default_factory=list)
     team_url: str = ""             # team license (strategies/plans.py)
     team_price_cents: int = 0
     team_seats: int = 0
@@ -92,6 +95,11 @@ class ProductPage:
     @property
     def slug(self) -> str:
         return self.niche if self.kind == "dataset" else f"{self.niche}-{self.kind}"
+
+
+def rel_depth(title: str) -> int:
+    """Folder depth of a legal page by its title: contact/ is one level down, legal/<x>/ two."""
+    return 1 if title == "Contact" else 2
 
 
 def meta_description(text: str, limit: int = 158) -> str:
@@ -160,6 +168,7 @@ def _jsonld_script(data: dict[str, Any]) -> str:
     # "<!--<script" can't trigger the HTML parser's double-escaped script state. Still valid JSON.
     text = json.dumps(data, indent=2, ensure_ascii=False)
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
 
 
 CSS = """body{font-family:system-ui,-apple-system,sans-serif;max-width:940px;margin:0 auto;padding:2rem 1rem;line-height:1.55;color:#111;background:#fff}
@@ -318,6 +327,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 </script>
 <style>{CSS}</style></head><body>
 <h1>{title}</h1>
+{banner_html(page.banner)}
 {headline_html}
 <p class="lede">{html.escape(page.summary)}</p>
 {proof_html}
@@ -326,12 +336,14 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {signals_html}
 {cta}
 {lead_form_html(page.lead_capture_url, page.niche, page.slug)}
+{faq_html(page.faq)}
 <h2>Free 5-record preview</h2>
 <div class="wrap"><table><thead><tr>{head_cells}</tr></thead><tbody>
 {rows}
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
-<p class="muted"><a href="../">All datasets</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a>{' · <a href="changelog/">Version history</a>' if page.versions else ""}</p>
+<p class="muted"><a href="../">All datasets</a> · <a href="../pricing/">Pricing</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a>{' · <a href="changelog/">Version history</a>' if page.versions else ""}</p>
+<p class="muted">{footer_links("../")}</p>
 {copy_script}
 <script>{COPY_APPLY_JS if copy_script else ""}
 {ATTRIBUTION_JS}
@@ -609,7 +621,7 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 """
 
 
-def render_index(pages: list[ProductPage], base_url: str, site_title: str) -> str:
+def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "") -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>: {html.escape(p.summary[:160])} '
         f"(${p.price_cents / 100:.2f})</li>"
@@ -619,14 +631,15 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str) -> st
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(site_title)}</title><meta name="description" content="Company-level tech stack and hiring-intent datasets.">
-{canonical}<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="feeds/radar.xml">
+{canonical}{head_extra}<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="feeds/radar.xml">
 <style>{CSS}</style></head><body>
 <h1>{html.escape(site_title)}</h1>
 <p class="lede">Who is hiring, what they run, and who is about to buy: company-level tech stack intelligence, refreshed continuously.</p>
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted">{footer_links("")}</p>
 </body></html>
 """
 
@@ -724,7 +737,15 @@ class SiteBuilder:
                 out[f"{p.slug}/og.png"] = png
         total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")
         out["radar-badge.svg"] = render_badge_svg("tech radar", f"{total_roles} hiring signals tracked")
-        out["index.html"] = render_index(pages, self.base_url, cfg.site_title)
+        from tools.offer_pages import _shell
+        from tools.site_extras import legal_pages, not_found_page, verification_meta
+
+        out["index.html"] = render_index(pages, self.base_url, cfg.site_title, verification_meta(cfg))
+        for rel, page_html in legal_pages(cfg, lambda title, body, desc: _shell(
+                title, body, cfg.site_title, description=desc, depth=rel_depth(title))).items():
+            out[rel] = page_html
+        out["404.html"] = not_found_page(pages, lambda title, body, root: _shell(title, body, cfg.site_title, noindex=True,
+                                                                                 root=root), self.base_url)
         from tools.offer_pages import render_changelog
 
         for p in pages:

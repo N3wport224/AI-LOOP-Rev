@@ -25,13 +25,18 @@ def _money(cents: int) -> str:
     return f"${cents / 100:,.2f}".replace(".00", "")
 
 
-def _shell(title: str, body: str, site_title: str, noindex: bool = False, description: str = "") -> str:
+def _shell(title: str, body: str, site_title: str, noindex: bool = False, description: str = "", depth: int = 1,
+           root: str = "") -> str:
+    """A page ``depth`` folders below the site root (links are relative), or with ``root`` (absolute links)."""
+    from tools.site_extras import footer_links
+
+    prefix = root.rstrip("/") + "/" if root else "../" * depth
     robots = '<meta name="robots" content="noindex">' if noindex else ""
     if description:
         robots += f'<meta name="description" content="{html.escape(description)}">'
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, '
             f'initial-scale=1"><title>{html.escape(title)} · {html.escape(site_title)}</title>{robots}<style>{CSS}</style></head>'
-            f'<body>{body}<p class="muted"><a href="../">All datasets</a></p></body></html>\n')
+            f'<body>{body}<p class="muted"><a href="{prefix or "./"}">All datasets</a> · {footer_links(prefix)}</p></body></html>\n')
 
 
 def _a(url: str, text: str) -> str:
@@ -76,7 +81,7 @@ def render_changelog(page: Any, site_title: str) -> str:
             '<div class="wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Rows</th><th>Change</th></tr></thead><tbody>'
             + "".join(rows) + "</tbody></table></div>")
     desc = f"Every release of {page.title}: dates, row counts and growth. Updated whenever new job postings arrive."
-    return _shell(f"{page.title} version history", body, site_title, description=desc[:158])
+    return _shell(f"{page.title} version history", body, site_title, description=desc[:158], depth=2)  # <dataset>/changelog/
 
 
 def render_pricing(pages: list[Any], site_title: str) -> str:
@@ -90,7 +95,10 @@ def render_pricing(pages: list[Any], site_title: str) -> str:
         cells.append(_a(p.team_url, _money(p.team_price_cents)) if p.team_url and p.team_price_cents else "<span class=muted>-</span>")
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     bundle = next((p for p in pages if p.kind == "bundle" and p.checkout_url), None)
-    body = ("<h1>Pricing</h1><p>Every dataset is a download of companies hiring right now, with their tech stack and how "
+    from tools.site_extras import banner_html
+
+    banner = next((p.banner for p in pages if getattr(p, "banner", "")), "")
+    body = (banner_html(banner) + "<h1>Pricing</h1><p>Every dataset is a download of companies hiring right now, with their tech stack and how "
             "urgently they're hiring. Pay once, or subscribe for weekly updates.</p>")
     if rows:
         body += ('<div class="wrap"><table><thead><tr><th>Dataset</th><th>One-off</th><th>Weekly updates</th><th>Yearly</th>'
