@@ -61,6 +61,7 @@
     if (name === "outreach") loadOutreach();
     if (name === "share") { loadShare(); loadQuotes(); }
     if (name === "health") loadHealth();
+    if (name === "sent") loadSent();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -220,6 +221,20 @@
     msg.textContent = r.message || (r.ok ? "Done." : "Failed.");
     msg.className = "message " + (r.ok ? "ok" : "bad");
     loadQuotes();
+  }
+
+  // ------------------------------------------------------------------ sent emails
+  async function loadSent() {
+    let d;
+    try { d = await api("/api/sent"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const rows = d.emails || [];
+    const list = $("#sent-list");
+    if (!rows.length) { list.replaceChildren(el("p", { class: "muted", text: "Nothing sent yet." })); return; }
+    list.replaceChildren(...rows.map((m) => el("details", { class: "card draft" },
+      el("summary", {}, el("b", { text: m.subject || "(no subject)" }),
+        el("span", { class: "muted", text: `  →  ${m.to || ""} · ${m.kind || ""} · ${m.mode === "live" ? m.result : "dry run"} · ${shortTime(m.ts || "")}` })),
+      el("pre", { class: "log", text: m.body || "" }))));
   }
 
   // ------------------------------------------------------------------ health

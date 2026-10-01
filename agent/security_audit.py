@@ -121,6 +121,9 @@ class SecurityAudit(Strategy):
         except Exception as exc:  # noqa: BLE001 - an audit problem must not stop the agent
             state.log_error("security_audit", f"audit failed: {exc!r}")
             return TaskResult(True, f"audit failed: {exc!r}"[:200], {})
+        from tools.key_age import update as update_key_ages
+
+        update_key_ages(state, cfg)
         known = {f["name"] for f in previous.get("findings", []) if f["status"] == "fail"}
         for f in findings:
             if f["status"] == "fixed":

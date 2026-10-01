@@ -148,6 +148,46 @@ def goal_main(argv: list[str]) -> int:
     return 0
 
 
+def settings_log_main(argv: list[str]) -> int:
+    from tools.settings_log import HISTORY
+
+    _, state, _ = _setup()
+    history = state.get(HISTORY) or []
+    if not history:
+        print("No settings changes recorded yet (they're compared at each start).")
+    for h in history[-20:]:
+        say(BOLD, h["at"][:16])
+        for c in h["changes"]:
+            print(f"  {c}")
+    return 0
+
+
+def export_all_main(argv: list[str]) -> int:
+    from datetime import datetime, timezone
+
+    from tools.export_all import export_all
+
+    config, state, _ = _setup()
+    path, counts = export_all(state, config.data_dir, datetime.now(timezone.utc))
+    say(GREEN, f"✔ Exported {sum(counts.values())} rows from {len(counts)} tables to {path}")
+    return 0
+
+
+def features_main(argv: list[str]) -> int:
+    from tools.features import overview
+
+    config, state, _ = _setup()
+    marks = {"on": (GREEN, "✔ on     "), "off": (YELLOW, "- off    "), "waiting": (YELLOW, "… waiting")}
+    group = ""
+    for f in overview(config, state):
+        if f["group"] != group:
+            group = f["group"]
+            say(BOLD, f"\n{group}")
+        colour, mark = marks[f["status"]]
+        say(colour, f"  {mark}  {f['name']}" + (f"  ({f['detail']})" if f["detail"] else ""))
+    return 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 

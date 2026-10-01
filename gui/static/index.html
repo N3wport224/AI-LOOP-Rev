@@ -20,6 +20,7 @@
     <button role="tab" data-tab="outreach" aria-selected="false">Outreach <span id="outreach-count" class="muted"></span></button>
     <button role="tab" data-tab="share" aria-selected="false">Share</button>
     <button role="tab" data-tab="health" aria-selected="false">Health</button>
+    <button role="tab" data-tab="sent" aria-selected="false">Sent</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
     <button id="logout" class="link">Sign out</button>
@@ -154,6 +155,14 @@
       </div>
       <p class="message" id="health-message" role="status"></p>
       <div class="table-wrap"><table id="health-table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th><th>What to do</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-sent" class="tab" hidden>
+    <div class="card">
+      <h2>Sent emails</h2>
+      <p class="muted">Every email the agent sent (or, in dry run, would have sent), newest first. Click one to read it.</p>
+      <div id="sent-list"></div>
     </div>
   </section>
 

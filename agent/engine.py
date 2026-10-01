@@ -318,6 +318,12 @@ class Engine:
             poll(self.tools, engine=self)
             if not getattr(self, "_start_noticed", False):
                 self._start_noticed = True
+                try:
+                    from tools.settings_log import record
+
+                    record(self.state, self.config)
+                except Exception as exc:  # noqa: BLE001
+                    self.state.log_error("settings_log", f"couldn't compare settings: {exc!r}")
                 from agent.startup_notice import maybe_notify
 
                 maybe_notify(self.tools)

@@ -882,6 +882,24 @@ def cmd_goal(args: argparse.Namespace, console: Console) -> int:
     return goal_main([args.dollars] if args.dollars else [])
 
 
+def cmd_settings_log(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import settings_log_main
+
+    return settings_log_main([])
+
+
+def cmd_export_all(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import export_all_main
+
+    return export_all_main([])
+
+
+def cmd_features(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import features_main
+
+    return features_main([])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -1106,6 +1124,12 @@ def build_parser() -> argparse.ArgumentParser:
     gl2 = sub.add_parser("goal", help="show or change the daily net revenue goal (in dollars)")
     gl2.add_argument("dollars", nargs="?")
     gl2.set_defaults(func=cmd_goal)
+    sl = sub.add_parser("settings-log", help="what changed in the settings, and when (secrets shown only as set/changed)")
+    sl.set_defaults(func=cmd_settings_log)
+    ea = sub.add_parser("export-all", help="every table as CSV in one zip (data/exports/), for a spreadsheet or an accountant")
+    ea.set_defaults(func=cmd_export_all)
+    fe = sub.add_parser("features", help="every major feature: on, off, or waiting for something from you")
+    fe.set_defaults(func=cmd_features)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM, or YYYY for a whole year")
     bo.set_defaults(func=cmd_books)

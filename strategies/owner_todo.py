@@ -78,6 +78,11 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
         dollars = int(suggestion["cents"]) // 100
         add(9, f"Raise your daily goal to ${dollars}", f"you've been on goal {suggestion['streak']} days in a row; a higher goal "
             "keeps the agent pushing (pricing, new niches)", 1, f"automonetize goal {dollars}")
+    from tools.key_age import overdue
+
+    for k in overdue(state):
+        add(9, f"Roll your {k['label']}", f"it's been in use {k['age_days']} days; a fresh one limits the damage if the old one "
+            "ever leaked", 5, k["how"])
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

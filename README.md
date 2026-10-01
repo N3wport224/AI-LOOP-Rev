@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 853 tests, ~40 s, no network
+pytest                     # 859 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 57 tasks now (Phases 20-59 added twenty-seven). An old `automonetize.toml` that pins
+The plan has 58 tasks now (Phases 20-94 added twenty-eight; most later phases extend existing tasks). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -992,6 +992,9 @@ automonetize connections                             # check every outside servi
 automonetize version                                 # which version is running
 automonetize expense add|list|delete                 # business expenses for the books
 automonetize goal [DOLLARS]                          # show or change the daily goal
+automonetize features                               # every feature: on, off, or waiting for you
+automonetize settings-log                           # what changed in the settings, and when
+automonetize export-all                              # everything as CSVs in one zip
 automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
@@ -1467,6 +1470,29 @@ payout to your bank fails or is canceled, and when money has sat in Stripe for `
 **Phase 89: goal ladder.** After 7 days in a row on goal, the to-do list suggests a goal 50% higher,
 rounded up to $5. `automonetize goal 15` sets it. It's never raised automatically.
 
+## Transparency (Phases 90-94)
+
+**Phase 90: key-age reminders** (`tools/key_age.py`).
+* The agent keeps a 12-character fingerprint of each secret (never the secret) and the date it
+  first saw it.
+* A Stripe key older than 180 days, or another key older than a year, shows up on the to-do list
+  with where to roll it.
+
+**Phase 91: settings change log** (`tools/settings_log.py`, `automonetize settings-log`). At each
+start, the settings are compared with the last ones seen and every change is recorded ("dry_run:
+true → false"). Secrets appear only as set, changed or removed.
+
+**Phase 92: Sent tab.** Every email the agent sent (or would have sent in dry run), newest first,
+with its text, in the control panel.
+
+**Phase 93: `automonetize export-all`** (`tools/export_all.py`).
+* Writes every table as a CSV plus the settings store into one zip (mode 600), for a spreadsheet
+  or an accountant.
+* Keys stay in `.env`, and the email-command code is left out.
+
+**Phase 94: `automonetize features`** (`tools/features.py`). Every major feature, grouped, and
+whether it's **on**, **off** (and which setting), or **waiting** (and for what from you).
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1854,7 +1880,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 853 tests, ~40 s, no network
+pytest     # 859 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
