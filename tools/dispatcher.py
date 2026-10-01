@@ -303,9 +303,16 @@ class Dispatcher:
             )
         where = (f"It's too big to attach, so here's your private download link ({zip_name}; it works for "
                  f"{self.config.download_link_days} days):\n{link}\n\nIt contains" if link else f"Your dataset is attached ({zip_name}):")
+        quickstart = (
+            "\n\nGetting started (2 minutes)\n---------------------------\n"
+            "- Excel: unzip, then open leads-excel.csv (accents and symbols display correctly).\n"
+            "- Google Sheets: File → Import → Upload leads.csv.\n"
+            "- Start with EXECUTIVE_TECH_RADAR.md for the overview; QUALITY.md shows coverage; FIELDS.md explains every column.\n"
+            "- Tip: sort by posted_at (newest first) or filter by stack to find the companies that matter to you."
+        )
         body = (
             f"Hi,\n\nThanks for buying {title}! {where} CSV + JSON + the executive summary."
-            f"{receipt}\n"
+            f"{quickstart}{receipt}\n"
             "If anything is missing or wrong, just reply to this email.\n\n"
             f"{self.config.sender_name or 'AutoMonetize'}"
         )

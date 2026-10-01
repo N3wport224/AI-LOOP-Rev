@@ -2,7 +2,8 @@
 
 Produces, per version:
 
-* ``assets/<niche>/v<N>/``: README guide, Executive Tech Radar, company-level ``tech_radar``
+* ``assets/<niche>/v<N>/``: README guide, QUALITY.md (coverage report), FIELDS.md (data dictionary),
+  leads-excel.csv (Excel-friendly copy), Executive Tech Radar, company-level ``tech_radar``
   CSV/JSON (when intel exists), the role directory and ``leads`` CSV/JSON, attribution note
 * ``assets/<niche>/<niche>-intel-v<N>.zip``: the downloadable bundle
 * ``assets/<niche>/v<N>/listing.json``: listing (title, summary, tiered price)
@@ -210,13 +211,20 @@ class DigitalAssetPackager(Strategy):
         for name in ("EXECUTIVE_TECH_RADAR.md", "tech_radar.json", "tech_radar.csv"):
             if intel and tools.files.exists(f"{intel_dir}/{name}"):
                 files[name] = tools.files.read_text(f"{intel_dir}/{name}")
+        from datetime import datetime
+
+        from strategies.dataset_extras import excel_csv, fields_md, quality_md
+
+        files["QUALITY.md"] = quality_md(niche, leads, intel, datetime.fromisoformat(generated))
+        files["FIELDS.md"] = fields_md(bool(intel))
         for name, content in files.items():
             tools.files.write_text(f"{base}/{name}", content)
         tools.files.write_csv(f"{base}/leads.csv", leads, EXPORT_FIELDS)
+        tools.files.write_bytes(f"{base}/leads-excel.csv", excel_csv(tools.files.read_bytes(f"{base}/leads.csv")))
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name in [*files, "leads.csv"]:
+            for name in [*files, "leads.csv", "leads-excel.csv"]:
                 zf.writestr(f"{niche}-intel/{name}", tools.files.read_bytes(f"{base}/{name}"))
         zip_rel = f"assets/{niche}/{niche}-intel-v{version}.zip"
         tools.files.write_bytes(zip_rel, buf.getvalue())

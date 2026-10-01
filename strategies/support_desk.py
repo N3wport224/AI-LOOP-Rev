@@ -122,6 +122,9 @@ class SupportDesk(Strategy):
                 resent += int(bool(result.get("sent")))
                 state.log_action(int(state.get("iteration", 0)), None, "support:resend", "ok" if result.get("sent") else "skipped",
                                  f"{m['sender']}: {result}")
+            from strategies.customer_requests import record as record_request
+
+            record_request(state, cfg, m["sender"], fresh_text(m["subject"], m["body"]))
             if money or not wants_resend:
                 first = " ".join(fresh_text("", m["body"]).split())[:300]
                 why = "asks about a refund/cancellation/charge" if money else "wrote to you"

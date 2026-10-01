@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 836 tests, ~40 s, no network
+pytest                     # 842 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -1397,6 +1397,26 @@ and how many to-do items are left. At most one every 6 hours.
   never over uncommitted edits). The agent then reloads, self-update skips that version, and you
   get an alert.
 
+## What buyers receive (Phases 75-79)
+
+Every dataset zip now also contains (`strategies/dataset_extras.py`):
+* **Phase 75, `QUALITY.md`:** an honest coverage report computed from the file itself:
+  * rows and distinct companies;
+  * share of rows with a domain, a posting link, a salary or a stack;
+  * remote share, median posting age and share posted in the last 7 days;
+  * sources, and verified careers pages.
+* **Phase 76, `FIELDS.md`:** what every column means.
+* **Phase 77, `leads-excel.csv`:** the same rows with a UTF-8 byte-order mark, so Excel shows
+  accented names correctly. `leads.csv` stays plain UTF-8.
+
+**Phase 78: quick-start in the delivery email.** How to open the files in Excel or Google Sheets,
+where to start, and a sorting tip.
+
+**Phase 79: customer requests log** (`strategies/customer_requests.py`).
+* Replies that ask for something ("could you add…", "do you have one for Rust?") are recorded with
+  the technologies they mention. They still reach you as before.
+* Monday's report shows the last 30 days' count, the most-asked topics and the latest requests.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1781,7 +1801,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 836 tests, ~40 s, no network
+pytest     # 842 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

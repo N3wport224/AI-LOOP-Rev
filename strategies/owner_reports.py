@@ -223,6 +223,11 @@ class OwnerReports(Strategy):
         if not (cfg.github_pages_repo and cfg.pages_base_url):
             lines += ["", "Tip: `automonetize connect-marketing` puts your products on a public website and turns on articles."]
         if local.weekday() == 0:
+            from strategies.customer_requests import summary as request_summary
+
+            asks = request_summary(state)
+            if asks:
+                lines += ["", asks]
             from tools.customers import describe as describe_customers
             from tools.customers import report as customer_report
 
