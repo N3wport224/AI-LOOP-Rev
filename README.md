@@ -1724,6 +1724,25 @@ The agent no longer builds one product per niche and stops: it keeps making new 
 The default caps per cycle are now 100 actions and 200 API calls, so the site can publish the new
 pages as they appear.
 
+## More product types (Phases 150-154)
+
+The factory takes these in turn with the slices, so the catalog grows in several directions:
+
+* **Phase 150, salary benchmarks** (`salary-<tech>`, $7): postings that state a salary, with the
+  median and middle half by seniority and region.
+  * Only yearly figures between 10k and 1M are used, so hourly rates don't skew the numbers.
+  * Currencies aren't converted, and the README says so.
+* **Phase 151, top companies** (`top-companies-<tech>`, $9): one row per company, ranked by open
+  roles, with titles, locations, remote share and stack.
+* **Phase 152, remote-first employers** (`remote-first-employers[-<tech>]`, $9): companies with 3+
+  open roles, 70%+ of them remote.
+* **Phase 153, starter packs** (`pack-<tech>`): 3 or 4 live products about one technology in one
+  download, at 30% off their total.
+* **Phase 154, weekly refresh:** every live factory product is rebuilt from fresh postings once a
+  week.
+  * The new version goes behind the same checkout and price, so buyers always get current data.
+  * A sale on any version keeps a product from being retired.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

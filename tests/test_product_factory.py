@@ -142,3 +142,80 @@ def test_the_supervisor_runs_a_factory_worker_for_the_real_engine(config, state,
     config.product_factory = False
     off = Supervisor(config, engine=Engine(config, state=state, toolkit=toolkit, online_check=lambda: True), webhook=False)
     assert "factory" not in [w.name for w in off.workers]
+
+
+# ------------------------------------------------------------------ Phases 150-154: product types
+def salaried(state, clock, n, stack, prefix):
+    when = (clock() - timedelta(days=2)).isoformat(timespec="seconds")
+    for i in range(n):
+        state.upsert_lead(f"{prefix}-{i}", POOL_NICHE, {
+            "company": f"{prefix.title()} {i % 30}", "title": "Senior Engineer" if i % 2 else "Engineer", "location":
+            "Remote" if i % 3 else "Berlin, Germany", "remote": bool(i % 3), "stack": stack, "seniority": "senior" if i % 2 else "mid",
+            "salary_min": 80_000 + 1000 * i, "salary_max": 100_000 + 1000 * i, "url": f"https://jobs.example/{prefix}/{i}",
+            "posted_at": when})
+
+
+def test_the_factory_rotates_through_product_types(kit, state, config, clock, transport):
+    from strategies import product_types as pt
+
+    unique_links(transport)
+    salaried(state, clock, 90, ["rust"], "r")
+    kinds = []
+    for _ in range(4):
+        made = pf.tick(kit, force=True)["made"]
+        assert made, "each type had a product to make"
+        kinds.append(json.loads(state._one("SELECT filters FROM factory_products WHERE slug = ?", (made["slug"],))["filters"])["type"])
+    assert kinds == ["slice", "salary", "top", "remote_first"]
+    by = {r["slug"]: r for r in state._all("SELECT * FROM factory_products")}
+    sal = state.get_asset(by["salary-rust"]["asset_id"])
+    zf = zipfile.ZipFile(io.BytesIO(kit.files.read_bytes(sal["path"])))
+    text = zf.read("salary-rust/SALARIES.md").decode()
+    assert "## By seniority" in text and "middle half" in text and sal["price_cents"] == pt.PRICES["salary"]
+    top = state.get_asset(by["top-companies-rust"]["asset_id"])
+    csv_text = zipfile.ZipFile(io.BytesIO(kit.files.read_bytes(top["path"]))).read("top-companies-rust/companies.csv").decode()
+    assert csv_text.splitlines()[0].startswith("company,open_roles") and top["lead_count"] == 30
+    assert "remote-first-employers" in by or "remote-first-employers-rust" in by
+    # a starter pack once three products share a technology
+    made = pf.tick(kit, force=True)["made"]
+    members = json.loads(state._one("SELECT filters FROM factory_products WHERE slug = 'pack-rust'")["filters"])["members"]
+    total = sum(state.get_asset(by[m]["asset_id"])["price_cents"] for m in members)
+    assert made["slug"] == "pack-rust" and len(members) >= 3 and made["price_cents"] == int(total * 0.7) // 100 * 100
+
+
+def test_hourly_rates_do_not_skew_salaries():
+    from strategies.product_types import salary_rows
+
+    rows = salary_rows([{"salary_min": 45, "salary_max": 60}, {"salary_min": 90_000, "salary_max": None}, {"salary_min": "n/a"}])
+    assert [r["salary_mid"] for r in rows] == [90_000]
+
+
+def test_live_products_are_refreshed_weekly_behind_the_same_checkout(kit, state, config, clock, transport):
+    from strategies.product_types import refresh_due
+
+    unique_links(transport)
+    postings(state, clock, 30, ["rust"])
+    made = pf.tick(kit, force=True)["made"]
+    before = state.get_asset(made["asset_id"])
+    clock.advance(days=8)
+    postings(state, clock, 10, ["rust"], prefix="new")
+    assert refresh_due(kit) == [made["slug"]]
+    row = state._one("SELECT * FROM factory_products WHERE slug = ?", (made["slug"],))
+    after = state.get_asset(row["asset_id"])
+    assert after["version"] == 2 and after["lead_count"] == 40 and after["checkout_url"] == before["checkout_url"]
+    assert after["product_ref"] == before["product_ref"] and state.get_asset(before["id"])["status"] == "superseded"
+    assert state.asset_for_product(before["product_ref"])["id"] == after["id"]  # new orders get the fresh version
+    assert refresh_due(kit) == []  # once a week
+
+
+def test_a_product_that_sold_before_a_refresh_is_not_retired(kit, state, config, clock, transport):
+    from strategies.product_types import refresh_due
+
+    unique_links(transport)
+    postings(state, clock, 30, ["rust"])
+    made = pf.tick(kit, force=True)["made"]
+    state.record_order("stripe", "cs_1", "a@co.example", 500, None, made["asset_id"], None, status="delivered")
+    clock.advance(days=8)
+    postings(state, clock, 5, ["rust"], prefix="more")
+    refresh_due(kit)
+    clock.advance(days=config.factory_retire_days)
+    assert pf.retire_unsold(kit) == []

@@ -66,6 +66,9 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS factory_products (
 
 def ensure(state: Any) -> None:
     state._exec(_SCHEMA)
+    cols = {r["name"] for r in state._all("PRAGMA table_info(factory_products)")}
+    if "refreshed_at" not in cols:  # Phase 154
+        state._exec("ALTER TABLE factory_products ADD COLUMN refreshed_at TEXT")
 
 
 def label(tech: str) -> str:
@@ -164,19 +167,27 @@ def overlaps(keys: set[str], made: list[dict[str, Any]]) -> str | None:
 
 
 def next_candidate(state: Any, cfg: Any) -> dict[str, Any] | None:
+    """The best new product, taking product types in turn (slices, salaries, top companies,
+    remote-first employers, starter packs) so the catalog grows in every direction."""
+    from strategies import product_types
+
     made = existing(state)
     taken = {m["slug"] for m in made}
     live = sum(1 for m in made if m["status"] in ("live", "staged"))
     if live >= int(cfg.factory_max_live):
         return None
-    for cand in candidates(state, cfg):
-        if cand["slug"] in taken:
-            continue
-        keys = {str(r.get("dedupe_key")) for r in cand["rows"]}
-        if overlaps(keys, made):
-            continue
-        cand["keys"] = keys
-        return cand
+    by_type = product_types.all_candidates(state, cfg)
+    for kind in product_types.rotation(state):
+        for cand in by_type.get(kind, []):
+            if cand["slug"] in taken:
+                continue
+            keys = cand.get("keys") or {str(r.get("dedupe_key")) for r in cand["rows"]}
+            if overlaps(set(keys), made):
+                continue
+            cand["keys"] = set(keys)
+            cand.setdefault("type", kind)
+            product_types.advance(state, kind)
+            return cand
     return None
 
 
@@ -196,14 +207,14 @@ def _csv(rows: list[dict[str, Any]], fields: list[str], bom: bool = False) -> by
     return ("﻿".encode() + data) if bom else data
 
 
-def build(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
+def slice_content(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any]:
+    """Files, summary, price and preview of a technology slice (the other product types are in
+    ``strategies/product_types.py`` and return the same shape)."""
     from strategies.dataset_extras import fields_md, jsonl, quality_md, schema_sql, top20_md
 
-    state, files, cfg = tools.state, tools.files, tools.config
-    now = state.clock()
     rows = sorted(cand["rows"], key=lambda r: str(r.get("posted_at") or ""), reverse=True)
-    fields = [f for f in EXPORT_FIELDS]
-    slug, title = cand["slug"], cand["title"]
+    fields = list(EXPORT_FIELDS)
+    title = cand["title"]
     readme = (f"# {title}\n\n{len(rows)} job postings from {cand['companies']} companies, collected from public job boards "
               f"and filtered to: {_describe(cand['filters'])}.\n\nBuilt {now:%Y-%m-%d}. Every row links to its public "
               "posting. Files: `leads.csv` (UTF-8), `leads-excel.csv` (opens in Excel), `leads.json`, `leads.jsonl`, "
@@ -215,31 +226,63 @@ def build(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
         "QUALITY.md": quality_md(title, rows, [], now).encode(), "FIELDS.md": fields_md(False).encode(),
         "TOP20.md": top20_md(title, rows, []).encode(),
     }
+    preview_fields = ["company", "title", "location", "remote", "stack"]
+    return {"files": content, "readme": readme, "rows": len(rows), "price_cents": price_for_rows(cfg, len(rows)),
+            "summary": (f"{len(rows)} current job postings from {cand['companies']} companies: {_describe(cand['filters'])}. "
+                        "CSV, Excel, JSON and SQL, delivered instantly."),
+            "preview_fields": preview_fields,
+            "preview": [{f: (r.get(f)[:4] if isinstance(r.get(f), list) else r.get(f)) for f in preview_fields} for r in rows[:5]]}
+
+
+def content_for(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any]:
+    kind = cand.get("type", "slice")
+    if kind == "slice":
+        return slice_content(cand, cfg, now)
+    from strategies import product_types
+
+    return product_types.BUILDERS[kind](cand, cfg, now)
+
+
+def _content(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
+    if cand.get("type") == "pack":
+        from strategies.product_types import build_pack
+
+        return build_pack(cand, tools.config, tools.state.clock(), tools.state, tools.files)
+    return content_for(cand, tools.config, tools.state.clock())
+
+
+def write_files(tools: Any, slug: str, version: int, made: dict[str, Any], title: str, filters: dict[str, Any]) -> str:
+    """Zip + listing + preview for one version. Returns the zip's path."""
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, body in content.items():
+        for name, body in made["files"].items():
             zf.writestr(f"{slug}/{name}", body)
-    base = f"assets/{slug}/{KIND}-v1"
-    zip_rel = f"assets/{slug}/{slug}-v1.zip"
-    files.write_bytes(zip_rel, data.getvalue())
-    price = price_for_rows(cfg, len(rows))
-    summary = (f"{len(rows)} current job postings from {cand['companies']} companies: {_describe(cand['filters'])}. "
-               "CSV, Excel, JSON and SQL, delivered instantly.")
-    preview_fields = ["company", "title", "location", "remote", "stack"]
-    sample = [{f: (r.get(f)[:4] if isinstance(r.get(f), list) else r.get(f)) for f in preview_fields} for r in rows[:5]]
-    files.write_json(f"{base}/listing.json", {"name": title, "summary": summary, "price_cents": price,
-                                              "description_markdown": readme, "filters": cand["filters"]})
-    files.write_json(f"{base}/sample.json", {"fields": preview_fields, "rows": sample})
+    base = f"assets/{slug}/{KIND}-v{version}"
+    zip_rel = f"assets/{slug}/{slug}-v{version}.zip"
+    tools.files.write_bytes(zip_rel, data.getvalue())
+    tools.files.write_json(f"{base}/listing.json", {"name": title, "summary": made["summary"], "price_cents": made["price_cents"],
+                                                    "description_markdown": made["readme"], "filters": filters})
+    tools.files.write_json(f"{base}/sample.json", {"fields": made["preview_fields"], "rows": made["preview"]})
+    return zip_rel
+
+
+def build(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
+    state = tools.state
+    slug, title = cand["slug"], cand["title"]
+    made = _content(tools, cand)
+    filters = {**cand["filters"], "type": cand.get("type", "slice")}
+    zip_rel = write_files(tools, slug, 1, made, title, filters)
     hid = _hypothesis(state, slug, title)
-    aid = state.add_asset(hid, KIND, title, zip_rel, 1, len(rows), price)
+    aid = state.add_asset(hid, KIND, title, zip_rel, 1, made["rows"], made["price_cents"])
     state.update_asset(aid, niche=slug, status="staged")
     ensure(state)
-    keys = sorted(cand.get("keys") or {str(r.get("dedupe_key")) for r in rows})
+    keys = sorted(cand.get("keys") or {str(r.get("dedupe_key")) for r in cand.get("rows", [])})
     state._exec("INSERT OR REPLACE INTO factory_products (slug, asset_id, title, filters, rows, companies, keys_sample, status, "
                 "created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (slug, aid, title, json.dumps(cand["filters"]), len(rows), cand["companies"], json.dumps(keys[:2000]),
+                (slug, aid, title, json.dumps(filters), made["rows"], cand["companies"], json.dumps(keys[:2000]),
                  "staged", state.now()))
-    return {"slug": slug, "asset_id": aid, "price_cents": price, "rows": len(rows), "summary": summary, "title": title}
+    return {"slug": slug, "asset_id": aid, "price_cents": made["price_cents"], "rows": made["rows"],
+            "summary": made["summary"], "title": title}
 
 
 def _describe(filters: dict[str, str]) -> str:
@@ -301,8 +344,8 @@ def retire_unsold(tools: Any) -> list[str]:
     cutoff = (state.clock() - timedelta(days=int(cfg.factory_retire_days))).isoformat(timespec="seconds")
     retired = []
     for row in state._all("SELECT * FROM factory_products WHERE status = 'live' AND published_at < ?", (cutoff,)):
-        sold = state._one("SELECT COUNT(*) AS n FROM orders WHERE asset_id = ? AND status NOT IN ('refunded', 'disputed')",
-                          (row["asset_id"],))["n"]
+        sold = state._one("SELECT COUNT(*) AS n FROM orders o JOIN assets a ON a.id = o.asset_id WHERE a.niche = ? "
+                          "AND o.status NOT IN ('refunded', 'disputed')", (row["slug"],))["n"]  # any version counts
         if sold:
             continue
         asset = state.get_asset(int(row["asset_id"])) or {}
@@ -333,24 +376,27 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     published = [r["slug"] for r in state._all("SELECT slug FROM factory_products WHERE status = 'staged'")
                  if publish(tools, r["slug"]) == "live"]
     retired = retire_unsold(tools)
+    from strategies.product_types import refresh_due
+
+    refreshed = refresh_due(tools)
     last = state.get(LAST)
     if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
-        return {"made": None, "why": "not due yet", "published": published, "retired": retired}
+        return {"made": None, "why": "not due yet", "published": published, "retired": retired, "refreshed": refreshed}
     from agent.disk_guard import builds_paused
 
     if builds_paused(state):
-        return {"made": None, "why": "disk almost full", "published": published, "retired": retired}
+        return {"made": None, "why": "disk almost full", "published": published, "retired": retired, "refreshed": refreshed}
     cand = next_candidate(state, cfg)
     if cand is None:
         state.set(LAST, state.now())
         return {"made": None, "why": "no new slice clears the quality floor yet (waiting for more postings)",
-                "published": published, "retired": retired}
+                "published": published, "retired": retired, "refreshed": refreshed}
     made = build(tools, cand)
     status = publish(tools, made["slug"])
     state.set(LAST, state.now())
     state.log_action(int(state.get("iteration", 0)), None, "product_factory", "ok",
                      f"new product: {made['title']} ({made['rows']} rows, ${made['price_cents'] / 100:.2f}, {status})")
-    return {"made": made, "status": status, "published": published, "retired": retired}
+    return {"made": made, "status": status, "published": published, "retired": retired, "refreshed": refreshed}
 
 
 def catalog(state: Any) -> dict[str, int]:
