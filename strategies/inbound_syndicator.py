@@ -357,6 +357,16 @@ class InboundSyndicator(Strategy):
         extra.update(blog_pages(tools.state, lambda title, body, desc, depth=1: _shell(
             title, body, tools.config.site_title, description=desc, depth=depth)))
         extra[PRODUCTS_FEED] = products_feed(tools.state, cfg, cfg.site_title)
+        from strategies import distribution
+        from tools.seo_scale import hub_path
+
+        hub_techs = [t for t in distribution.badge_techs(tools.state, cfg) if f"{hub_path(t)}index.html" in extra]
+        if hub_techs:  # badges link to hubs, so only technologies that have one
+            all_badges = distribution.badges(tools.state, cfg)
+            extra.update({distribution.badge_path(t): all_badges[distribution.badge_path(t)] for t in hub_techs})
+            extra[distribution.EMBED] = distribution.embed_page(cfg, hub_techs, shell)
+        extra[distribution.HEATMAP] = distribution.heatmap_page(tools.state, cfg, lambda title, body, desc: _shell(
+            title, body, cfg.site_title, description=desc, depth=2))
         from strategies.revenue_models import thanks_offers_html
         from strategies.upsells import best_sellers_html
 

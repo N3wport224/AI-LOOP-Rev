@@ -1567,6 +1567,7 @@ Two changes elsewhere:
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
 automonetize marketing [plan|scores|done ID|skip ID]   # drafts to post, the week's plan, what works
+automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
 automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
@@ -1871,6 +1872,25 @@ The site audit checks all of these pages, and the sitemap lists them.
 
 Draft strategies are now scored by their own plays only, even when two share a channel.
 Automatic plays whose effect can't be measured, such as the blog, are never paused for lack of sales.
+
+## Distribution (Phases 185-189)
+
+* **Phase 185, embeddable badges:** `badges/<tech>.svg` ("Rust hiring: 24 companies") is rebuilt
+  daily. The site's `embed/` page has copy-paste snippets for bloggers and communities. Every embed
+  links back with `utm_source=embed`.
+* **Phase 186, Hacker News answer drafts** (every 2 days):
+  * The agent finds recent HN stories and comments about hiring for a technology it has data on,
+    using the public Algolia API.
+  * For each, it drafts a short reply with the real numbers and one link.
+  * Nothing is posted automatically; you decide whether to post (HN dislikes promotion).
+* **Phase 187, directories:** a checklist of 12 data marketplaces, product directories and
+  awesome-lists, plus a ready-made blurb.
+  * `automonetize marketing directories` shows them; `... directories done <name>` ticks one off.
+  * Until two are done, the to-do list reminds you.
+* **Phase 188, monthly data story:** a short press-style draft with the month's numbers, to pitch
+  personally to journalists or bloggers who cover tech hiring. It's a draft only, never bulk-sent.
+* **Phase 189, hiring heatmap:** `tools/hiring-heatmap/` is a free page of open roles per technology
+  and region, updated daily, the kind of page people cite and link to.
 
 ## Safety and consistency (Phases 140-144)
 

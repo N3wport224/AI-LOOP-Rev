@@ -139,6 +139,11 @@ def test_todo_lists_only_what_is_missing(kit, state, config):
     assert todo(state, config)[0]["how"] == "automonetize go-live"
     config.dry_run, config.sender_postal_address = False, "1 Main St, Springfield, IL 62701, USA"
     config.github_pages_repo, config.pages_base_url, config.heartbeat_url = "me/me.github.io", "https://me.github.io", "https://hc-ping.com/x"
+    from strategies.distribution import mark_directory
+
+    assert todo(state, config)[0]["title"].startswith("Submit the catalog to")  # once the site is live (Phase 187)
+    mark_directory(state, "datarade")
+    mark_directory(state, "kaggle")
     assert todo(state, config) == [] and "Nothing for you to do" in as_text([])
 
 

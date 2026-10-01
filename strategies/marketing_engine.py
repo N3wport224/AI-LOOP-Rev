@@ -174,6 +174,8 @@ def register_draft(key: str, name: str, channel: str, every_days: float, module:
 register("blog_post", "Blog post on your site", "blog", 1, "strategies.content_engine", "write_post", measurable=False)
 register("weekly_roundup", "Weekly new-datasets roundup (syndicated)", "devto", 7, "strategies.content_engine", "weekly_roundup")
 register_draft("weekly_thread", "Weekly X / LinkedIn thread", "x", 7, "strategies.content_engine", "weekly_thread")
+register_draft("hn_answers", "Hacker News answer drafts", "hn", 2, "strategies.distribution", "hn_answers")
+register_draft("data_story", "Monthly data story pitch", "press", 30, "strategies.distribution", "data_story", minutes=15)
 
 
 # ------------------------------------------------------------------ Phase 172: scoring

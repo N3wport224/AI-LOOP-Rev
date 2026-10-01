@@ -97,6 +97,14 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
         add(3, "Look into refunds", f"{refunds['refunded']} of {refunds['orders']} orders in 30 days were refunded or disputed "
             f"({refunds['rate'] * 100:.0f}%); usually one dataset has a problem", 15,
             "automonetize orders list --status refunded, then read the buyers' messages")
+    if cfg.pages_base_url:
+        from strategies.distribution import directories
+
+        done = [d for d in directories(state) if d["done"]]
+        if len(done) < 2:
+            nxt = next(d for d in directories(state) if not d["done"])
+            add(8, f"Submit the catalog to {nxt['name']}", "listings in directories and data marketplaces bring steady "
+                f"visitors ({len(done)} of 2 done)", 10, f"automonetize marketing directories (then: directories done {nxt['key']})")
     from strategies.ratings import unhappy
 
     sad = unhappy(state)

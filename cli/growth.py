@@ -183,6 +183,18 @@ def marketing_main(argv: list[str]) -> int:
         say(GREEN if ok else YELLOW, f"✔ Play {argv[1]} marked {'posted' if argv[0] == 'done' else 'skipped'}" if ok
             else "No queued play with that number.")
         return 0
+    if argv[:1] == ["directories"]:
+        from strategies.distribution import directories, directory_blurb, mark_directory
+
+        if argv[1:2] == ["done"] and len(argv) > 2:
+            ok = mark_directory(state, argv[2])
+            say(GREEN if ok else RED, f"✔ {argv[2]} ticked off" if ok else f"Unknown directory {argv[2]}")
+            return 0 if ok else 2
+        config = _setup()[0]
+        print("Blurb to paste:\n" + directory_blurb(state, config) + "\n")
+        for d in directories(state):
+            print(f"  [{'x' if d['done'] else ' '}] {d['key']:<24} {d['name']}  {d['url']}")
+        return 0
     if argv[:1] == ["plan"]:
         for day, name in me.calendar(state):
             print(f"{day}  {name}")
