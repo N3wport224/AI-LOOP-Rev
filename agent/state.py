@@ -700,12 +700,13 @@ class StateStore:
             return True
 
     def leads_for_niche(self, niche: str) -> list[dict[str, Any]]:
-        rows = self._all("SELECT dedupe_key, data, first_seen FROM leads WHERE niche = ? ORDER BY id", (niche,))
+        rows = self._all("SELECT dedupe_key, data, first_seen, last_seen FROM leads WHERE niche = ? ORDER BY id", (niche,))
         out = []
         for r in rows:
             d = json.loads(r["data"])
             d["dedupe_key"] = r["dedupe_key"]
             d["first_seen"] = r["first_seen"]
+            d["last_seen"] = r["last_seen"]
             out.append(d)
         return out
 

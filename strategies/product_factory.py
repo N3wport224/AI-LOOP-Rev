@@ -102,7 +102,9 @@ def fresh_leads(state: Any, max_age_days: int) -> list[dict[str, Any]]:
         except ValueError:
             pass  # no date: keep (the board didn't say)
         out.append(lead)
-    return out
+    from strategies.posting_quality import drop_unlisted
+
+    return drop_unlisted(out)  # Phase 230: postings the boards stopped listing are left out
 
 
 def slice_spec(tech: str, region: str = "", level: str = "") -> dict[str, Any]:
@@ -129,6 +131,8 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
     tagged = [(lead, facets(lead)) for lead in leads]
     tech_counts = Counter(t for _, f in tagged for t in f["techs"])
     asked = _asked(state)
+    from strategies.posting_quality import company_key
+
     from strategies.upsells import selling_techs
 
     selling = selling_techs(state, cfg)  # Phase 162: technologies that sell get more products
@@ -140,7 +144,7 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
             for level in ("", "senior", "junior"):
                 spec = slice_spec(tech, region, level)
                 rows = [lead for lead, f in tagged if matches(f, spec["filters"])]
-                companies = {str(r.get("company") or "").strip().lower() for r in rows if r.get("company")}
+                companies = {company_key(r.get("company")) for r in rows if r.get("company")}  # Phase 231
                 if len(rows) < int(cfg.factory_min_rows) or len(companies) < int(cfg.factory_min_companies):
                     continue
                 score = (len(companies) + (50 if tech in asked else 0) + 20 * selling.get(tech, 0)
@@ -230,6 +234,11 @@ def slice_content(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, An
               f"and filtered to: {_describe(cand['filters'])}.\n\nBuilt {now:%Y-%m-%d}. Every row links to its public "
               "posting. Files: `leads.csv` (UTF-8), `leads-excel.csv` (opens in Excel), `leads.json`, `leads.jsonl`, "
               "`schema.sql` (SQLite/Postgres), `QUALITY.md`, `FIELDS.md`, `TOP20.md`.\n")
+    from strategies.posting_quality import listed_line, sources_line
+
+    extra = " ".join(x for x in (sources_line(rows), listed_line(rows, now)) if x)  # Phases 233-234
+    if extra:
+        readme += f"\n{extra}\n"
     content = {
         "README.md": readme.encode(), "leads.csv": _csv(rows, fields), "leads-excel.csv": _csv(rows, fields, bom=True),
         "leads.json": json.dumps([{f: r.get(f) for f in fields} for r in rows], indent=2, default=str).encode(),

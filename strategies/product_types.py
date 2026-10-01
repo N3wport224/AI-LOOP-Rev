@@ -144,12 +144,16 @@ def build_salary(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any
 
 # ------------------------------------------------------------------ Phase 151-152: company lists
 def companies(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per employer: name variants merged (Phase 231), staffing agencies left out (Phase 232)."""
+    from strategies.posting_quality import company_key, is_agency
+
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
-        if _company(r):
-            groups[_company(r)].append(r)
+        if _company(r) and not is_agency(_company(r)):
+            groups[company_key(_company(r))].append(r)
     out = []
-    for name, posts in groups.items():
+    for _key, posts in groups.items():
+        name = Counter(_company(p) for p in posts).most_common(1)[0][0]
         stack = Counter(t for p in posts for t in (p.get("stack") or []))
         out.append({"company": name, "open_roles": len(posts), "titles": sorted({str(p.get("title") or "") for p in posts})[:5],
                     "locations": sorted({str(p.get("location") or "") for p in posts if p.get("location")})[:5],

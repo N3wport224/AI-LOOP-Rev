@@ -2071,6 +2071,25 @@ The home page links each of these pages that exists.
   and retired, and price changes. Retired products are named, not linked, since their pages are
   gone.
 
+## Posting quality (Phases 230-234)
+
+From `strategies/posting_quality.py`:
+
+* **Phase 230, still listed:** postings the job boards stopped listing are left out of new products
+  and refreshes, since they are most likely filled.
+  * That means postings last seen 21 days before the newest one seen.
+  * The cutoff is measured from the newest posting, not today, so an agent that was off for a
+    month keeps its data.
+* **Phase 231, one company, one name:** "Acme, Inc.", "ACME Inc" and "Acme GmbH" count as one
+  company. Company lists show the most common spelling.
+* **Phase 232, employers, not agencies:** staffing and recruitment agencies are left out of the
+  company lists (top companies, remote-first employers, fastest-hiring). Their postings stay in
+  posting-level datasets, where they are real openings.
+* **Phase 233, where the rows come from:** each posting-level dataset's README names its job boards
+  and each one's share of the rows.
+* **Phase 234, how current it is:** the README also says how many postings were seen on their board
+  in the last 7 days.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
