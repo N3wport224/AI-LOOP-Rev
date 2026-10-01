@@ -135,7 +135,7 @@ def build_salary(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any
               f"Built {now:%Y-%m-%d}. `SALARIES.md` has the benchmarks; `salaries.csv` every posting behind them.\n")
     return {"files": {"README.md": readme.encode(), "SALARIES.md": salary_md(cand["title"], rows).encode(),
                       "salaries.csv": _csv(rows, fields)},
-            "readme": readme, "rows": len(rows), "price_cents": PRICES["salary"],
+            "readme": readme, "rows": len(rows), "price_cents": PRICES["salary"], "insight": _insight(rows),
             "summary": f"Salary benchmarks from {len(rows)} current {_label(cand['filters']['tech'])} postings with a stated "
                        "salary: median and range by seniority and region, plus every posting.",
             "preview_fields": ["company", "title", "seniority", "salary_min", "salary_max"],
@@ -201,6 +201,9 @@ def build_company_list(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[st
                       "companies.json": json.dumps(rows, indent=2).encode(), "companies.jsonl": jsonl(rows, COMPANY_FIELDS).encode(),
                       "schema.sql": schema_sql(rows, COMPANY_FIELDS, table="companies").encode()},
             "readme": readme, "rows": len(rows), "price_cents": PRICES[cand["type"]],
+            "insight": {"rows": len(rows), "companies": len(rows), "remote_pct": round(100 * sum(r["remote_share"] for r in rows)
+                                                                                      / len(rows)) if rows else 0,
+                        "top_companies": [(r["company"], r["open_roles"]) for r in rows[:5]], "top_locations": []},
             "summary": f"{len(rows)} {kind}: open roles, titles, locations, remote share and stack. CSV, JSON and SQL.",
             "preview_fields": ["company", "open_roles", "remote_share", "stack"],
             "preview": [{f: (r[f][:4] if isinstance(r[f], list) else r[f]) for f in ("company", "open_roles", "remote_share", "stack")}
@@ -244,6 +247,12 @@ def build_pack(cand: dict[str, Any], cfg: Any, now: datetime, state: Any = None,
     return {"files": content, "readme": readme, "rows": len(titles), "price_cents": price,
             "summary": f"{len(titles)} {_label(cand['filters']['tech'])} datasets in one download, 30% off: " + "; ".join(titles),
             "preview_fields": ["dataset"], "preview": [{"dataset": t} for t in titles]}
+
+
+def _insight(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    from tools.seo_scale import insight
+
+    return insight(rows)
 
 
 BUILDERS = {"salary": build_salary, "top": build_company_list, "remote_first": build_company_list}

@@ -1835,6 +1835,22 @@ To see your drafts, run `automonetize marketing`. Post one, then run
 `automonetize marketing done <id>`, or `skip <id>`. `automonetize marketing scores` shows what's
 working.
 
+## SEO at scale (Phases 175-179)
+
+* **Phase 175, unique content:** every factory product page states its own numbers: postings,
+  companies, the companies with the most roles, top locations and remote share. They're computed
+  when the product is built, so hundreds of pages are never thin copies of each other.
+* **Phase 176, technology hubs:** `hiring/<tech>/` lists every dataset about one technology with
+  size and price, and `hiring/` lists the technologies. The home page links to them.
+* **Phase 177, answer pages:** `answers/how-many-companies-are-hiring-<tech>-engineers/` answers that
+  question with the current numbers and date, with `FAQPage` data, linking to the hub.
+* **Phase 178, breadcrumbs:** product pages carry `BreadcrumbList` data (Home > tech hub > product)
+  and a "More <tech> datasets" link. Hubs link to the intel page for the same technology.
+* **Phase 179, Google Dataset Search:** factory product pages also carry `Dataset` markup (size,
+  format, date). That is what Google Dataset Search reads.
+
+The site audit checks all of these pages, and the sitemap lists them.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

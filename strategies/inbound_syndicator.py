@@ -153,6 +153,22 @@ def site_pages(tools) -> list[ProductPage]:
         page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
         page.refund_days = int(cfg.refund_policy_days or 0)
         page.related_html = bought_together_html(index, asset) if kind in ("dataset", "micro") else ""
+        if kind == "micro":
+            from strategies.product_factory import label as tech_label
+            from tools import seo_scale
+
+            data = listing.get("insight") or {}
+            page.insight_html = seo_scale.insight_html(page.title, data, asset["created_at"])
+            tech = index.tech_for(asset)
+            url = f"{cfg.pages_base_url.rstrip('/')}/{niche}/" if cfg.pages_base_url else ""
+            scripts = seo_scale.script(seo_scale.dataset_jsonld(page, url, cfg.site_title, data))
+            if tech:
+                page.hub_href, page.hub_label = f"../{seo_scale.hub_path(tech)}", tech_label(tech)
+                if cfg.pages_base_url:
+                    scripts += seo_scale.script(seo_scale.breadcrumbs_jsonld(cfg.pages_base_url, tech_label(tech), tech,
+                                                                             page.title, niche))
+            page.extra_jsonld = scripts
+            page.metrics = {**(page.metrics or {}), "rows": data.get("rows")}
         page.popular = kind == "dataset" and niche == popular
         if kind == "dataset":
             from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for
@@ -190,6 +206,31 @@ def site_pages(tools) -> list[ProductPage]:
             page.copy_targets = {"free_sample": "#lead", "instant_feed": facts["checkout_url"], "developer_api": facts["api_url"]}
             page.telemetry_url = f"{cfg.lead_capture_base}/t/e"
     return pages
+
+
+def seo_extra(tools: Any, pages: list[ProductPage], matrix: list[Any]) -> dict[str, str]:
+    """Phases 176-177: technology hubs and answer pages for the factory catalog."""
+    from strategies.product_factory import label
+    from strategies.upsells import Index
+    from tools import seo_scale
+    from tools.offer_pages import _shell
+
+    cfg = tools.config
+    index = Index(tools.state, cfg)
+    techs = {p.slug: index.tech.get(p.niche, "") for p in pages if p.kind == "micro"}
+    if not any(techs.values()):
+        return {}
+    labels = {t: label(t) for t in set(techs.values()) if t}
+    intel = {m.tech.lower(): m.path for m in matrix if getattr(m, "kind", "") == "hiring"}
+
+    def shell(title: str, body: str, desc: str, depth: int = 1) -> str:
+        return _shell(title, body, cfg.site_title, description=desc, depth=depth)
+
+    out = seo_scale.hub_pages(pages, techs, labels, shell, intel)
+    hubs = {t for t in labels}
+    out.update(seo_scale.answer_pages(seo_scale.tech_counts(tools.state, int(cfg.factory_max_age_days)), labels, hubs,
+                                      tools.state.clock().strftime("%B %d, %Y"), shell))
+    return out
 
 
 class InboundSyndicator(Strategy):
@@ -310,6 +351,7 @@ class InboundSyndicator(Strategy):
 
         shell = lambda title, body, desc: _shell(title, body, tools.config.site_title, description=desc)  # noqa: E731
         extra = {"more/index.html": more_page(tools.state, shell), "affiliates/index.html": affiliates_page(tools.config, shell)}
+        extra.update(seo_extra(tools, pages, matrix))
         from strategies.revenue_models import thanks_offers_html
         from strategies.upsells import best_sellers_html
 

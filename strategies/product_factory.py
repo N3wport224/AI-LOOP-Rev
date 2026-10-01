@@ -233,7 +233,10 @@ def slice_content(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, An
         "TOP20.md": top20_md(title, rows, []).encode(),
     }
     preview_fields = ["company", "title", "location", "remote", "stack"]
+    from tools.seo_scale import insight
+
     return {"files": content, "readme": readme, "rows": len(rows), "price_cents": price_for_rows(cfg, len(rows)),
+            "insight": insight(rows),
             "summary": (f"{len(rows)} current job postings from {cand['companies']} companies: {_describe(cand['filters'])}. "
                         "CSV, Excel, JSON and SQL, delivered instantly."),
             "preview_fields": preview_fields,
@@ -267,7 +270,8 @@ def write_files(tools: Any, slug: str, version: int, made: dict[str, Any], title
     zip_rel = f"assets/{slug}/{slug}-v{version}.zip"
     tools.files.write_bytes(zip_rel, data.getvalue())
     tools.files.write_json(f"{base}/listing.json", {"name": title, "summary": made["summary"], "price_cents": made["price_cents"],
-                                                    "description_markdown": made["readme"], "filters": filters})
+                                                    "description_markdown": made["readme"], "filters": filters,
+                                                    "insight": made.get("insight") or {}})
     tools.files.write_json(f"{base}/sample.json", {"fields": made["preview_fields"], "rows": made["preview"]})
     return zip_rel
 

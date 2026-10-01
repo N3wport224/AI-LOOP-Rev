@@ -93,6 +93,10 @@ class ProductPage:
     versions: list[dict[str, Any]] = field(default_factory=list)  # [{version, date, rows}] newest first (changelog page)
     refund_days: int = 0           # trust row under the buy buttons (0 = no refund mention)
     related_html: str = ""         # "Often bought together" (strategies/upsells.py)
+    insight_html: str = ""         # this product's own numbers (tools/seo_scale.py)
+    extra_jsonld: str = ""         # breadcrumbs / Dataset markup (tools/seo_scale.py)
+    hub_href: str = ""             # "More <tech> datasets" (relative)
+    hub_label: str = ""
     popular: bool = False          # "Most popular" badge on the home and pricing pages
 
     @property
@@ -332,11 +336,13 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 <script type="application/ld+json">
 {_jsonld_script(product_jsonld(page, url, brand))}
 </script>
+{page.extra_jsonld}
 <style>{CSS}</style></head><body>
 <h1>{title}</h1>
 {banner_html(page.banner)}
 {headline_html}
 <p class="lede">{html.escape(page.summary)}</p>
+{page.insight_html}
 {proof_html}
 <p><img src="radar-badge.svg" alt="{html.escape(str((page.metrics or {}).get("roles") or 0))} hiring signals tracked" height="20"></p>
 <div class="kpis">{kpi_html}</div>
@@ -350,7 +356,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {rows}
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
-<p class="muted"><a href="../">All datasets</a> · <a href="../pricing/">Pricing</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a>{' · <a href="changelog/">Version history</a>' if page.versions else ""}</p>
+<p class="muted">{f'<a href="{html.escape(page.hub_href)}">More {html.escape(page.hub_label)} datasets</a> · ' if page.hub_href else ""}<a href="../">All datasets</a> · <a href="../pricing/">Pricing</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a>{' · <a href="changelog/">Version history</a>' if page.versions else ""}</p>
 <p class="muted">{footer_links("../")}</p>
 {copy_script}
 <script>{COPY_APPLY_JS if copy_script else ""}
@@ -630,7 +636,7 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 
 
 def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "", sponsor: str = "",
-                 more: bool = False, best: str = "") -> str:
+                 more: bool = False, best: str = "", hubs: bool = False) -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
         f'{html.escape(p.summary[:160])} '
@@ -650,7 +656,7 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -760,7 +766,8 @@ class SiteBuilder:
         contact = cfg.sender_email or cfg.owner_email or ""
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title, verification_meta(cfg)
                                          + site_more.home_jsonld(self.base_url, cfg.site_title, contact), sponsor=sponsor,
-                                         more="more/index.html" in (extra or {}), best=best_sellers)
+                                         more="more/index.html" in (extra or {}), best=best_sellers,
+                                         hubs="hiring/index.html" in (extra or {}))
         out.update(extra or {})  # e.g. more/ (strategies/revenue_models.py)
         out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
             title, body, cfg.site_title, description=desc))
