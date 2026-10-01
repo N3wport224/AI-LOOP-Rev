@@ -1616,6 +1616,21 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
 * **Documentation gaps:** 36 settings had no description, and three commands were missing from
   the README.
 
+## More of the site (Phases 120-124)
+
+* **Phase 120, compare page:** `compare/` shows every dataset side by side: rows, companies, open
+  roles, last update and price.
+* **Phase 121, complete sitemap:** the sitemap now also lists the pricing, compare, version-history,
+  legal and contact pages.
+* **Phase 122, `llms.txt`:** a plain-text summary of what's sold, with prices and links, for AI
+  assistants.
+* **Phase 123, home page structured data:** the home page carries `Organization` and `WebSite`
+  data for search engines.
+* **Phase 124, `security.txt`:** `/.well-known/security.txt` (RFC 9116) gives a contact for
+  security reports and expires after a year; every build refreshes it.
+  * It's only built when a contact address is set.
+  * A `.nojekyll` file makes GitHub Pages serve it.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to

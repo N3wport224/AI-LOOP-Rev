@@ -645,7 +645,7 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> · <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -655,10 +655,12 @@ def matrix_url(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path}" if base_url else path
 
 
-def render_sitemap(pages: list[ProductPage], base_url: str, matrix: list[MatrixPage] | None = None) -> str:
+def render_sitemap(pages: list[ProductPage], base_url: str, matrix: list[MatrixPage] | None = None,
+                   extra: list[str] | None = None) -> str:
     ns = "http://www.sitemaps.org/schemas/sitemap/0.9"
     urlset = ET.Element("urlset", xmlns=ns)
     entries = [(page_url(base_url, ""), None)] + [(page_url(base_url, p.slug), p.updated_at) for p in pages]
+    entries += [(matrix_url(base_url, path), None) for path in extra or []]
     if matrix:
         entries.append((matrix_url(base_url, f"{MATRIX_DIR}/"), max(m.updated_at for m in matrix)))
         entries += [(matrix_url(base_url, m.path), m.updated_at) for m in matrix]
@@ -747,7 +749,18 @@ class SiteBuilder:
         from tools.offer_pages import _shell
         from tools.site_extras import legal_pages, not_found_page, verification_meta
 
-        out["index.html"] = render_index(pages, self.base_url, cfg.site_title, verification_meta(cfg))
+        from tools import site_more
+
+        contact = cfg.sender_email or cfg.owner_email or ""
+        out["index.html"] = render_index(pages, self.base_url, cfg.site_title, verification_meta(cfg)
+                                         + site_more.home_jsonld(self.base_url, cfg.site_title, contact))
+        out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
+            title, body, cfg.site_title, description=desc))
+        out[site_more.LLMS] = site_more.llms_txt(pages, self.base_url, cfg.site_title)
+        security = site_more.security_txt(contact, self.base_url, now)
+        if security:
+            out[site_more.SECURITY] = security
+        out[".nojekyll"] = ""  # GitHub Pages: serve the files as they are (Jekyll would hide .well-known/)
         for rel, page_html in legal_pages(cfg, lambda title, body, desc: _shell(
                 title, body, cfg.site_title, description=desc, depth=rel_depth(title))).items():
             out[rel] = page_html
@@ -771,7 +784,7 @@ class SiteBuilder:
         out[f"{MATRIX_DIR}/index.html"] = render_matrix_index(matrix, self.base_url, cfg.site_title)
         if indexnow_key:
             out[f"{indexnow_key}.txt"] = indexnow_key
-        out["sitemap.xml"] = render_sitemap(pages, self.base_url, matrix)
+        out["sitemap.xml"] = render_sitemap(pages, self.base_url, matrix, site_more.sitemap_extra(out))
         out["robots.txt"] = "User-agent: *\nAllow: /\n" + (f"Sitemap: {self.base_url}/sitemap.xml\n" if self.base_url else "")
         out[FEED_PATH] = render_rss(feed_items, self.base_url, cfg.site_title, now)
         for rel, content in out.items():

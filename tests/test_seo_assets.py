@@ -94,7 +94,8 @@ def test_sitemap_robots_and_binary_assets_published_to_docs(config, toolkit, tra
     assert out["robots.txt"] == "User-agent: *\nAllow: /\nSitemap: https://me.github.io/site/sitemap.xml\n"
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [e.text for e in ET.fromstring(out["sitemap.xml"]).findall("s:url/s:loc", ns)]
-    assert locs == ["https://me.github.io/site/", "https://me.github.io/site/python-remote/"]
+    assert locs[:2] == ["https://me.github.io/site/", "https://me.github.io/site/python-remote/"]
+    assert "https://me.github.io/site/pricing/" in locs and len(locs) == len(set(locs))
     b.publish(out)
     puts = {c["url"].split("/contents/")[1]: json.loads(c["body"]) for c in transport.calls_to("https://api.github.com/repos/me/site/contents/", "PUT")}
     assert {"docs/robots.txt", "docs/sitemap.xml", "docs/python-remote/og.png", "docs/python-remote/radar-badge.svg"} <= set(puts)
