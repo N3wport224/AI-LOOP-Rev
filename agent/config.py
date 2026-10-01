@@ -162,6 +162,8 @@ class Config:
     factory_retire_days: int = 60            # a product with no sale after this long is retired
     factory_prices: list[int] = field(default_factory=lambda: [500, 900, 1400])  # cents: <60 rows, <200, larger
     # More ways to get paid (strategies/revenue_models.py)
+    affiliate_rate: float = 0.30             # affiliates earn this share of the sales they bring
+    github_samples_repo: str = ""            # owner/repo for free 10-row teasers linking to the products
     related_offers: bool = True              # one "more on the same topic" email 5-12 days after an order
     offer_custom_request: bool = True        # $29 custom dataset built to order
     offer_pay_what_you_want: bool = True     # name-your-price supporter product (from $3)

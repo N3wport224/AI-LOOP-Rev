@@ -173,6 +173,59 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def marketplace_main(argv: list[str]) -> int:
+    """`automonetize marketplace-export` (Phase 165)."""
+    from strategies.sales_channels import marketplace_export
+
+    config, state, files = _setup()
+    path, n = marketplace_export(state, config, files)
+    say(GREEN, f"✔ {n} listing kit(s) in {path} (upload them under your own Gumroad / Lemon Squeezy / marketplace account)")
+    return 0
+
+
+def affiliate_main(argv: list[str]) -> int:
+    """`automonetize affiliate [add EMAIL | paid CODE]` (Phase 166)."""
+    from strategies import sales_channels as sc
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    config, state, _ = _setup()
+    try:
+        if argv[:1] == ["add"] and len(argv) > 1:
+            aff = sc.add_affiliate(state, argv[1])
+            tools = build_toolkit(config, state, CircuitBreaker(1000, 1000, 1000))
+            tools.dispatcher.send_transactional(sc.welcome_email(state, config, aff), audit_key=f"affiliate:{aff['code']}")
+            say(GREEN, f"✔ {aff['email']} is affiliate {aff['code']}; their links are on the way")
+            return 0
+        if argv[:1] == ["paid"] and len(argv) > 1:
+            say(GREEN, f"✔ Recorded a ${sc.mark_paid(state, config, argv[1]) / 100:.2f} payout to {argv[1]}")
+            return 0
+    except ValueError as exc:
+        say(RED, str(exc))
+        return 2
+    rows = sc.commissions(state, config)
+    if not rows:
+        print("No affiliates yet. Approve one with: automonetize affiliate add their@email")
+    for r in rows:
+        print(f"{r['code']}  {r['email']:<32} {r['orders']:>3} order(s)  earned ${r['earned_cents'] / 100:,.2f}  "
+              f"owed ${r['owed_cents'] / 100:,.2f}")
+    return 0
+
+
+def products_main(argv: list[str]) -> int:
+    """`automonetize products` (Phase 169)."""
+    from strategies.sales_channels import leaderboard
+
+    _, state, _ = _setup()
+    rows = leaderboard(state)
+    if not rows:
+        print("No products on sale yet.")
+    for r in rows:
+        flag = "  (never sold)" if r["never_sold"] else f"  last sale {r['last_sale']}"
+        print(f"${r['revenue_cents'] / 100:>9,.2f} {r['orders']:>4} order(s)  {r['title']}{flag}")
+    return 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

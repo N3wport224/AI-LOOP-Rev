@@ -485,6 +485,16 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
 
     app.router.add_route("GET", "/r/{token}/{score}", rating)
     app.router.add_route("POST", "/r/{token}/{score}", rating)
+    async def catalog(request: web.Request) -> web.Response:
+        from strategies.sales_channels import catalog_json
+
+        if not link_limiter.allow(client_ip(request)):
+            return web.json_response({"error": "too many requests"}, status=429)
+        items = await run_in_pool(catalog_json, processor.tools.state, processor.tools.config)
+        return web.json_response({"products": items}, headers={"Cache-Control": "public, max-age=300",
+                                                               "Access-Control-Allow-Origin": "*"})
+
+    app.router.add_get("/v1/catalog", catalog)  # Phase 167 (before the API's /v1 catch-all)
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

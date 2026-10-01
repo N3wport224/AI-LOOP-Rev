@@ -29,7 +29,7 @@ EMAILS = ("sender_email", "owner_email", "unsubscribe_email")
 URLS = ("pages_base_url", "public_webhook_url", "heartbeat_url")
 HOURS = ("subscription_delivery_hour", "lead_nurture_hour", "owner_digest_hour")
 WEEKDAYS = ("subscription_delivery_weekday", "lead_nurture_weekday")
-FRACTIONS = ("refund_alert_rate", "source_max_error_rate")
+FRACTIONS = ("refund_alert_rate", "source_max_error_rate", "affiliate_rate")
 
 
 def toml_keys(path: Path) -> set[str]:

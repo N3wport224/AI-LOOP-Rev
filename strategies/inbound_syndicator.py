@@ -306,8 +306,10 @@ class InboundSyndicator(Strategy):
         from strategies.revenue_models import more_page, sponsor_html
         from tools.offer_pages import _shell
 
-        extra = {"more/index.html": more_page(tools.state, lambda title, body, desc: _shell(
-            title, body, tools.config.site_title, description=desc))}
+        from strategies.sales_channels import affiliates_page
+
+        shell = lambda title, body, desc: _shell(title, body, tools.config.site_title, description=desc)  # noqa: E731
+        extra = {"more/index.html": more_page(tools.state, shell), "affiliates/index.html": affiliates_page(tools.config, shell)}
         from strategies.revenue_models import thanks_offers_html
         from strategies.upsells import best_sellers_html
 

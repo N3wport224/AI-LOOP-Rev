@@ -1563,7 +1563,10 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
+* **Phase 113, task timings:** `automonetize marketplace-export          # listing kits to upload to Gumroad / Lemon Squeezy / data marketplaces
+automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
+automonetize products                     # every product ranked by revenue
+automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
 automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
@@ -1783,6 +1786,28 @@ use up the API budget.
 * **Phase 164, best sellers:** the home page lists the products with the most kept orders this
   month.
 
+## More places to sell (Phases 165-169)
+
+* **Phase 165:** `automonetize marketplace-export` writes a ready-to-upload kit for every live
+  product into `data/exports/marketplace/`, plus an index:
+  * the zip;
+  * a listing text with title, description, price and tags.
+
+  Upload the kits under your own Gumroad, Lemon Squeezy or data-marketplace account: the agent never
+  signs up anywhere in your name.
+* **Phase 166, affiliates:**
+  * People apply from the site's `affiliates/` page.
+  * You approve them with `automonetize affiliate add <email>`, which emails them their links.
+  * The links carry `utm_source=aff`, and the product pages pass that into checkout.
+  * They earn `affiliate_rate` (30%) of kept sales. `automonetize affiliate` shows what you owe;
+    `affiliate paid <code>` records a payout you made yourself.
+* **Phase 167, public catalog:** `GET /v1/catalog` (through the tunnel, rate-limited) returns every
+  product as JSON for tools, aggregators and AI assistants.
+* **Phase 168, free teasers on GitHub:** with `github_samples_repo` set, each product gets a 10-row
+  teaser CSV (no contact details) in that public repo. The repo's README links to the full products.
+* **Phase 169, product leaderboard:** `automonetize products` ranks every product by revenue and
+  flags the ones that never sold.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -1848,6 +1873,7 @@ and shows its last runs.
 | 32 | `build_site` | Build and publish the website: product, intel, pricing, compare and legal pages. |
 | 33 | `track_hn` | Publish a free monthly stack summary of HN's "Who is hiring?" thread as a Gist. |
 | 34 | `publish_subscription` | Offer weekly updates as a subscription. |
+| 34 | `publish_teasers` | Publish free 10-row teaser CSVs to your GitHub samples repo, linking to the products. |
 | 35 | `stage_outreach` | Draft outreach emails for your review (never sent without your OK). |
 | 36 | `publish_api_tier` | Offer the developer API as a subscription. |
 | 37 | `publish_dossier_tier` | Offer per-company dossiers. |

@@ -383,6 +383,7 @@ def more_page(state: Any, shell: Any) -> str:
         cta = "Name your price" if kind == "pay_what_you_want" else f"${price / 100:.0f}"
         rows.append(f"<h2>{html.escape(title)}</h2><p>{html.escape(summary)}</p>"
                     f'<p><a class="cta" href="{html.escape(a["checkout_url"])}" rel="noopener">{html.escape(cta)}</a></p>')
-    body = "<h1>More ways to buy</h1>" + ("".join(rows) or "<p>Coming soon.</p>")
+    body = ("<h1>More ways to buy</h1>" + ("".join(rows) or "<p>Coming soon.</p>")
+            + '<p class="muted">Recommend us and earn a commission: <a href="../affiliates/">affiliate program</a>.</p>')
     return shell("More ways to buy", body, "Custom datasets built to order, a lifetime pass to every dataset, gift cards, "
                                            "sponsorships and a name-your-price option.")

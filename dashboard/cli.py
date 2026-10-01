@@ -835,6 +835,24 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_marketplace(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import marketplace_main
+
+    return marketplace_main([])
+
+
+def cmd_affiliate(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import affiliate_main
+
+    return affiliate_main(args.rest)
+
+
+def cmd_products(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import products_main
+
+    return products_main([])
+
+
 def cmd_sponsor(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import sponsor_main
 
@@ -1186,6 +1204,13 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    me = sub.add_parser("marketplace-export", help="ready-to-upload listing kits for Gumroad, Lemon Squeezy and data marketplaces")
+    me.set_defaults(func=cmd_marketplace)
+    af = sub.add_parser("affiliate", help="affiliates: what you owe; add EMAIL approves one; paid CODE records a payout")
+    af.add_argument("rest", nargs="*")
+    af.set_defaults(func=cmd_affiliate)
+    pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
+    pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")
     sp.add_argument("rest", nargs="*")
     sp.set_defaults(func=cmd_sponsor)

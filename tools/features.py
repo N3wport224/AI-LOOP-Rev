@@ -90,6 +90,8 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Products", "Sponsorships (you approve each)", "offer_sponsorship", _live),
     ("Products", "Lifetime pass", "offer_lifetime", _all(_live, _tunnel)),
     ("Products", "Gift cards", "offer_gift", _live),
+    ("Products", "Related-datasets email", "related_offers", _all(_live, _postal)),
+    ("Products", "Free teasers on GitHub", None, lambda c, s: None if c.github_samples_repo else "github_samples_repo"),
     ("Money", "Offer tuning", "offer_tuning", None),
 ]
 
