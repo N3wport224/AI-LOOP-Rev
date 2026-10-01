@@ -42,13 +42,13 @@ DAYS = 30
 
 
 def _recent(state: Any) -> list[tuple[dict[str, Any], set[str]]]:
-    from strategies.b2b_lead_aggregator import POOL_NICHE
     from strategies.market_trends import _when
+    from strategies.pool_cache import pool
     from strategies.product_factory import facets
 
     since = state.clock() - timedelta(days=DAYS)
     out = []
-    for lead in state.leads_for_niche(POOL_NICHE):
+    for lead in pool(state):
         when = _when(lead)
         if when is not None and when >= since:
             out.append((lead, facets(lead)["techs"]))

@@ -61,9 +61,9 @@ def new_employers(leads: list[dict[str, Any]], now: datetime, days: int = NEW_DA
 def candidates(tagged: list[tuple[dict[str, Any], dict[str, Any]]], cfg: Any, state: Any) -> list[dict[str, Any]]:
     from strategies.product_factory import _slug, label
 
-    from strategies.b2b_lead_aggregator import POOL_NICHE
+    from strategies.pool_cache import pool
 
-    fresh = new_employers(state.leads_for_niche(POOL_NICHE), state.clock())  # the whole history, not just recent postings
+    fresh = new_employers(pool(state), state.clock())  # the whole history, not just recent postings
     if not fresh:
         return []
     current = {str(lead.get("dedupe_key")) for lead, _ in tagged}
@@ -93,10 +93,10 @@ def candidates(tagged: list[tuple[dict[str, Any], dict[str, Any]]], cfg: Any, st
 
 # ------------------------------------------------------------------ Phases 267-268
 def _rows(state: Any) -> list[dict[str, Any]]:
-    from strategies.b2b_lead_aggregator import POOL_NICHE
+    from strategies.pool_cache import pool
     from strategies.product_factory import facets, label
 
-    fresh = new_employers(state.leads_for_niche(POOL_NICHE), state.clock())
+    fresh = new_employers(pool(state), state.clock())
     out = []
     for e in fresh.values():
         techs = sorted({t for p in e["postings"] for t in facets(p)["techs"]})

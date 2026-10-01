@@ -895,6 +895,12 @@ def cmd_catalog_import(args: argparse.Namespace, console: Console) -> int:
     return catalog_import_main([args.file] + (["--check"] if args.check else []))
 
 
+def cmd_bench(args: argparse.Namespace, console: Console) -> int:
+    from cli.bench import main as bench
+
+    return bench(["--products", str(args.products), "--postings", str(args.postings)])
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1284,6 +1290,10 @@ def build_parser() -> argparse.ArgumentParser:
     ci.add_argument("file")
     ci.add_argument("--check", action="store_true")
     ci.set_defaults(func=cmd_catalog_import)
+    be = sub.add_parser("bench", help="how fast the factory is on this Mac (a throwaway sandbox, nothing sent)")
+    be.add_argument("--products", type=int, default=50)
+    be.add_argument("--postings", type=int, default=2000)
+    be.set_defaults(func=cmd_bench)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")

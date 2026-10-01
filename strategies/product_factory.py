@@ -32,12 +32,13 @@ import csv
 import io
 import json
 import re
+import time
 import zipfile
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from strategies.b2b_lead_aggregator import EXPORT_FIELDS, POOL_NICHE, TECH_KEYWORDS
+from strategies.b2b_lead_aggregator import EXPORT_FIELDS
 from strategies.base import Strategy, TaskContext, TaskResult
 
 KIND = "micro"
@@ -83,16 +84,17 @@ def _slug(text: str) -> str:
 
 # ------------------------------------------------------------------ Phase 145: candidates
 def facets(lead: dict[str, Any]) -> dict[str, Any]:
-    from strategies.dataset_extras import region_of
+    from strategies.pool_cache import facets as cached
 
-    return {"techs": {str(t).lower() for t in (lead.get("stack") or []) if str(t).lower() in TECH_KEYWORDS},
-            "regions": region_of(lead), "level": str(lead.get("seniority") or "")}
+    return cached(lead)  # Phase 366: worked out once per distinct stack, location, remote and level
 
 
 def fresh_leads(state: Any, max_age_days: int) -> list[dict[str, Any]]:
     cutoff = state.clock() - timedelta(days=max_age_days)
     out = []
-    for lead in state.leads_for_niche(POOL_NICHE):
+    from strategies.pool_cache import pool
+
+    for lead in pool(state):  # Phase 365: decoded once, reused until the pool changes
         try:
             posted = datetime.fromisoformat(str(lead.get("posted_at") or "").replace("Z", "+00:00"))
             if posted.tzinfo is None:
@@ -493,8 +495,10 @@ def run_worker(tools: Any, stop: Any, is_stopped: Any = None) -> None:
         try:
             if not (is_stopped and is_stopped()[0]):
                 tools.breaker.begin_cycle()
+                started = time.monotonic()
                 out = tick(tools)
-                record_factory_tick(tools.state, True, "made one" if out.get("made") else str(out.get("why") or ""))
+                record_factory_tick(tools.state, True, "made one" if out.get("made") else str(out.get("why") or ""),
+                                    time.monotonic() - started)
         except Exception as exc:  # noqa: BLE001 - the factory must never take the agent down
             tools.state.log_error("product_factory", f"factory tick failed: {exc!r}")
             record_factory_tick(tools.state, False, repr(exc)[:200])

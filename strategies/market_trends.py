@@ -88,9 +88,9 @@ def trends(state: Any, force: bool = False) -> dict[str, Any]:
     now = state.clock()
     if not force and cached.get("counts") and now - datetime.fromisoformat(cached["at"]) < timedelta(hours=CACHE_HOURS):
         return cached
-    from strategies.b2b_lead_aggregator import POOL_NICHE
+    from strategies.pool_cache import pool
 
-    leads = state.leads_for_niche(POOL_NICHE)
+    leads = pool(state)
     counts = weekly_counts(leads, now)
     from strategies.kinds_roles import family_counts
 

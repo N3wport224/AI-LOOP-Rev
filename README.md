@@ -1573,6 +1573,7 @@ automonetize chat WEBHOOK-URL|test         # sales and alerts in Slack or Discor
 automonetize qa                           # quality checks: downloads, rows, pages, structured data, parsers
 automonetize catalog-export [file]         # the catalog in one zip (no customer data)
 automonetize catalog-import FILE [--check]  # restore it on another installation
+automonetize bench [--products N]          # how fast the factory is on this Mac (sandbox)
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2556,6 +2557,19 @@ there's something worth making. With `factory_adaptive` on, the factory may go f
   (with a confirmation).
 * **Phase 364, plan and insights:** the Products tab shows the catalog plan, what the catalog teaches
   and the factory's current pace.
+
+## Built for a big catalog (Phases 365-369)
+
+* **Phase 365, one read of the posting pool:** the decoded pool is kept in memory and reused until it
+  changes (`strategies/pool_cache.py`). A cheap signature notices new rows, new sightings and edits.
+* **Phase 366, facets remembered:** a posting's technologies, regions and level are worked out once
+  per distinct stack, location and level.
+* **Phase 367, 5,000 products:** a test fills the catalog with 5,000 products and 500 orders. Every
+  catalog view (by type, search, insights, plan) stays fast: 0.4 seconds together here.
+* **Phase 368, timed runs:** each factory run is timed, and doctor warns when runs take over a
+  minute.
+* **Phase 369, `automonetize bench`:** makes products from synthetic postings in a throwaway sandbox
+  and prints the timings. Nothing is sent.
 
 ## Safety and consistency (Phases 140-144)
 

@@ -33,8 +33,14 @@ SLOW_RUNS = 3
 
 
 # ------------------------------------------------------------------ Phase 215
-def record_factory_tick(state: Any, ok: bool, why: str) -> None:
-    state.set(FACTORY_KEY, {"at": state.now(), "ok": ok, "why": why})
+SLOW_TICK_SECONDS = 60
+
+
+def record_factory_tick(state: Any, ok: bool, why: str, took: float | None = None) -> None:
+    """Phase 368: each run is timed; the slowest of the last few is kept."""
+    prev = state.get(FACTORY_KEY) or {}
+    took_list = (list(prev.get("took") or []) + ([round(took, 2)] if took is not None else []))[-10:]
+    state.set(FACTORY_KEY, {"at": state.now(), "ok": ok, "why": why, "took": took_list})
 
 
 def factory_health(state: Any, cfg: Any) -> dict[str, Any] | None:
@@ -49,6 +55,10 @@ def factory_health(state: Any, cfg: Any) -> dict[str, Any] | None:
     if tick and now - datetime.fromisoformat(tick["at"]) > stall:
         return {"ok": False, "detail": f"the factory hasn't run since {tick['at'][:16]}",
                 "fix": "restart the agent (automonetize stop, then am); see the Logs tab for product_factory errors"}
+    slow = max(tick.get("took") or [0]) if tick else 0
+    if slow > SLOW_TICK_SECONDS:  # Phase 368
+        return {"ok": False, "detail": f"factory runs are slow (up to {slow:.0f}s each)",
+                "fix": "automonetize bench shows where the time goes; a very large posting pool or catalog is the usual cause"}
     if tick and not tick.get("ok"):
         return {"ok": False, "detail": f"last factory run failed: {tick.get('why', '')}"[:200],
                 "fix": "see the Logs tab; it retries every interval"}
