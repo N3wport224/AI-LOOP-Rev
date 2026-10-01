@@ -29,7 +29,7 @@ PER_PAGE = 200
 CHANGE_WEEKS = 8
 INDEX_LINKS = (("search/index.html", "search/", "Search"), ("catalog/index.html", "catalog/", "All products"),
                ("trends/index.html", "trends/", "Hiring trends"), ("changes/index.html", "changes/", "What's new"),
-               ("status/index.html", "status/", "Status"))
+               ("status/index.html", "status/", "Status"), ("new-employers/index.html", "new-employers/", "Just started hiring"))
 
 
 def _money(cents: int) -> str:

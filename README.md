@@ -2223,6 +2223,21 @@ From `strategies/kinds_stacks.py`:
 * **Phase 264, "often used with":** a technology dataset's README lists what else its postings
   mention most.
 
+## New employers (Phases 265-269)
+
+A company's first posting in the agent's data marks when it started hiring
+(`strategies/kinds_new_employers.py`). Nothing is called new until the postings cover 60 days.
+
+* **Phase 265, who's new:** companies whose first posting is within the last 30 days, with their
+  roles and technologies. Staffing agencies are left out.
+* **Phase 266, new-employer lists** (`new-employers[-<tech>]`, $9): one row per new company, e.g.
+  "Companies That Just Started Hiring Rust Engineers". Needs 8 companies.
+* **Phase 267, on the site:** `new-employers/` lists the companies that started hiring in the last
+  30 days, with company names and counts from public postings.
+* **Phase 268, a feed:** `feeds/new-employers.xml`, one item per new company.
+* **Phase 269, in Monday's report:** how many companies started hiring in the past week, with a few
+  names.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

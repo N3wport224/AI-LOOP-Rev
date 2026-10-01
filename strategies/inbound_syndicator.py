@@ -368,6 +368,9 @@ class InboundSyndicator(Strategy):
 
         if trends_page(tools.state, shell):  # Phase 222
             extra["trends/index.html"] = trends_page(tools.state, shell)
+        from strategies.kinds_new_employers import site_files as new_employer_files
+
+        extra.update(new_employer_files(tools.state, cfg, shell))  # Phases 267-268
         from strategies.site_discovery import site_files
 
         extra.update(site_files(pages, tools.state, cfg, lambda title, body, desc, depth: _shell(  # Phases 225-229

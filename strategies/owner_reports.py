@@ -316,6 +316,11 @@ class OwnerReports(Strategy):
             catalog_week = weekly_line(state)  # Phase 238
             if catalog_week:
                 lines += ["", catalog_week]
+            from strategies.kinds_new_employers import weekly_line as new_employers_line
+
+            newcomers = new_employers_line(state)  # Phase 269
+            if newcomers:
+                lines += ["", newcomers]
             from strategies.money_insight import abandoned, describe_abandoned, describe_trends, niche_trends
 
             week = (state.get(CALENDAR) or {}).get("items") or []
