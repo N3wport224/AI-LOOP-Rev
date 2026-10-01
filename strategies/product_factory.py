@@ -291,9 +291,12 @@ def _content(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
 
 def write_files(tools: Any, slug: str, version: int, made: dict[str, Any], title: str, filters: dict[str, Any]) -> str:
     """Zip + listing + preview for one version. Returns the zip's path."""
+    from strategies.download_extras import enrich
+
+    files = enrich(made, tools.config, title, slug, version, str(filters.get("type") or "slice"), tools.state.clock())  # 270-274
     data = io.BytesIO()
     with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, body in made["files"].items():
+        for name, body in files.items():
             zf.writestr(f"{slug}/{name}", body)
     base = f"assets/{slug}/{KIND}-v{version}"
     zip_rel = f"assets/{slug}/{slug}-v{version}.zip"

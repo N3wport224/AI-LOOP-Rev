@@ -2238,6 +2238,24 @@ A company's first posting in the agent's data marks when it started hiring
 * **Phase 269, in Monday's report:** how many companies started hiring in the past week, with a few
   names.
 
+## Richer downloads (Phases 270-274)
+
+Every factory download gets these files, at creation and at each weekly refresh
+(`strategies/download_extras.py`). Starter packs keep their member folders and get only the
+checksums.
+
+* **Phase 270, a ready database:** `data.sqlite` is the main CSV as a typed SQLite table, for any SQL
+  tool, DB Browser for SQLite or Datasette.
+* **Phase 271, a JSON Schema:** `schema.json` describes every column of the main CSV: its type and
+  whether it is ever empty.
+* **Phase 272, the licence in the box:** `LICENSE.txt` sets the terms:
+  * use the data inside your organisation;
+  * don't resell or republish the raw rows;
+  * credit the job board when quoting a posting.
+* **Phase 273, how to cite it:** `CITATION.cff`.
+* **Phase 274, checksums:** `SHA256SUMS` lists every file's SHA-256. The hourly integrity check also
+  verifies a random 20 downloads each hour, so a damaged file is rebuilt like a missing one.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

@@ -83,6 +83,21 @@ def too_many_waiting(state: Any) -> int:
 
 
 # ------------------------------------------------------------------ Phase 243
+def _verified(tools: Any, state: Any, path: str) -> bool:
+    """Phase 274: checksums, for up to VERIFY_PER_HOUR downloads per check (the counter resets each hour)."""
+    from strategies.download_extras import VERIFY_PER_HOUR, verify_zip
+
+    done = int(state.get(_VERIFIED_KEY) or 0)
+    if done >= VERIFY_PER_HOUR:
+        return True
+    state.set(_VERIFIED_KEY, done + 1)
+    return verify_zip(tools.files.read_bytes(path))
+
+
+_VERIFIED_KEY = "factory_verified_this_hour"
+
+
+
 def check_integrity(tools: Any) -> list[str]:
     """Live products whose download is missing; each is queued for a rebuild. At most hourly."""
     state = tools.state
@@ -90,10 +105,11 @@ def check_integrity(tools: Any) -> list[str]:
     if last and state.clock() - datetime.fromisoformat(last) < timedelta(hours=1):
         return []
     state.set(INTEGRITY_KEY, state.now())
+    state.set(_VERIFIED_KEY, 0)
     missing = []
     for r in state._all("SELECT f.slug AS slug, a.path AS path FROM factory_products f JOIN assets a ON a.id = f.asset_id "
-                        "WHERE f.status = 'live'"):
-        if not r["path"] or not tools.files.exists(r["path"]):
+                        "WHERE f.status = 'live' ORDER BY RANDOM()"):  # a different sample of checksums each hour
+        if not r["path"] or not tools.files.exists(r["path"]) or not _verified(tools, state, r["path"]):
             missing.append(r["slug"])
             state._exec("UPDATE factory_products SET refreshed_at = '1970-01-01T00:00:00+00:00' WHERE slug = ?", (r["slug"],))
     flagged = set(state.get(MISSING_KEY) or [])
@@ -104,6 +120,6 @@ def check_integrity(tools: Any) -> list[str]:
         from agent.ops_checks import _daily
 
         if _daily(state, "factory_integrity"):
-            state.log_error("product_factory", f"{len(missing)} product(s) on sale had no download file (e.g. {missing[0]}); "
+            state.log_error("product_factory", f"{len(missing)} product(s) on sale had a missing or damaged download (e.g. {missing[0]}); "
                                                "they're being rebuilt now.", kind="alert")
     return missing

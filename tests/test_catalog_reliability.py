@@ -76,7 +76,7 @@ def test_a_missing_download_is_rebuilt(kit, state, config, clock, transport):
     assert made["slug"] in out["refreshed"]
     current = state.get_asset(state._one("SELECT asset_id FROM factory_products WHERE slug = ?", (made["slug"],))["asset_id"])
     assert kit.files.exists(current["path"]) and current["checkout_url"] == asset["checkout_url"]
-    assert any("had no download file" in a for a in alerts(state))
+    assert any("had a missing or damaged download" in a for a in alerts(state))
     assert cr.check_integrity(kit) == []  # hourly
 
 
