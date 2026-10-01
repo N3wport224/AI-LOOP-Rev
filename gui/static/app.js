@@ -58,6 +58,7 @@
     $$(".tab").forEach((s) => { s.hidden = s.id !== "tab-" + name; });
     if (name === "settings" && !settingsLoaded) loadSettings();
     if (name === "logs") refreshLogs();
+    if (name === "outreach") loadOutreach();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -141,6 +142,38 @@
       : "Cooldown: none";
     const findings = ((ev.diagnosis || {}).findings || []);
     $("#evo-findings").replaceChildren(...findings.map((f) => el("li", { text: `${f.severity} · ${f.kind}: ${f.summary}` })));
+  }
+
+  // ------------------------------------------------------------------ outreach review
+  async function loadOutreach() {
+    let d;
+    try { d = await api("/api/outreach"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const pending = (d.counts || {}).pending_review || 0;
+    $("#outreach-count").textContent = pending ? `(${pending})` : "";
+    const warn = $("#outreach-warning");
+    const problems = d.send_problems || [];
+    warn.hidden = !problems.length && !d.dry_run;
+    warn.textContent = problems.length ? "Approved emails can't be sent yet: " + problems.join("; ")
+      : (d.dry_run ? "Dry run is on: approved emails are logged, not sent." : "");
+    const list = $("#outreach-list");
+    if (!d.drafts.length) { list.replaceChildren(el("p", { class: "muted", text: "No drafts waiting. The agent writes new ones as it finds companies." })); return; }
+    list.replaceChildren(...d.drafts.map((r) => el("div", { class: "card draft" },
+      el("label", {}, el("input", { type: "checkbox", class: "outreach-pick", value: String(r.id) }),
+        " ", el("b", { text: r.subject }), el("span", { class: "muted", text: `  →  ${r.recipient} · score ${(r.score || 0).toFixed(2)}` })),
+      el("details", {}, el("summary", { text: "Read the email" }), el("pre", { class: "log", text: r.body })),
+      el("div", { class: "actions" },
+        el("button", { class: "primary", "data-outreach": "approve", "data-id": String(r.id), text: "Approve" }),
+        el("button", { "data-outreach": "reject", "data-id": String(r.id), text: "Reject" })))));
+  }
+
+  async function outreachAction(action, ids) {
+    if (!ids.length) return;
+    const r = await api("/api/outreach", { method: "POST", body: { action, ids } });
+    const msg = $("#outreach-message");
+    msg.textContent = r.message || (r.ok ? "Done." : "Failed.");
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    loadOutreach();
   }
 
   async function control(action) {
@@ -330,6 +363,14 @@
     $$("[data-action]").forEach((b) => b.addEventListener("click", () => control(b.dataset.action)));
     $("#settings-form").addEventListener("submit", saveSettings);
     $("#run-preflight").addEventListener("click", preflight);
+    $("#outreach-list").addEventListener("click", (e) => {  // delegated: the list is re-rendered
+      const b = e.target.closest("[data-outreach]");
+      if (b) outreachAction(b.dataset.outreach, [Number(b.dataset.id)]);
+    });
+    const picked = () => $$(".outreach-pick").filter((c) => c.checked).map((c) => Number(c.value));
+    $("#outreach-approve-selected").addEventListener("click", () => outreachAction("approve", picked()));
+    $("#outreach-reject-selected").addEventListener("click", () => outreachAction("reject", picked()));
+    $("#outreach-select-all").addEventListener("change", (e) => { $$(".outreach-pick").forEach((c) => { c.checked = e.target.checked; }); });
     $("#logout").addEventListener("click", async () => { await api("/logout", { method: "POST" }); location.href = "/login"; });
     let tab = "control";
     try { tab = localStorage.getItem("am_tab") || "control"; } catch (e) { /* private mode */ }

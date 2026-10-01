@@ -53,6 +53,23 @@ web control panel: `automonetize gui` (see [Control panel](#control-panel-automo
 > the webhook endpoint publicly (a tunnel or host, see below). Only revenue confirmed by a
 > payment provider counts toward the target.
 
+## The easy path (copy and paste)
+
+For a non-technical owner, these five commands are the whole setup. Each one checks before it
+changes anything and says in plain words what to fix if something isn't ready.
+
+```bash
+automonetize gui                  # enter Stripe test key, Gmail (App password), postal address
+automonetize go-live              # paste the live Stripe key: checks, switches to real payments, prints your link
+automonetize connect-marketing    # paste a Dev.to key + GitHub token: public site and articles, automatically
+automonetize autostart            # start by itself after a restart (macOS launchd)
+automonetize doctor --fix         # anytime: health check in plain words, fixes what's safe to fix
+```
+
+After that the agent emails you every sale as it happens, anything that needs you, and a daily
+report. The only recurring task is optional: approving the sales emails it drafts
+(control panel → **Outreach**).
+
 ## Tonight's Launch Checklist
 
 ```bash
@@ -153,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 610 tests, ~40 s, no network
+pytest                     # 640 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -828,6 +845,61 @@ imap_host = "imap.fastmail.com"   # IMAP_PASSWORD in .env; unsubscribe replies a
 
 Check before going live: `automonetize dispatch --check` lists any missing requirement.
 
+## Autopilot (Phases 12-15)
+
+**Going live and connecting marketing** (`cli/go_live.py`, `cli/connect_marketing.py`):
+
+* `go-live` asks for the live Stripe key, then checks it with Stripe: it must be a live key, and
+  the account must accept charges. It also checks the mailbox login, trying the other standard
+  port and Google's app password without spaces if the first attempt fails, and saves whichever
+  works. Only then does it write the live key, `STRIPE_MODE=live` and `DRY_RUN=false`. It marks
+  test-mode listings for re-creation, restarts the agent, waits for the live checkout and prints
+  the link. `go-live --link` lists everything on sale.
+* `connect-marketing` checks a Dev.to key and a GitHub token (classic, `repo` + `gist`). It
+  creates `<you>.github.io` if needed, commits a first page, switches Pages on for `/docs` (an
+  existing Pages site keeps its branch and folder), saves everything, restarts the agent and waits
+  for the site to answer.
+
+If a check fails, neither command changes anything.
+
+**Phase 12: uptime and self-repair** (`cli/doctor.py`).
+* `automonetize doctor` checks, in plain words:
+  * whether the agent is running and starts after a reboot;
+  * the engine state and when the last cycle ran;
+  * live payments, and what's on sale with its links;
+  * email settings, marketing, and whether the Mac stays awake (`pmset`);
+  * code updates, and problems in the last 24 hours.
+* `--fix` applies the safe fixes: starts the agent, installs autostart, and pulls an update
+  (fast-forward only, never over local changes) and restarts.
+* It never undoes a pause or kill switch you set.
+* `automonetize autostart` hands the running process over to a launchd job
+  (`deploy/install_launchd.sh --service agent`), so the agent starts at login and is restarted if
+  it stops. It never runs two supervisors at once.
+
+**Phase 13: owner reports** (`strategies/owner_reports.py`, task `report_owner`). These go to
+`owner_email` (`OWNER_EMAIL`; defaults to the sender address):
+* an email for each new sale or subscriber;
+* an email when the agent flags something for a human;
+* a daily report after `owner_digest_hour` (8, in `subscription_timezone`). It covers yesterday's
+  and the week's revenue against the goal, MRR, live product links, free leads, drafts waiting for
+  approval, and the last 24 hours' problems.
+
+The first run starts from "now" (no history flood). Pointers advance only after a successful send,
+so a failed email is retried. `owner_reports = false` turns them off.
+
+**Phase 14: everything that's built gets sold** (`tools/catalog.py`, `SatelliteOrchestrator.catch_up`).
+* Every cycle, any satellite dataset that's packaged but not on sale (for example, built while
+  email was still in dry run) is published at once, instead of on its next refresh.
+* `live_products()` is the single list of what's buyable, one row per live link, without
+  test-mode links or per-company dossiers. `go-live`, `doctor` and the daily report use it.
+
+**Phase 15: outreach approval in the panel** (`gui/routes/outreach.py`, **Outreach** tab).
+* The drafted sales emails are listed best-scored first, with recipient, subject and full text.
+  You can approve or reject one, a selection, or all.
+* The panel says when approved emails can't be sent yet (missing CAN-SPAM details, dry run).
+* Only drafts still pending can change: a decision is never flipped.
+* Approved emails go out with the next cycles, within the warm-up limit.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to
@@ -1110,6 +1182,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `evolution_interval_hours` / `evolution_cooldown_hours` / `evolution_canary_minutes` | `6` / `24` / `60` | Attempt spacing, cooldown after a failure or rollback, post-merge watch window |
 | `evolution_check_timeout_seconds` / `evolution_run_simulator` / `evolution_repo` | `1200` / `true` / this checkout | Worktree checks and the repository to evolve |
 | `evolution_min_tag_postings` / `evolution_plateau_cycles` | `5` / `5` | Diagnosis thresholds |
+| `owner_reports` / `owner_email` (`OWNER_EMAIL`) / `owner_digest_hour` | `true` / sender email / `8` | Sale emails, alerts, daily report |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
 | `blocked_recipient_tlds` | EU/EEA/UK/CH | Recipients never emailed |
@@ -1119,6 +1192,10 @@ their conventional unprefixed names. Unknown keys are rejected.
 ## CLI
 
 ```
+automonetize go-live [--link]                       # switch to real payments (checks first); list live links
+automonetize connect-marketing                      # public GitHub Pages site + Dev.to articles
+automonetize doctor [--fix]                         # plain-words health check; safe fixes
+automonetize autostart                              # macOS: start at login, restart if stopped
 automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
 automonetize evolution [status|log|show ID [--output]|diagnose [--diff]|resume]   # self-evolution audit
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
@@ -1169,7 +1246,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 610 tests, ~40 s, no network
+pytest     # 640 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -1177,6 +1254,16 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phases 12 to 15 add 10 tests in `tests/test_autopilot.py`, plus 17 for `go-live` and
+`connect-marketing`:
+* **Catalog:** the catalog lists one row per live link.
+* **Catch-up:** catch-up publishing of satellite datasets.
+* **Owner reports:** sale and alert emails once each, with no history flood; one digest a day
+  after the hour; failed sends retried; reports can be switched off.
+* **Doctor:** findings and safe fixes; never pulls over local changes; autostart hands the
+  process over to launchd.
+* **Outreach review:** best first, CSRF-protected, decisions never flipped, bad input refused.
 
 Phase 11 adds 55 tests in `tests/test_evolution.py`:
 

@@ -117,14 +117,41 @@ class SatelliteOrchestrator(Strategy):
         retired = self.retire(tools, now)
         started = self.fill(tools, slots)
         alloc = allocation(state, cfg, now)
+        listed = self.catch_up(tools)
         refreshed, skipped = self.refresh(tools, alloc["shares"], now)
         sats = satellites(state)
         shares = ", ".join(f"{n} {s:.0%}" for n, s in alloc["shares"].items())
         return TaskResult(True, f"{len(sats)} satellites; shares {shares}; refreshed {refreshed or 'none'}"
                           + (f"; started {started}" if started else "") + (f"; retired {retired}" if retired else "")
+                          + (f"; now on sale {listed}" if listed else "")
                           + (f"; waiting {skipped}" if skipped else ""),
-                          {"satellites": [niche_of(s) for s in sats], "shares": alloc["shares"], "refreshed": refreshed,
+                          {"satellites": [niche_of(s) for s in sats], "shares": alloc["shares"], "refreshed": refreshed, "listed": listed,
                            "started": started, "retired": retired})
+
+    def catch_up(self, tools: Any) -> list[str]:
+        """List every satellite dataset that's packaged but not on sale yet (e.g. it was built while
+        email was in dry run), without waiting for its next refresh."""
+        from strategies.digital_asset_packager import ASSET_KIND
+
+        state = tools.state
+        handler = self.handlers().get("publish_listing")
+        listed: list[str] = []
+        if handler is None:
+            return listed
+        for sat in satellites(state):
+            asset = state.latest_asset(sat["id"], ASSET_KIND)
+            if asset is None or asset.get("status") == "published":
+                continue
+            try:
+                res = handler.run("publish_listing", TaskContext(tools, sat, {}))
+            except CircuitOpenError:
+                break
+            except Exception as exc:  # noqa: BLE001 - retried next cycle
+                state.log_error(f"satellite:{niche_of(sat)}", f"catch-up publish failed: {exc!r}")
+                continue
+            if res.metrics.get("published"):
+                listed.append(niche_of(sat))
+        return listed
 
     @staticmethod
     def retire(tools: Any, now: datetime) -> list[str]:

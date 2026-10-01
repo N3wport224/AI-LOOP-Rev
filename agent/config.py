@@ -249,6 +249,11 @@ class Config:
     satellite_min_share: float = 0.15        # every niche keeps at least this share of capacity
     satellite_max_days_without_revenue: int = 21
 
+    # Owner reports (strategies/owner_reports.py): sale emails, alerts, a daily digest
+    owner_reports: bool = True
+    owner_email: str = ""                    # "" = sender_email
+    owner_digest_hour: int = 8               # local hour (subscription_timezone) after which the digest goes out
+
     # Autonomous code evolution (agent/evolution): off until explicitly switched on
     enable_autonomous_code_evolution: bool = False
     evolution_repo: str = ""                 # git checkout to evolve; "" = the one this code runs from
@@ -333,6 +338,7 @@ _PLAIN_ENV = {
     "HASHNODE_TOKEN": "hashnode_token",
     "PUBLIC_WEBHOOK_URL": "public_webhook_url",
     "ENABLE_AUTONOMOUS_CODE_EVOLUTION": "enable_autonomous_code_evolution",
+    "OWNER_EMAIL": "owner_email",
     # Aliases accepted for hand-edited .env files (and the names the GUI shows).
     "STRIPE_API_KEY": "stripe_secret_key",
     "SMTP_HOST": "smtp_host",

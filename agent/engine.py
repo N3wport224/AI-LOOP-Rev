@@ -67,6 +67,7 @@ PLAN: list[tuple[str, int]] = [
     ("collect_metrics", 55),
     ("run_satellites", 58),
     ("optimize_pricing", 60),
+    ("report_owner", 98),
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
 ]
 BUILTIN_TASKS = {"sync_revenue"}

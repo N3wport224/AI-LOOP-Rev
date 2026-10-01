@@ -759,6 +759,18 @@ def cmd_connect_marketing(args: argparse.Namespace, console: Console) -> int:
     return connect([])
 
 
+def cmd_doctor(args: argparse.Namespace, console: Console) -> int:
+    from cli.doctor import main as doctor
+
+    return doctor(["--fix"] if args.fix else [])
+
+
+def cmd_autostart(args: argparse.Namespace, console: Console) -> int:
+    from cli.doctor import main as doctor
+
+    return doctor(["autostart"])
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -918,6 +930,12 @@ def build_parser() -> argparse.ArgumentParser:
     cm = sub.add_parser("connect-marketing", help="paste a Dev.to key and a GitHub token: creates your public site, "
                         "switches on automatic articles and pages")
     cm.set_defaults(func=cmd_connect_marketing)
+
+    dr = sub.add_parser("doctor", help="health check in plain words; --fix applies the safe fixes")
+    dr.add_argument("--fix", action="store_true")
+    dr.set_defaults(func=cmd_doctor)
+    au = sub.add_parser("autostart", help="macOS: start the agent at login and restart it if it stops (launchd)")
+    au.set_defaults(func=cmd_autostart)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")

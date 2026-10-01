@@ -177,13 +177,14 @@ def wait_for_link(env: dict[str, str], minutes: int = 10) -> int:
     say(BOLD, f"Waiting for the agent to create your live checkout (up to {minutes} minutes)...")
     deadline = time.monotonic() + minutes * 60
     while time.monotonic() < deadline:
-        live = [a for a in state.list_assets() if a.get("status") == "published"
-                and str(a.get("checkout_url") or "").startswith("https://buy.stripe.com/") and "/test_" not in a["checkout_url"]]
+        from tools.catalog import live_products
+
+        live = live_products(state)
         if live:
             print()
             say(GREEN, "✔ You're live. Share these links. Buyers pay on Stripe and get the file by email automatically:")
-            for a in live:
-                print(f"   {a['title']}  ${a['price_cents'] / 100:.2f}\n   {a['checkout_url']}\n")
+            for p in live:
+                print(f"   {p['title']}  ${p['price_cents'] / 100:.2f}\n   {p['url']}\n")
             return 0
         time.sleep(15)
         print(".", end="", flush=True)

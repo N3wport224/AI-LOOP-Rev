@@ -17,6 +17,7 @@
   </div>
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="control" aria-selected="true">Control</button>
+    <button role="tab" data-tab="outreach" aria-selected="false">Outreach <span id="outreach-count" class="muted"></span></button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
     <button id="logout" class="link">Sign out</button>
@@ -94,6 +95,22 @@
       <h2>Result</h2>
       <div id="settings-warnings"></div>
       <div class="table-wrap"><table id="checks"><thead><tr><th>Step</th><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-outreach" class="tab" hidden>
+    <div class="card">
+      <h2>Sales emails waiting for your OK</h2>
+      <p class="muted">The agent wrote these to companies that are hiring for your niche. Nothing is sent until you approve it;
+        approved emails go out a few per day (a warm-up that protects your mailbox).</p>
+      <p id="outreach-warning" class="status-warn" hidden></p>
+      <div class="actions">
+        <button id="outreach-approve-selected" class="primary">Approve selected</button>
+        <button id="outreach-reject-selected">Reject selected</button>
+        <label class="muted"><input type="checkbox" id="outreach-select-all"> select all</label>
+      </div>
+      <p class="message" id="outreach-message" role="status"></p>
+      <div id="outreach-list"></div>
     </div>
   </section>
 

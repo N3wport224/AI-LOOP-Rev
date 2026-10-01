@@ -6,6 +6,7 @@ from strategies.digital_asset_packager import DigitalAssetPackager
 from strategies.distribution_engine import DistributionEngine
 from strategies.outreach_stager import OutreachStager
 from strategies.dossier_engine import DossierEngine
+from strategies.owner_reports import OwnerReports
 from strategies.retention_engine import RetentionEngine
 from strategies.satellite_orchestrator import SatelliteOrchestrator
 from strategies.inbound_syndicator import InboundSyndicator
@@ -21,11 +22,11 @@ def default_strategies() -> list[Strategy]:
     return [
         LeadAggregator(), TechStackIntel(), DigitalAssetPackager(), OutreachStager(), DistributionEngine(),
         InboundSyndicator(), SubscriptionEngine(), LeadMagnet(), PricingStrategy(),
-        SourceDiscovery(), SatelliteOrchestrator(), DossierEngine(), RetentionEngine(),
+        SourceDiscovery(), SatelliteOrchestrator(), DossierEngine(), RetentionEngine(), OwnerReports(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]
