@@ -35,6 +35,13 @@ class FakeController:
     def supervisor_pid(self):
         return self.pid
 
+    def launchd_managed(self):  # the doctor asks on macOS (the Health tab runs it)
+        return False
+
+    def start(self):
+        self.calls.append("start")
+        return {"ok": True, "message": "started"}
+
     def status(self):
         return {"running": bool(self.pid), "pid": self.pid, "since": None, "workers": [], "mode": "process" if self.pid else "none",
                 "engine": "running" if self.pid else "not running", "engine_flag": "running", "reason": ""}

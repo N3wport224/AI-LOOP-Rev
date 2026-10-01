@@ -26,8 +26,12 @@ def _doctor(gctx, run: Any = None):
 def findings(gctx) -> dict[str, Any]:
     from tools.contact_policy import quiet
 
-    out = [{"name": f.name, "status": f.status, "detail": f.detail, "fix": f.fix, "can_fix": f.auto is not None}
-           for f in _doctor(gctx).checks(deep=False)]
+    try:
+        out = [{"name": f.name, "status": f.status, "detail": f.detail, "fix": f.fix, "can_fix": f.auto is not None}
+               for f in _doctor(gctx).checks(deep=False)]
+    except Exception as exc:  # noqa: BLE001 - show the failure instead of an empty tab
+        out = [{"name": "Health check", "status": "fail", "detail": f"the check itself failed: {exc!r}"[:300],
+                "fix": "run `automonetize doctor` in Terminal for details", "can_fix": False}]
     order = {"fail": 0, "warn": 1, "ok": 2}
     out.sort(key=lambda f: order.get(f["status"], 3))
     q = quiet(gctx.state)
