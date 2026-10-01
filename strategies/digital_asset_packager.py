@@ -3,7 +3,8 @@
 Produces, per version:
 
 * ``assets/<niche>/v<N>/``: README guide, QUALITY.md (coverage report), FIELDS.md (data dictionary),
-  leads-excel.csv (Excel-friendly copy), Executive Tech Radar, company-level ``tech_radar``
+  leads-excel.csv (Excel-friendly copy), CHANGES.md, TOP20.md, regions/, leads.jsonl, schema.sql,
+  Executive Tech Radar, company-level ``tech_radar``
   CSV/JSON (when intel exists), the role directory and ``leads`` CSV/JSON, attribution note
 * ``assets/<niche>/<niche>-intel-v<N>.zip``: the downloadable bundle
 * ``assets/<niche>/v<N>/listing.json``: listing (title, summary, tiered price)
@@ -213,18 +214,30 @@ class DigitalAssetPackager(Strategy):
                 files[name] = tools.files.read_text(f"{intel_dir}/{name}")
         from datetime import datetime
 
-        from strategies.dataset_extras import excel_csv, fields_md, quality_md
+        from strategies.dataset_extras import (changes_md, excel_csv, fields_md, jsonl, quality_md, region_split, schema_sql,
+                                               top20_md)
 
+        prev_path = f"assets/{niche}/v{latest['version']}/leads.json" if latest else ""
+        previous = tools.files.read_json(prev_path) if prev_path and tools.files.exists(prev_path) else None
         files["QUALITY.md"] = quality_md(niche, leads, intel, datetime.fromisoformat(generated))
         files["FIELDS.md"] = fields_md(bool(intel))
+        files["CHANGES.md"] = changes_md(niche, version, leads, previous)
+        files["TOP20.md"] = top20_md(niche, leads, intel)
+        files["leads.jsonl"] = jsonl(leads, list(EXPORT_FIELDS))
+        files["schema.sql"] = schema_sql(leads, list(EXPORT_FIELDS))
         for name, content in files.items():
             tools.files.write_text(f"{base}/{name}", content)
         tools.files.write_csv(f"{base}/leads.csv", leads, EXPORT_FIELDS)
         tools.files.write_bytes(f"{base}/leads-excel.csv", excel_csv(tools.files.read_bytes(f"{base}/leads.csv")))
+        extra = ["leads.csv", "leads-excel.csv"]
+        for region, rows in region_split(leads).items():
+            if rows:
+                tools.files.write_csv(f"{base}/regions/leads-{region}.csv", rows, EXPORT_FIELDS)
+                extra.append(f"regions/leads-{region}.csv")
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name in [*files, "leads.csv", "leads-excel.csv"]:
+            for name in [*files, *extra]:
                 zf.writestr(f"{niche}-intel/{name}", tools.files.read_bytes(f"{base}/{name}"))
         zip_rel = f"assets/{niche}/{niche}-intel-v{version}.zip"
         tools.files.write_bytes(zip_rel, buf.getvalue())

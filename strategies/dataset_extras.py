@@ -8,6 +8,14 @@
 * **leads-excel.csv** (Phase 77): the same rows with a UTF-8 byte-order mark, so Excel shows accented
   company names correctly when the file is double-clicked (``leads.csv`` stays plain UTF-8 for
   Google Sheets, pandas and databases).
+* **CHANGES.md** (Phase 95): which companies are new since the previous version (and which left), so
+  update buyers and subscribers see the difference at a glance.
+* **TOP20.md** (Phase 96): the 20 companies to call first: highest hiring urgency (or most open roles
+  when there's no intel), with what they run.
+* **regions/** (Phase 97): ``leads-us.csv``, ``leads-europe.csv``, ``leads-remote.csv``: the same rows
+  split by where the job is, from the posted location (rows that say nothing are only in the main file).
+* **leads.jsonl** and **schema.sql** (Phase 98): one JSON object per line for scripts, and a
+  ``CREATE TABLE`` + ``INSERT`` file that loads into SQLite or Postgres as is.
 """
 
 from __future__ import annotations
@@ -94,3 +102,94 @@ def fields_md(intel: bool) -> str:
 def excel_csv(csv_bytes: bytes) -> bytes:
     bom = "﻿".encode()
     return csv_bytes if csv_bytes.startswith(bom) else bom + csv_bytes
+
+
+def _company(r: dict[str, Any]) -> str:
+    return " ".join(str(r.get("company") or "").split())
+
+
+def changes_md(niche: str, version: int, leads: list[dict[str, Any]], previous: list[dict[str, Any]] | None) -> str:
+    """Phase 95: companies added and gone since the previous version."""
+    if previous is None:
+        return f"# Changes: {niche} v{version}\n\nFirst release: every company is new.\n"
+    now = {_company(r).lower(): _company(r) for r in leads if _company(r)}
+    before = {_company(r).lower(): _company(r) for r in previous if _company(r)}
+    added = sorted(now[k] for k in now.keys() - before.keys())
+    gone = sorted(before[k] for k in before.keys() - now.keys())
+    lines = [f"# Changes: {niche} v{version}", "", f"Compared with v{version - 1}: {len(leads)} rows now, {len(previous)} before.",
+             "", f"## New companies ({len(added)})", ""]
+    lines += [f"- {c}" for c in added[:300]] or ["- none"]
+    lines += ["", f"## No longer hiring here ({len(gone)})", ""] + ([f"- {c}" for c in gone[:300]] or ["- none"]) + [""]
+    return "\n".join(lines)
+
+
+def _roles(r: dict[str, Any]) -> int:
+    """Open roles: intel stores a list of positions, older records a count."""
+    v = r.get("open_positions") or r.get("openings") or 0
+    return len(v) if isinstance(v, (list, tuple)) else int(v or 0)
+
+
+def top20_md(niche: str, leads: list[dict[str, Any]], intel: list[dict[str, Any]]) -> str:
+    """Phase 96: the companies to contact first."""
+    lines = [f"# Top 20 companies to watch: {niche}", ""]
+    if intel:
+        ranked = sorted(intel, key=lambda r: (-(r.get("urgency_score") or 0), -_roles(r)))[:20]
+        lines += ["Ranked by hiring urgency (0-100).", "", "| # | Company | Urgency | Open roles | Stack |", "|---|---|---|---|---|"]
+        for i, r in enumerate(ranked, 1):
+            stack = r.get("stack") or []
+            stack = ", ".join(stack[:6]) if isinstance(stack, list) else str(stack)[:80]
+            lines.append(f"| {i} | {_company(r)} | {r.get('urgency_score', '')} | {_roles(r) or ''} "
+                         f"| {stack} |")
+    else:
+        counts = Counter(_company(r) for r in leads if _company(r))
+        lines += ["Ranked by open roles in this dataset.", "", "| # | Company | Open roles |", "|---|---|---|"]
+        lines += [f"| {i} | {c} | {n} |" for i, (c, n) in enumerate(counts.most_common(20), 1)]
+    return "\n".join(lines) + "\n"
+
+
+US = ("united states", "usa", "u.s.", " us", "us-", "new york", "san francisco", "california", "texas", "seattle", "boston",
+      "chicago", "austin", "remote - us", "remote (us")
+EUROPE = ("europe", " eu", "emea", "united kingdom", " uk", "london", "germany", "berlin", "france", "paris", "netherlands",
+          "amsterdam", "spain", "madrid", "ireland", "dublin", "sweden", "poland", "portugal", "lisbon", "italy", "switzerland")
+
+
+def region_of(row: dict[str, Any]) -> set[str]:
+    loc = " " + str(row.get("location") or "").lower()
+    out = set()
+    if any(k in loc for k in US):
+        out.add("us")
+    if any(k in loc for k in EUROPE):
+        out.add("europe")
+    if str(row.get("remote")).lower() in ("true", "1", "yes") or "remote" in loc or "anywhere" in loc:
+        out.add("remote")
+    return out
+
+
+def region_split(leads: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Phase 97: rows per region (a row can be in several, e.g. remote-US)."""
+    out: dict[str, list[dict[str, Any]]] = {"us": [], "europe": [], "remote": []}
+    for r in leads:
+        for region in region_of(r):
+            out[region].append(r)
+    return out
+
+
+def jsonl(leads: list[dict[str, Any]], fields: list[str]) -> str:
+    import json
+
+    return "".join(json.dumps({f: r.get(f) for f in fields}, default=str, ensure_ascii=False) + "\n" for r in leads)
+
+
+def schema_sql(leads: list[dict[str, Any]], fields: list[str], table: str = "leads") -> str:
+    """Phase 98: portable SQL (SQLite/Postgres): every value as text, quotes doubled."""
+    def lit(v: Any) -> str:
+        if v is None or v == "":
+            return "NULL"
+        text = ", ".join(map(str, v)) if isinstance(v, list) else str(v)
+        return "'" + text.replace("'", "''") + "'"
+
+    cols = ", ".join(f'"{f}" TEXT' for f in fields)
+    lines = [f'CREATE TABLE IF NOT EXISTS "{table}" ({cols});']
+    names = ", ".join(f'"{f}"' for f in fields)
+    lines += [f'INSERT INTO "{table}" ({names}) VALUES ({", ".join(lit(r.get(f)) for f in fields)});' for r in leads]
+    return "\n".join(lines) + "\n"

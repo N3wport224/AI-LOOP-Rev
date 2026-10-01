@@ -32,8 +32,10 @@ def test_packager_builds_versioned_bundle(toolkit, make_hypothesis):
     assert result.metrics["built"] and result.metrics["version"] == 1
     zip_bytes = toolkit.files.read_bytes(result.metrics["zip"])
     names = zipfile.ZipFile(io.BytesIO(zip_bytes)).namelist()
-    assert {f"python-remote-intel/{n}" for n in ("README.md", "directory.md", "leads.csv", "leads.json", "ATTRIBUTION.md",
-                                                     "QUALITY.md", "FIELDS.md", "leads-excel.csv")} == set(names)
+    required = ("README.md", "directory.md", "leads.csv", "leads.json", "ATTRIBUTION.md", "QUALITY.md", "FIELDS.md",
+                "leads-excel.csv", "CHANGES.md", "TOP20.md", "leads.jsonl", "schema.sql")
+    assert {f"python-remote-intel/{n}" for n in required} <= set(names)
+    assert all(n[len("python-remote-intel/"):] in required or n.startswith("python-remote-intel/regions/leads-") for n in names)
     readme = toolkit.files.read_text("assets/python-remote/v1/README.md")
     assert "4 roles across 4 companies" in readme
     listing = toolkit.files.read_json("assets/python-remote/v1/listing.json")

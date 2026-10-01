@@ -61,16 +61,42 @@ def describe(niche: str, keywords: list[str], generation: int) -> str:
     )
 
 
+def requested_candidate(state: StateStore, config: Config, tried: set[str]) -> dict[str, Any] | None:
+    """Phase 99: what customers keep asking for comes first (strategies/customer_requests.py)."""
+    from strategies.customer_requests import REQUESTED_MIN
+
+    counts: dict[str, int] = dict(state.get("requested_topics") or {})
+    for topic, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        if n < REQUESTED_MIN:
+            break
+        for niche in config.niches:
+            words = {str(niche["name"]).lower(), *(str(k).lower() for k in niche["keywords"])}
+            name = slugify(niche["name"])
+            if topic in words and hypothesis_key(name, 1) not in tried:
+                return _params(name, list(niche["keywords"]), 1, origin=f"asked for by {n} customers")
+        if topic in GENERIC_TAGS or any(topic == str(k).lower() for n_ in config.niches for k in n_["keywords"]):
+            continue
+        name = f"tag-{slugify(topic)}"
+        if hypothesis_key(name, 1) not in tried:
+            return _params(name, [topic], 1, origin=f"asked for by {n} customers")
+    return None
+
+
 def formulate_next(state: StateStore, config: Config) -> dict[str, Any] | None:
     """Return params for the next untried hypothesis, or None when the space is exhausted.
 
     Order of exploration:
+    0. what customers asked for at least twice (Phase 99);
     1. clusters adjacent to the most recently deprecated niche, highest recent hiring demand first;
     2. configured niches, in order;
     3. niches mined from tag frequencies in the leads collected so far (data-driven variants);
     4. revisits of deprecated niches with broadened keywords, up to ``max_hypothesis_generations``.
     """
     tried = state.hypothesis_keys()
+
+    requested = requested_candidate(state, config, tried)
+    if requested:
+        return requested
 
     ranked = demand_ranked(state, config, tried)
     if ranked:

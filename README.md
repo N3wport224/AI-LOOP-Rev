@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 859 tests, ~40 s, no network
+pytest                     # 865 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -1493,6 +1493,22 @@ with its text, in the control panel.
 **Phase 94: `automonetize features`** (`tools/features.py`). Every major feature, grouped, and
 whether it's **on**, **off** (and which setting), or **waiting** (and for what from you).
 
+## Richer datasets (Phases 95-99)
+
+Every new dataset zip also contains:
+* **Phase 95, `CHANGES.md`:** companies new since the previous version, and those no longer hiring.
+* **Phase 96, `TOP20.md`:** the 20 companies to contact first, by hiring urgency (or open roles),
+  with their stack.
+* **Phase 97, `regions/`:** `leads-us.csv`, `leads-europe.csv` and `leads-remote.csv`, split by the
+  posted location.
+* **Phase 98, `leads.jsonl` and `schema.sql`:** one JSON object per line, and a file that loads into
+  SQLite or Postgres as is.
+
+**Phase 99: niches customers ask for come first.**
+* The customer-requests log also recognises technologies seen in the collected job postings.
+* When the agent picks its next niche, anything two or more customers asked for goes first: the
+  configured niche it belongs to, or a new niche built around that technology.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1880,7 +1896,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 859 tests, ~40 s, no network
+pytest     # 865 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
