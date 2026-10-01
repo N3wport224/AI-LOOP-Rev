@@ -2495,6 +2495,21 @@ Backups copy the whole database. This moves just the catalog, to a new Mac or a 
 * **Phase 344, safe to open:** a bundle is refused before anything is written if it has a path
   outside `assets/`, a bad checksum, or is oversized.
 
+## Public forms that bots can't wear down (Phases 345-349)
+
+For the site's forms that post to the agent: request a dataset, and leave your company out
+(`tools/abuse_guard.py`).
+
+* **Phase 345, a honeypot:** each form has a hidden `website` field people never see. A submission
+  that fills it gets the normal "thanks" page and is quietly dropped.
+* **Phase 346, no links in free text:** a request or note with a web address or email address is
+  turned away with a plain message.
+* **Phase 347, one budget for all forms:** besides each form's own limit, one network may send at most
+  20 form posts an hour in total.
+* **Phase 348, persistent offenders wait:** a network with 10 turned-away posts in an hour is blocked
+  from the forms for 24 hours.
+* **Phase 349, counted:** turned-away posts are counted per day and reason, and doctor shows today's.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

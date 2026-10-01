@@ -112,9 +112,15 @@ def request_page(cfg: Any, shell: Any) -> str:
             'style="width:100%"></p><p><label for="req-email">Email (optional)</label> '
             '<input id="req-email" type="email" name="email" maxlength="254" autocomplete="email"></p>'
             '<p><label><input type="checkbox" name="notify" value="1"> Email me once when it\'s on sale (used for that '
-            "one email only)</label></p><button type=\"submit\">Send request</button></form>")
+            "one email only)</label></p>" + _honeypot() + "<button type=\"submit\">Send request</button></form>")
     return shell("Request a dataset", body, "Ask for a hiring dataset by technology, region or seniority: requests decide what "
                                             "gets built next.")
+
+
+def _honeypot() -> str:
+    from tools.abuse_guard import HONEYPOT_HTML
+
+    return HONEYPOT_HTML
 
 
 def record_request(state: Any, cfg: Any, text: str, email: str = "", notify: bool = False) -> dict[str, Any]:
@@ -195,6 +201,10 @@ class BuyerExperience(Strategy):
 def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
     from aiohttp import web
 
+    from tools.abuse_guard import for_app
+
+    guard = for_app(app, tools.state)
+
     async def request_handler(request: web.Request) -> web.Response:
         if request.content_length and request.content_length > 2048:
             return web.Response(status=413, text="too large")
@@ -207,6 +217,16 @@ def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
             data = None
         if not isinstance(data, dict):
             return web.Response(status=400, text=recovery_page(400, "Send a form or a JSON object."), content_type="text/html")
+        refused = guard.check(client_ip(request), data, ("request",))  # Phases 345-348
+        if refused == "honeypot":
+            return web.Response(status=200, text=recovery_page(202, "Thanks! Your request counts towards what gets built next.",
+                                                               "Request received"), content_type="text/html")
+        if refused == "links":
+            return web.Response(status=400, text=recovery_page(400, "Please describe it in words, without links or email "
+                                                                    "addresses."), content_type="text/html")
+        if refused:
+            return web.Response(status=429, text=recovery_page(429, "Too many requests from this network. Try again later."),
+                                content_type="text/html")
         try:
             out = await run(record_request, tools.state, tools.config, str(data.get("request") or ""), str(data.get("email") or ""),
                             str(data.get("notify") or "") in ("1", "on", "true"))

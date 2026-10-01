@@ -207,6 +207,11 @@ class Doctor:
         for name, secs in (scale.get("slow") or {}).items():
             out.append(Finding(f"Task {name}", "warn", f"slow: over {secs / 60:.0f} min on each of its last runs",
                                "it still runs; everything after it waits"))
+        from tools.abuse_guard import today as abuse_today
+
+        turned = abuse_today(state)  # Phase 349
+        if turned:
+            out.append(Finding("Public forms", "ok", "turned away today: " + ", ".join(f"{n} {k}" for k, n in sorted(turned.items()))))
         from tools.chat import service as chat_service
 
         if cfg.chat_webhook_url:  # Phase 309: the service, never the address

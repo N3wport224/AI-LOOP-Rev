@@ -48,11 +48,17 @@ def remove_page(cfg: Any, shell: Any) -> str:
                 '<input id="oo-email" type="email" name="email" required maxlength="254" autocomplete="email" style="width:100%"></p>'
                 '<p><label for="oo-note">Anything we should know (optional)</label><br>'
                 '<textarea id="oo-note" name="note" maxlength="500" rows="3" style="width:100%"></textarea></p>'
-                '<button type="submit">Send request</button></form>')
+                + _honeypot() + '<button type="submit">Send request</button></form>')
     else:
         contact = html.escape(cfg.sender_email or cfg.owner_email or "")
         form = f'<p>Email <a href="mailto:{contact}">{contact}</a> from your work address with the company name.</p>' if contact else ""
     return shell("Leave your company out", intro + form, "Ask for your company's job postings to be left out of our datasets.")
+
+
+def _honeypot() -> str:
+    from tools.abuse_guard import HONEYPOT_HTML
+
+    return HONEYPOT_HTML
 
 
 def record(state: Any, company: str, email: str, note: str = "") -> dict[str, Any]:
@@ -132,6 +138,9 @@ def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
     from aiohttp import web
 
     from strategies.buyer_experience import recovery_page
+    from tools.abuse_guard import for_app
+
+    guard = for_app(app, tools.state)
 
     async def handler(request: web.Request) -> web.Response:
         if request.content_length and request.content_length > 4096:
@@ -145,6 +154,16 @@ def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
             data = None
         if not isinstance(data, dict):
             return web.Response(status=400, text=recovery_page(400, "Send the form."), content_type="text/html")
+        refused = guard.check(client_ip(request), data, ("company", "note"))  # Phases 345-348
+        if refused == "honeypot":
+            return web.Response(status=202, text=recovery_page(202, "Thanks. We'll check the request and email you once it's "
+                                                                    "done.", "Request received"), content_type="text/html")
+        if refused == "links":
+            return web.Response(status=400, text=recovery_page(400, "Please leave links out of the company name and note."),
+                                content_type="text/html")
+        if refused:
+            return web.Response(status=429, text=recovery_page(429, "Too many requests from this network. Try again later."),
+                                content_type="text/html")
         try:
             await run(record, tools.state, str(data.get("company") or ""), str(data.get("email") or ""), str(data.get("note") or ""))
         except ValueError as exc:
