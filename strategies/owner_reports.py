@@ -65,6 +65,14 @@ def problem_line(p: dict[str, Any]) -> str:
     return f"- {p['source']}{times}: {p['message'][:200]}"
 
 
+def local_now(state: Any, cfg: Any) -> datetime:
+    try:
+        tz = ZoneInfo(cfg.subscription_timezone or "UTC")
+    except Exception:  # noqa: BLE001 - a bad timezone name falls back to UTC
+        tz = ZoneInfo("UTC")
+    return state.clock().astimezone(tz)
+
+
 def _max_id(state: Any, table: str, where: str = "") -> int:
     return int(state._one(f"SELECT COALESCE(MAX(id), 0) AS n FROM {table} {where}")["n"])
 
@@ -162,6 +170,13 @@ class OwnerReports(Strategy):
         rows = state._all("SELECT * FROM errors WHERE kind = 'alert' AND id > ? ORDER BY id LIMIT 20", (last,))
         if not rows:
             return False
+        from tools.alert_mute import is_muted
+
+        loud = [r for r in rows if not is_muted(state, r["source"])]
+        if not loud:  # all muted (Phase 137): recorded, shown in doctor, no email
+            state.set("owner_last_alert_id", int(rows[-1]["id"]))
+            return False
+        last_id, rows = int(rows[-1]["id"]), loud
         from tools.notify import push
 
         push(tools.http, tools.config, f"AutoMonetize needs attention ({len(rows)})", rows[0]["message"][:300], priority="high",
@@ -172,7 +187,7 @@ class OwnerReports(Strategy):
         tools.dispatcher.send_transactional(
             Email(to=to, subject=f"⚠️ AutoMonetize needs attention ({len(rows)})", body=body, kind="delivery"),
             audit_key=f"owner:alerts:{last}")
-        state.set("owner_last_alert_id", int(rows[-1]["id"]))
+        state.set("owner_last_alert_id", last_id)
         return True
 
     # -- daily digest ---------------------------------------------------------------------------------

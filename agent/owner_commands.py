@@ -31,8 +31,9 @@ CODE_KEY = "owner_command_code"
 SEEN = "owner_commands_handled"
 POLL_KEY = "owner_commands_polled_at"
 POLL_MINUTES = 5
-COMMANDS = ("status", "todo", "pause", "resume", "quiet", "loud", "help")
-SUBJECT_RE = re.compile(r"^\s*(?:(?:re|fwd?)\s*:\s*)*am\s+([a-z]+)\s+([A-Z0-9]{6})\b", re.I)
+COMMANDS = ("status", "todo", "report", "pause", "resume", "quiet", "loud", "help")
+# "AM QUIET 7 CODE": an optional number of days (Phase 136) between the command and the code.
+SUBJECT_RE = re.compile(r"^\s*(?:(?:re|fwd?)\s*:\s*)*am\s+([a-z]+)(?:\s+(\d{1,3}))?\s+([A-Z0-9]{6})\b", re.I)
 
 
 def code(state: Any, new: bool = False) -> str:
@@ -49,8 +50,8 @@ def owner_address(cfg: Any) -> str:
 
 def help_text(cfg: Any, state: Any) -> str:
     return (f"Control the agent by email: write to {cfg.sender_email} from {owner_address(cfg)} with the subject "
-            f"\"AM <COMMAND> {code(state)}\". Commands: STATUS, TODO, PAUSE, RESUME, QUIET (hold marketing email), "
-            "LOUD (let it go out again), HELP.")
+            f"\"AM <COMMAND> {code(state)}\". Commands: STATUS, TODO, REPORT (today's full report), PAUSE, RESUME, "
+            f"QUIET (hold marketing email; \"AM QUIET 7 {code(state)}\" for 7 days), LOUD (let it go out again), HELP.")
 
 
 def status_text(tools: Any) -> str:
@@ -75,7 +76,7 @@ def status_text(tools: Any) -> str:
     return "\n".join(lines)
 
 
-def execute(tools: Any, command: str, engine: Any = None) -> str:
+def execute(tools: Any, command: str, engine: Any = None, days: int | None = None) -> str:
     from strategies.owner_todo import as_text, todo
     from tools.contact_policy import set_quiet
 
@@ -96,9 +97,15 @@ def execute(tools: Any, command: str, engine: Any = None) -> str:
         else:
             state.set("paused", None)
         return "Resumed: cycles run again."
+    if command == "report":
+        from strategies.owner_reports import OwnerReports, local_now
+
+        return OwnerReports.digest_body(tools, local_now(state, cfg))
     if command == "quiet":
-        set_quiet(state, True, "turned on by email command")
-        return "Quiet mode on: no marketing email goes out. Purchases and support still do. Send AM LOUD <code> to undo."
+        span = days if days and 0 < days <= 365 else None
+        set_quiet(state, True, "turned on by email command" + (f" for {span} day(s)" if span else ""), days=span)
+        return (f"Quiet mode on{f' for {span} day(s)' if span else ''}: no marketing email goes out. Purchases and support "
+                "still do. Send AM LOUD <code> to undo.")
     if command == "loud":
         set_quiet(state, False)
         return "Quiet mode off: marketing email goes out again (within the usual limits)."
@@ -138,10 +145,11 @@ def poll(tools: Any, engine: Any = None, scan: Any = None) -> int:
             handled.append(m["message_id"])
             seen.add(m["message_id"])
             match = SUBJECT_RE.match(m["subject"] or "")
-            if not match or match.group(2).upper() != secret:
+            if not match or match.group(3).upper() != secret:
                 continue
             command = match.group(1).lower()
-            reply = execute(tools, command if command in COMMANDS else "help", engine)
+            reply = execute(tools, command if command in COMMANDS else "help", engine,
+                            int(match.group(2)) if match.group(2) else None)
             state.log_action(int(state.get("iteration", 0)), None, "owner_command", "ok", command)
             tools.dispatcher.send_transactional(
                 Email(to=owner, subject=f"AM {command.upper()}: done" if command in COMMANDS else "AM: commands", body=reply,

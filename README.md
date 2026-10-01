@@ -1563,7 +1563,12 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize forecast                     # where this month is heading at the recent pace
+* **Phase 113, task timings:** `automonetize explain TASK                 # what a task does and its last runs
+automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
+automonetize mute SOURCE [--days N] | mute --list   # pause alert emails from one source (still logged)
+automonetize unmute SOURCE                # alert emails from that source again
+automonetize report [--now|--print]       # today's report, now
+automonetize forecast                     # where this month is heading at the recent pace
 automonetize price-history                # every price change, newest first
 automonetize timings [--days N]` shows how long each task takes.
   Monday's report names the three slowest.
@@ -1662,6 +1667,21 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
   * `doctor` shows the last result.
 * **Phase 134, secrets are redacted:** API keys, tokens and passwords are stripped from every
   stored error and traceback before it reaches the database, the reports or the backups.
+
+## Owner control (Phases 135-139)
+
+* **Phase 135:** `automonetize explain build_site` says what a task does (from its own code), where
+  it runs in the cycle and its last 5 runs.
+* **Phase 136, two more email commands:**
+  * `AM REPORT <code>` replies with today's full report.
+  * `AM QUIET 7 <code>` holds marketing email for 7 days.
+* **Phase 137, mute an alert source:** `automonetize mute site_audit --days 3` stops alert emails and
+  phone buzzes from that source. The alerts are still recorded and shown in `doctor`.
+  `automonetize mute --list` shows mutes and recent sources; `automonetize unmute <source>` ends one.
+* **Phase 138:** `automonetize what-changed [--days N]` lists, newest first: settings, prices, new
+  dataset versions, installed updates, resting tasks and mutes.
+* **Phase 139:** `automonetize report --now` emails today's report right away; `--print` shows it
+  in the terminal instead.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 

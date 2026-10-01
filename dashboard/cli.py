@@ -835,6 +835,36 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_explain(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import explain_main
+
+    return explain_main([args.task] if args.task else [])
+
+
+def cmd_what_changed(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import what_changed_main
+
+    return what_changed_main(["--days", str(args.days)])
+
+
+def cmd_mute(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import mute_main
+
+    return mute_main(["--list"] if args.list or not args.source else [args.source, "--days", str(args.days)])
+
+
+def cmd_unmute(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import mute_main
+
+    return mute_main(["--unmute", args.source])
+
+
+def cmd_report(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import report_now_main
+
+    return report_now_main(["--print"] if args.print else [])
+
+
 def cmd_forecast(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import forecast_main
 
@@ -1138,6 +1168,24 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    ex = sub.add_parser("explain", help="what a task does, where it runs in the cycle, and its last runs")
+    ex.add_argument("task", nargs="?")
+    ex.set_defaults(func=cmd_explain)
+    wc = sub.add_parser("what-changed", help="settings, prices, versions, updates, resting tasks and mutes, newest first")
+    wc.add_argument("--days", type=int, default=7)
+    wc.set_defaults(func=cmd_what_changed)
+    mu = sub.add_parser("mute", help="no alert emails from one source for a while (still logged); --list shows sources")
+    mu.add_argument("source", nargs="?")
+    mu.add_argument("--days", type=float, default=7.0)
+    mu.add_argument("--list", action="store_true")
+    mu.set_defaults(func=cmd_mute)
+    um = sub.add_parser("unmute", help="alert emails from that source again")
+    um.add_argument("source")
+    um.set_defaults(func=cmd_unmute)
+    rp = sub.add_parser("report", help="today's report now: emailed to you, or --print to show it here")
+    rp.add_argument("--now", action="store_true", help="(the default) send it now")
+    rp.add_argument("--print", action="store_true")
+    rp.set_defaults(func=cmd_report)
     fc = sub.add_parser("forecast", help="where this month's revenue is heading at the recent pace")
     fc.set_defaults(func=cmd_forecast)
     ph2 = sub.add_parser("price-history", help="every price change, newest first")

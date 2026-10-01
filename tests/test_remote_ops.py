@@ -115,7 +115,7 @@ def test_commands_from_the_owner_with_the_code_run_and_reply(kit, state, config)
 def test_status_and_todo_replies(kit, state):
     assert "Today: $" in execute(kit, "status") and "Engine: running" in execute(kit, "status")
     assert "Connect marketing" in execute(kit, "todo")
-    assert "STATUS, TODO, PAUSE" in execute(kit, "help")
+    assert "STATUS, TODO, REPORT" in execute(kit, "help")
 
 
 def test_the_digest_explains_email_commands(kit, state, config, clock):

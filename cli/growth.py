@@ -173,6 +173,83 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def explain_main(argv: list[str]) -> int:
+    """`automonetize explain <task>` (Phase 135)."""
+    from agent.engine import PLAN
+    from tools.owner_views import explain
+
+    _, state, _ = _setup()
+    info = explain(state, argv[0]) if argv else None
+    if info is None:
+        say(RED, "Name a task: " + ", ".join(sorted(t for t, _ in PLAN)))
+        return 2
+    say(BOLD, f"{info['task']}  (runs {info['position']} of {info['of']} each cycle; {info['source']})")
+    print(info["purpose"] or "(no description)")
+    if info["resting_until"]:
+        say(YELLOW, f"Resting after repeated failures until {info['resting_until'][:16]}")
+    for r in info["runs"]:
+        print(f"  {r['created_at'][:16].replace('T', ' ')}  {r['status']:<8} {float(r['duration'] or 0):6.1f}s  "
+              f"{(r['detail'] or '')[:100]}")
+    if not info["runs"]:
+        print("  (hasn't run yet)")
+    return 0
+
+
+def what_changed_main(argv: list[str]) -> int:
+    """`automonetize what-changed [--days N]` (Phase 138)."""
+    from tools.owner_views import what_changed
+
+    days = int(argv[argv.index("--days") + 1]) if "--days" in argv else 7
+    _, state, _ = _setup()
+    rows = what_changed(state, days)
+    if not rows:
+        print(f"Nothing changed in the last {days} days.")
+    for when, what in rows:
+        print(f"{when[:16].replace('T', ' ')}  {what}")
+    return 0
+
+
+def mute_main(argv: list[str]) -> int:
+    """`automonetize mute <source> [--days N] | --list`, `automonetize unmute <source>` (Phase 137)."""
+    from tools.alert_mute import active, mute, sources, unmute
+
+    _, state, _ = _setup()
+    if argv[:1] == ["--unmute"]:
+        ok = unmute(state, argv[1]) if len(argv) > 1 else False
+        say(GREEN if ok else YELLOW, f"✔ {argv[1]} unmuted" if ok else "That source wasn't muted.")
+        return 0
+    if not argv or argv[0] == "--list":
+        for source, until in active(state).items():
+            print(f"muted until {until[:16].replace('T', ' ')}: {source}")
+        recent = sources(state)
+        print("Alert sources in the last 30 days: " + (", ".join(recent) if recent else "none"))
+        return 0
+    days = float(argv[argv.index("--days") + 1]) if "--days" in argv else 7.0
+    until = mute(state, argv[0], days)
+    say(GREEN, f"✔ No alert emails from {argv[0]} until {until[:16].replace('T', ' ')} UTC (still logged and in doctor).")
+    return 0
+
+
+def report_now_main(argv: list[str]) -> int:
+    """`automonetize report --now` (Phase 139): today's report, sent now (or printed with --print)."""
+    from strategies.owner_reports import OwnerReports, local_now
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+    from tools.dispatcher import Email
+
+    config, state, _ = _setup()
+    tools = build_toolkit(config, state, CircuitBreaker(1000, 1000, 1000))
+    body = OwnerReports.digest_body(tools, local_now(state, config))
+    to = config.owner_email or config.sender_email
+    if "--print" in argv or not to:
+        print(body)
+        return 0
+    tools.dispatcher.send_transactional(Email(to=to, subject="📊 AutoMonetize report (on request)", body=body, kind="delivery"),
+                                        audit_key=f"owner:report-now:{state.now()}")
+    say(GREEN, f"✔ Report sent to {to}" + (" (dry run: written to the audit log only)" if config.dry_run else ""))
+    return 0
+
+
 def forecast_main(argv: list[str]) -> int:
     """`automonetize forecast` (Phase 125)."""
     from strategies.money_insight import describe_forecast, forecast
