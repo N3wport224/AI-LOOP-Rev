@@ -9,7 +9,6 @@ before they leave the server.
 from __future__ import annotations
 
 import asyncio
-import re
 from pathlib import Path
 from typing import Any
 
@@ -17,26 +16,10 @@ from aiohttp import web
 
 from dashboard.snapshot import collect_snapshot
 from gui.context import ctx
+from tools.redact import redact
 
 ACTIONS = {"start", "pause", "resume", "kill", "restart"}
-SECRET_PATTERNS = [
-    re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{6,}"),
-    re.compile(r"\bwhsec_[A-Za-z0-9]{6,}"),
-    re.compile(r"\bSG\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}"),
-    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,})"),
-    re.compile(r"(?i)\b(password|passwd|token|secret|api[_-]?key)(\s*[=:]\s*)(\S+)"),
-    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._-]{8,}"),
-]
 TAIL_BYTES = 64 * 1024
-
-
-def redact(line: str) -> str:
-    for rx in SECRET_PATTERNS:
-        if rx.groups == 3:
-            line = rx.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", line)
-        else:
-            line = rx.sub("[redacted]", line)
-    return line
 
 
 def tail(path: Path, lines: int) -> list[str]:

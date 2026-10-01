@@ -549,9 +549,11 @@ class StateStore:
         return int(self._one("SELECT COUNT(*) AS n FROM actions")["n"])  # type: ignore[index]
 
     def log_error(self, source: str, message: str, traceback: str = "", kind: str = "error") -> int:
+        from tools.redact import redact  # Phase 134: a key echoed in an exception never reaches the database
+
         cur = self._exec(
             "INSERT INTO errors (source, kind, message, traceback, created_at) VALUES (?,?,?,?,?)",
-            (source, kind, message[:2000], traceback[:20000], self.now()),
+            (source, kind, redact(message)[:2000], redact(traceback)[:20000], self.now()),
         )
         return int(cur.lastrowid)
 

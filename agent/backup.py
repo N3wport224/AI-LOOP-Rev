@@ -10,6 +10,8 @@
 * **How:** SQLite's online backup API, so a copy taken while the agent runs is consistent.
 * **Checked:** before the daily backup, ``PRAGMA quick_check`` runs on each database. A failed check
   raises an alert with the restore command and keeps every old backup (nothing is pruned).
+* **Restore-tested** (Phase 133): once a week the newest backup is restored into a temporary
+  folder and opened (``verify_backup``); a backup that doesn't open raises an alert.
 * **Before risky changes:** self-update and self-evolution take a "pre-update" / "pre-evolution"
   backup first (``safety_backup``).
 * **Restore:** ``automonetize restore <name>`` stops the agent, keeps a "pre-restore" backup of the
@@ -147,6 +149,47 @@ def restore_files(config: Any, name: str, env_file: Path, toml_file: Path | None
     return restored
 
 
+VERIFY_DAYS = 7
+
+
+def verify_backup(config: Any, name: str | None = None) -> dict[str, Any]:
+    """Phase 133: restore the newest backup into a temporary folder and check it really opens: the
+    database passes SQLite's check and its tables can be read. A backup nobody ever restored is a hope,
+    not a backup. Never touches the live data."""
+    import tempfile
+
+    backups = list_backups(config)
+    if not backups:
+        return {"ok": False, "name": "", "detail": "no backup yet"}
+    name = name or backups[0]["name"]
+    src = backup_root(config) / name
+    with tempfile.TemporaryDirectory() as tmp:
+        counts: dict[str, int] = {}
+        for db in DBS:
+            if not (src / db).exists():
+                continue
+            copy = Path(tmp) / db
+            shutil.copy2(src / db, copy)
+            check = integrity(copy)
+            if check != "ok":
+                return {"ok": False, "name": name, "detail": f"{db}: {check}"}
+            conn = sqlite3.connect(copy)
+            try:
+                tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
+                                                     "AND name NOT LIKE 'sqlite_%'")]
+                for t in tables:
+                    counts[f"{db}:{t}"] = int(conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0])
+            except sqlite3.DatabaseError as exc:
+                return {"ok": False, "name": name, "detail": f"{db}: {exc}"}
+            finally:
+                conn.close()
+        if not counts:
+            return {"ok": False, "name": name, "detail": "the backup holds no database"}
+        orders = counts.get("agent_state.db:orders")
+    return {"ok": True, "name": name, "detail": f"{len(counts)} tables readable" + (f", {orders} orders" if orders is not None
+                                                                                   else "")}
+
+
 class Backups(Strategy):
     name = "backups"
     tasks = ("backup_data",)
@@ -179,4 +222,14 @@ class Backups(Strategy):
             state.log_error("backup", f"daily backup failed: {exc!r}", kind="alert")
             return TaskResult(True, f"backup failed: {exc!r}"[:200], {})
         state.set("last_backup_at", now.isoformat(timespec="seconds"))
+        checked = state.get("backup_verified") or {}
+        if not checked.get("at") or now - datetime.fromisoformat(checked["at"]) >= timedelta(days=VERIFY_DAYS):
+            try:
+                result = verify_backup(cfg, path.name)
+            except Exception as exc:  # noqa: BLE001
+                result = {"ok": False, "name": path.name, "detail": repr(exc)}
+            state.set("backup_verified", {**result, "at": now.isoformat(timespec="seconds")})
+            if not result["ok"]:
+                state.log_error("backup", f"the weekly restore test of backup {result['name']} failed: {result['detail']}. "
+                                          "Check the disk (Disk Utility → First Aid).", kind="alert")
         return TaskResult(True, f"backup saved to {path}" + (f"; {removed} old backup(s) removed" if removed else ""), {"path": str(path)})

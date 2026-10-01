@@ -134,7 +134,11 @@ def _open(args: argparse.Namespace) -> tuple[Config, StateStore]:
 
 
 def _setup_logging(config: Config, headless: bool, verbose: bool) -> None:
-    handlers: list[logging.Handler] = [logging.FileHandler(config.data_dir / "agent.log")]
+    from logging.handlers import RotatingFileHandler
+
+    # Phase 131: 10 MB x 4 files at most, instead of one log that grows for months.
+    handlers: list[logging.Handler] = [RotatingFileHandler(config.data_dir / "agent.log", maxBytes=10 * 1024 * 1024,
+                                                           backupCount=3)]
     if headless:
         handlers.append(logging.StreamHandler(sys.stdout))
     logging.basicConfig(

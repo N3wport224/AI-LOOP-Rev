@@ -197,6 +197,16 @@ class Doctor:
                                "System Settings → General → Date & Time → Set time automatically" if off else ""))
         if ops.get("battery_saving"):
             out.append(Finding("Power", "warn", "on battery: dataset and site builds wait for power", "plug the Mac in"))
+        from agent.task_cooldown import resting
+
+        for task, until in resting(state).items():
+            out.append(Finding(f"Task {task}", "warn", f"resting after repeated failures until {until[:16]}",
+                               "see the Logs tab for its error; it retries by itself"))
+        verified = state.get("backup_verified") or {}
+        if verified:
+            out.append(Finding("Backup restore test", "ok" if verified.get("ok") else "fail",
+                               f"{verified.get('name', '')}: {verified.get('detail', '')}",
+                               "" if verified.get("ok") else "check the disk (Disk Utility → First Aid)"))
         from tools.deps import FIX, check as check_deps, describe as describe_deps
 
         outdated = check_deps()

@@ -1646,6 +1646,23 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
 * **Phase 129, niche trends:** Monday's report compares each niche's last 14 days with the 14
   before.
 
+## Reliability (Phases 130-134)
+
+* **Phase 130, failing tasks rest:** a task that fails 3 times in a row is skipped for 24 hours, with
+  one alert naming it and its last error. Everything else keeps running.
+  * Its first success clears the count.
+  * Tasks that handle money or customers (sync, delivery, dunning, refunds, support) never rest.
+  * `doctor` lists resting tasks.
+* **Phase 131, `data/agent.log` rotates:** at most 10 MB, with 3 older copies.
+* **Phase 132, service logs are trimmed:** housekeeping cuts launchd's
+  `~/Library/Logs/automonetize/*.log` files back to their last 2 MB once they pass 20 MB.
+* **Phase 133, backups are restore-tested:** once a week the newest backup is restored into a
+  temporary folder and opened.
+  * A backup that doesn't open raises an alert.
+  * `doctor` shows the last result.
+* **Phase 134, secrets are redacted:** API keys, tokens and passwords are stripped from every
+  stored error and traceback before it reaches the database, the reports or the backups.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to

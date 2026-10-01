@@ -464,6 +464,14 @@ class Engine:
                 self.state.log_action(cycle, hyp["id"], name, "skipped", "on battery: waits for power", 0.0)
                 outcome.update(status="skipped", summary="on battery")
                 return outcome
+            from agent.task_cooldown import cooling
+
+            until = cooling(self.state, name)
+            if until:
+                self.state.finish_task(task["id"], "done", f"skipped: resting until {until[:16]}", 0)
+                self.state.log_action(cycle, hyp["id"], name, "skipped", f"resting after repeated failures until {until[:16]}", 0.0)
+                outcome.update(status="skipped", summary="resting")
+                return outcome
         try:
             result = retry_with_adjustment(
                 attempt, dict(task["payload"]), attempts=max_attempts, adjust=adjust, on_error=on_error,
@@ -485,6 +493,10 @@ class Engine:
             return outcome
         except Exception as exc:  # OperationalFailure or a non-retryable policy violation
             detail = str(exc)
+            if getattr(self, "_full_plan", False):
+                from agent.task_cooldown import record as record_failure
+
+                record_failure(self.state, name, False, detail)
             self.state.finish_task(task["id"], "failed", detail, attempts["n"])
             self.state.log_error(f"task:{name}", detail, kind="operational_failure")
             self.state.log_action(cycle, hyp["id"], name, "failed", detail, time.monotonic() - started)
@@ -494,6 +506,10 @@ class Engine:
 
         self.breaker.record_success()
         status = "ok" if result.ok else "failed"
+        if getattr(self, "_full_plan", False):
+            from agent.task_cooldown import record as record_outcome
+
+            record_outcome(self.state, name, result.ok, result.summary)
         self.state.finish_task(task["id"], "done" if result.ok else "failed", result.summary, attempts["n"])
         self.state.log_action(cycle, hyp["id"], name, status, result.summary, time.monotonic() - started)
         outcome.update(

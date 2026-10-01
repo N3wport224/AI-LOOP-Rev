@@ -9,6 +9,8 @@
   (datasets already built keep their copy), and free-sample sign-ups that never confirmed their
   address within ``unconfirmed_signup_days`` (30) are deleted with their send history: data
   nobody needs isn't kept.
+* **Service logs** (Phase 132): launchd's ``~/Library/Logs/automonetize/*.log`` files over 20 MB
+  keep their last 2 MB; ``data/agent.log`` rotates by itself at 10 MB (Phase 131).
 * **Email audit log:** once ``dispatched_audit.log`` passes 5 MB it is gzipped to
   ``dispatched_audit-YYYYMMDD.log.gz``; archives older than a year are deleted.
 * **Old dataset versions:** the newest ``keep_versions`` (3) versions of each dataset are kept;
@@ -39,6 +41,32 @@ ARCHIVE_KEEP_DAYS = 365
 CONTACT_KEEP_DAYS = 400
 WEBHOOK_KEEP_DAYS = 90
 VACUUM_DAYS = 30
+LAUNCHD_LOG_MAX = 20 * 1024 * 1024
+LAUNCHD_LOG_KEEP = 2 * 1024 * 1024
+
+
+def trim_launchd_logs(log_dir: Path | None = None) -> int:
+    """Phase 132: launchd appends the agent's stdout/stderr to ~/Library/Logs/automonetize forever.
+    A file over 20 MB keeps only its last 2 MB (rewritten in place: launchd's append handle keeps
+    working). Returns how many files were trimmed."""
+    log_dir = log_dir or Path.home() / "Library" / "Logs" / "automonetize"
+    trimmed = 0
+    for path in sorted(log_dir.glob("*.log")) if log_dir.is_dir() else []:
+        try:
+            size = path.stat().st_size
+            if size <= LAUNCHD_LOG_MAX:
+                continue
+            with open(path, "r+b") as fh:
+                fh.seek(size - LAUNCHD_LOG_KEEP)
+                fh.readline()  # start at a whole line
+                tail = fh.read()
+                fh.seek(0)
+                fh.write(b"[older lines trimmed by housekeeping]\n" + tail)
+                fh.truncate()
+            trimmed += 1
+        except OSError:
+            continue
+    return trimmed
 
 
 def maybe_vacuum(state: Any, db_path: Path, free_bytes: int | None = None) -> int:
@@ -160,11 +188,12 @@ class Housekeeping(Strategy):
             removed = prune_versions(state, tools.files, int(cfg.keep_versions))
             state._exec("PRAGMA optimize")
             reclaimed = maybe_vacuum(state, Path(state.db_path))
+            trimmed = trim_launchd_logs()
         except Exception as exc:  # noqa: BLE001 - tidying must never stop the agent
             state.log_error("housekeeping", f"housekeeping failed: {exc!r}")
             return TaskResult(True, f"housekeeping failed: {exc!r}"[:200], {})
         record = {"at": state.now(), "rows": pruned, "audit_rotated": rotated, "old_versions": removed,
-                  "vacuum_reclaimed_bytes": reclaimed}
+                  "vacuum_reclaimed_bytes": reclaimed, "logs_trimmed": trimmed}
         state.set(KEY, record)
         parts = [f"{n} {k}" for k, n in pruned.items() if n] + ([f"{len(removed)} old version file(s)"] if removed else []) \
             + (["audit log archived"] if rotated else []) \
