@@ -1573,6 +1573,27 @@ Two changes elsewhere:
 
   An existing install doesn't celebrate past milestones.
 
+## Hygiene (Phases 115-119)
+
+* **Phase 115, libraries:** `automonetize deps` (also run by `doctor` and the Health tab) checks
+  that the installed packages meet `pyproject.toml`. That catches a `git pull` without a
+  `pip install`. The fix is always `pip install -e '.[dev]'`.
+* **Phase 116, every setting documented:** `automonetize config-docs [--markdown]` lists all ~250
+  settings, with defaults and descriptions, read from `agent/config.py` itself. Every setting now has
+  a description.
+* **Phase 117, data retention:** housekeeping deletes old data nobody needs:
+  * job postings not seen for `lead_keep_days` (365);
+  * free-sample sign-ups that never confirmed within `unconfirmed_signup_days` (30).
+* **Phase 118, accessibility:** the site audit also flags:
+  * pages without `lang`;
+  * unlabelled form fields;
+  * links and buttons with no text.
+* **Phase 119, consistency checks:** `tests/test_consistency.py` checks that these agree:
+  * every public route is exposed by the tunnel;
+  * every planned task has a handler, and every handler is planned;
+  * every CLI command is in this README;
+  * every setting is explained.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to
@@ -1919,7 +1940,12 @@ automonetize run [--once|--cycles N] [--interval S] [--headless]
 automonetize site | syndicate [--drafts] | pricing status|run
 automonetize analytics [--period=30d] [--json]       # revenue by channel/niche/tier, MRR, churn, net/day
 automonetize subscriptions list [--status S] | deliver
-automonetize dashboard [--watch] | status [--json] | hypotheses
+automonetize dashboard [--watch] | status [--json]
+automonetize hypotheses                   # every niche idea tried and how it went
+automonetize timings [--days N]           # how long each task takes
+automonetize deps                         # are the installed libraries new enough?
+automonetize config-docs [--markdown]     # every setting, its default and what it does
+automonetize quiet on [--days N] | off    # hold marketing email (purchases always go out)
 automonetize outreach list [--full] | approve ID… | reject ID… | export | mark-sent ID…
 automonetize dispatch [--check]           # send approved outreach now
 automonetize orders list [--status S] | deliver ORDER ASSET [--email E]

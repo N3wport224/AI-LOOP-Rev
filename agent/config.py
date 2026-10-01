@@ -22,8 +22,8 @@ ENV_PREFIX = "AUTOMONETIZE_"
 
 @dataclass
 class Config:
-    data_dir: Path = Path("data")
-    db_filename: str = "agent_state.db"
+    data_dir: Path = Path("data")        # where the database, datasets, site and logs live
+    db_filename: str = "agent_state.db"  # SQLite file inside data_dir
 
     # Loop
     interval_seconds: int = 3600
@@ -32,29 +32,29 @@ class Config:
     # Wall-clock floor before a zero-traction pivot. Iteration counts alone gave a product only
     # 24 hours at hourly cycles: less than one pricing window and one syndication slot.
     min_hypothesis_days: float = 10
-    max_hypothesis_generations: int = 3
+    max_hypothesis_generations: int = 3  # how many times a niche idea may be re-tried with new parameters
 
     # Circuit breakers
     max_actions_per_cycle: int = 60         # the engine raises it to len(PLAN) + 10 if set lower
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
-    task_retry_attempts: int = 3
+    task_retry_attempts: int = 3         # tries per task per cycle before it counts as failed
 
     # HTTP
-    http_rate_per_minute: float = 20.0
-    http_timeout: float = 15.0
-    http_backoff_seconds: float = 1.0
-    respect_robots_txt: bool = True
+    http_rate_per_minute: float = 20.0   # requests per minute to any one host (politeness limit)
+    http_timeout: float = 15.0           # seconds before an HTTP request gives up
+    http_backoff_seconds: float = 1.0    # first wait between HTTP retries (doubles each time)
+    respect_robots_txt: bool = True      # never fetch a page a site's robots.txt disallows
 
     # Shell sandbox
-    shell_allowlist: list[str] = field(default_factory=lambda: ["git", "python3", "ls", "cat", "echo", "zip"])
-    shell_timeout: float = 30.0
+    shell_allowlist: list[str] = field(default_factory=lambda: ["git", "python3", "ls", "cat", "echo", "zip"]) # the only programs the agent may run
+    shell_timeout: float = 30.0          # seconds before a shell command is stopped
 
     # Revenue
     daily_target_cents: int = 1000
-    gumroad_access_token: str = ""
-    platform_fee_pct: float = 10.0
-    platform_fee_fixed_cents: int = 50
+    gumroad_access_token: str = ""       # secret: Gumroad API token (optional second storefront)
+    platform_fee_pct: float = 10.0       # marketplace fee % used to estimate net revenue
+    platform_fee_fixed_cents: int = 50   # marketplace fixed fee per sale (cents)
 
     # Strategies
     lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring"])
@@ -66,11 +66,11 @@ class Config:
     # Outreach (drafts only, never sent automatically)
     sender_name: str = ""
     sender_email: str = ""
-    sender_skills: list[str] = field(default_factory=list)
-    outreach_offer: str = "short-term contract help"
-    outreach_daily_cap: int = 20
-    outreach_min_score: float = 0.6
-    outreach_cooldown_days: int = 30
+    sender_skills: list[str] = field(default_factory=list) # your skills, quoted in reviewed outreach drafts
+    outreach_offer: str = "short-term contract help" # what reviewed outreach drafts offer
+    outreach_daily_cap: int = 20         # most outreach emails per day (each one needs your OK)
+    outreach_min_score: float = 0.6      # minimum lead fit (0-1) before a draft is written
+    outreach_cooldown_days: int = 30     # days before the same company can be contacted again
 
     # Hypothesis scoring
     signal_window_iterations: int = 12   # cycles with zero views AND zero sales before a pivot
@@ -82,17 +82,17 @@ class Config:
     # Storefronts ("auto" = stripe if a key is set, else lemonsqueezy if configured, else gumroad staging)
     storefront_provider: str = "auto"
     price_tiers: list[list[int]] = field(default_factory=lambda: [[0, 900], [25, 1400], [75, 1900]])
-    currency: str = "usd"
-    stripe_secret_key: str = ""
+    currency: str = "usd"                # currency of every price (ISO code)
+    stripe_secret_key: str = ""          # secret: Stripe API key (sk_live_/rk_live_ for real sales)
     stripe_payment_links: dict[str, str] = field(default_factory=dict)  # niche -> pre-made Payment Link URL
     stripe_fee_pct: float = 2.9
     stripe_fee_fixed_cents: int = 30
-    lemonsqueezy_api_key: str = ""
+    lemonsqueezy_api_key: str = ""       # secret: Lemon Squeezy API key (optional storefront)
     lemonsqueezy_store_id: str = ""
     lemonsqueezy_variant_id: str = ""                                  # shared "dataset" variant
     lemonsqueezy_variant_map: dict[str, str] = field(default_factory=dict)  # niche -> dedicated variant id
-    lemonsqueezy_fee_pct: float = 5.0
-    lemonsqueezy_fee_fixed_cents: int = 50
+    lemonsqueezy_fee_pct: float = 5.0    # Lemon Squeezy fee % used to estimate net revenue
+    lemonsqueezy_fee_fixed_cents: int = 50 # Lemon Squeezy fixed fee per sale (cents)
     allow_manual_fulfillment: bool = False  # publish checkouts even when the agent cannot email the file
 
     # GitHub (showcase directory, gists, Pages landers, traffic-based view tracking)
@@ -100,7 +100,7 @@ class Config:
     github_showcase_repo: str = ""   # owner/repo; samples go to showcase/<niche>/
     github_showcase_mode: str = "repo"  # repo | gist
     github_pages_repo: str = ""      # owner/repo serving GitHub Pages; landers go to docs/<niche>/
-    github_branch: str = "main"
+    github_branch: str = "main"          # branch for GitHub commits (showcases; Pages unless github_pages_branch)
     pages_base_url: str = ""         # e.g. https://you.github.io/datasets
 
     # Email dispatch (cold outreach needs approval; everything is dry-run until dry_run = false)
@@ -108,13 +108,13 @@ class Config:
     email_backend: str = ""          # smtp | sendgrid | postmark
     outreach_email_backend: str = "smtp"
     smtp_host: str = ""
-    smtp_port: int = 587
+    smtp_port: int = 587                 # 587 (STARTTLS) or 465 (TLS)
     smtp_username: str = ""
-    smtp_password: str = ""
-    sendgrid_api_key: str = ""
-    postmark_server_token: str = ""
+    smtp_password: str = ""              # secret: SMTP password (Gmail: an app password)
+    sendgrid_api_key: str = ""           # secret: SendGrid key (with email_backend = "sendgrid")
+    postmark_server_token: str = ""      # secret: Postmark token (with email_backend = "postmark")
     sender_postal_address: str = ""  # required by CAN-SPAM for live commercial email
-    unsubscribe_email: str = ""
+    unsubscribe_email: str = ""          # mailbox for unsubscribe replies (default: sender_email)
     unsubscribe_url: str = ""
     warmup_start_per_day: int = 5
     warmup_step_per_week: int = 5
@@ -127,19 +127,19 @@ class Config:
     )
     imap_host: str = ""
     imap_username: str = ""
-    imap_password: str = ""
+    imap_password: str = ""              # secret: IMAP password for reading replies (default: smtp_password)
 
     # Stripe webhooks (real-time fulfilment)
     stripe_webhook_secret: str = ""
     webhook_host: str = "127.0.0.1"
     webhook_port: int = 8443
     webhook_path: str = "/webhook"
-    webhook_tolerance_seconds: int = 300
+    webhook_tolerance_seconds: int = 300 # oldest Stripe webhook signature accepted
 
     # Resilience
     network_check_hosts: list[str] = field(default_factory=lambda: ["api.stripe.com:443", "api.github.com:443"])
-    supervisor_max_restarts: int = 5
-    supervisor_restart_window_seconds: int = 600
+    supervisor_max_restarts: int = 5     # worker crashes allowed within the window before it's given up
+    supervisor_restart_window_seconds: int = 600 # window for counting crashes
     shutdown_timeout_seconds: float = 60.0
     # Systemic breaker trips quarantine the engine instead of stopping it for good: an alert, a
     # cooldown (doubling on repeat trips within 24h, capped), then a self-diagnostic and resume.
@@ -166,8 +166,8 @@ class Config:
     github_pages_branch: str = ""            # "" = github_branch; e.g. "gh-pages"
     github_pages_dir: str = "docs"           # "" to publish at the branch root
     site_title: str = "Tech Stack Intel"
-    devto_api_key: str = ""
-    hashnode_token: str = ""
+    devto_api_key: str = ""              # secret: Dev.to key for articles
+    hashnode_token: str = ""             # secret: Hashnode token for articles
     hashnode_publication_id: str = ""
     github_discussions_repo: str = ""        # owner/repo with Discussions enabled
     github_discussions_category: str = "Announcements"
@@ -182,7 +182,7 @@ class Config:
     subscription_price_cents: int = 1000     # 0 disables the subscription tier
     subscription_interval: str = "month"     # month | week
     subscription_delivery_weekday: int = 0   # 0 = Monday
-    subscription_delivery_hour: int = 8
+    subscription_delivery_hour: int = 8  # hour (subscription_timezone) the weekly updates go out
     subscription_timezone: str = "UTC"
 
     # Free lead magnet (10-record sample by email, then a Monday "Weekly Tech Pulse")
@@ -333,6 +333,8 @@ class Config:
 
     # Housekeeping and disk (Phases 47-48)
     log_keep_days: int = 90                  # actions kept this long, errors twice as long
+    lead_keep_days: int = 365                # job postings not seen for this long are deleted
+    unconfirmed_signup_days: int = 30        # free sign-ups that never confirmed are deleted after this
     keep_versions: int = 3                   # dataset versions kept per niche (sold ones always kept)
     disk_warn_gb: float = 2.0
     disk_critical_gb: float = 0.5            # below this, housekeeping runs at once and builds pause

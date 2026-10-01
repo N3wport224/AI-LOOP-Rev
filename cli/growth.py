@@ -173,6 +173,27 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def deps_main(argv: list[str]) -> int:
+    """`automonetize deps` (Phase 115)."""
+    from tools.deps import FIX, check, describe, requirements
+
+    problems = check()
+    if problems:
+        say(YELLOW, f"Out of date: {describe(problems)}")
+        print(f"Fix: {FIX}")
+        return 1
+    say(GREEN, f"✔ All {len(requirements())} requirements are installed and new enough.")
+    return 0
+
+
+def config_docs_main(argv: list[str]) -> int:
+    """`automonetize config-docs [--markdown]` (Phase 116)."""
+    from tools.config_docs import as_markdown, as_text, settings
+
+    print(as_markdown(settings()) if "--markdown" in argv else as_text(settings()))
+    return 0
+
+
 def timings_main(argv: list[str]) -> int:
     """`automonetize timings [--days N]` (Phase 113)."""
     from tools.timings import table, timings

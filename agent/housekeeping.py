@@ -5,6 +5,10 @@
 * **Logs:** actions older than ``log_keep_days`` (90) and errors older than twice that are deleted
   (alerts are kept as long as errors). Handled webhook events older than 90 days, and the contact
   log after 400 days (the offer rules only look back a year), go too.
+* **Data retention** (Phase 117): job postings not seen for ``lead_keep_days`` (365) are deleted
+  (datasets already built keep their copy), and free-sample sign-ups that never confirmed their
+  address within ``unconfirmed_signup_days`` (30) are deleted with their send history: data
+  nobody needs isn't kept.
 * **Email audit log:** once ``dispatched_audit.log`` passes 5 MB it is gzipped to
   ``dispatched_audit-YYYYMMDD.log.gz``; archives older than a year are deleted.
 * **Old dataset versions:** the newest ``keep_versions`` (3) versions of each dataset are kept;
@@ -69,7 +73,18 @@ def prune_logs(state: Any, cfg: Any) -> dict[str, int]:
                                       (before(WEBHOOK_KEEP_DAYS),)).rowcount,
         "contact log": state._exec("DELETE FROM contact_log WHERE sent_at < ?", (before(CONTACT_KEEP_DAYS),)).rowcount,
         "download links": download_links.prune(state),
+        "old job postings": state._exec("DELETE FROM leads WHERE last_seen < ?", (before(int(cfg.lead_keep_days)),)).rowcount,
+        "unconfirmed sign-ups": _prune_unconfirmed(state, before(int(cfg.unconfirmed_signup_days))),
     }
+
+
+def _prune_unconfirmed(state: Any, cutoff: str) -> int:
+    ids = [r["id"] for r in state._all("SELECT id FROM subscribers WHERE tier = 'free' AND subscription_status = 'pending' "
+                                       "AND started_at < ?", (cutoff,))]
+    for sid in ids:
+        state._exec("DELETE FROM subscription_deliveries WHERE subscriber_id = ?", (sid,))
+        state._exec("DELETE FROM subscribers WHERE id = ?", (sid,))
+    return len(ids)
 
 
 def rotate_audit(cfg: Any, now: datetime) -> int:

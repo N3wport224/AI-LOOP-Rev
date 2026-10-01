@@ -831,6 +831,18 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_deps(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import deps_main
+
+    return deps_main([])
+
+
+def cmd_config_docs(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import config_docs_main
+
+    return config_docs_main(["--markdown"] if args.markdown else [])
+
+
 def cmd_timings(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import timings_main
 
@@ -1110,6 +1122,11 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    de = sub.add_parser("deps", help="check the installed libraries are new enough for this version")
+    de.set_defaults(func=cmd_deps)
+    cd = sub.add_parser("config-docs", help="every setting with its default and what it does, read from the code")
+    cd.add_argument("--markdown", action="store_true", help="as a Markdown table")
+    cd.set_defaults(func=cmd_config_docs)
     qu.set_defaults(func=cmd_quiet)
     co = sub.add_parser("commands", help="control the agent by email from your phone: shows the command code")
     co.add_argument("--new", action="store_true", help="replace the code (the old one stops working)")

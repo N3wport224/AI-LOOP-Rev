@@ -197,6 +197,11 @@ class Doctor:
                                "System Settings → General → Date & Time → Set time automatically" if off else ""))
         if ops.get("battery_saving"):
             out.append(Finding("Power", "warn", "on battery: dataset and site builds wait for power", "plug the Mac in"))
+        from tools.deps import FIX, check as check_deps, describe as describe_deps
+
+        outdated = check_deps()
+        out.append(Finding("Libraries", "warn", describe_deps(outdated), FIX) if outdated else
+                   Finding("Libraries", "ok", "all requirements installed"))
         from agent.config_check import problems as config_problems
 
         for p in config_problems(cfg, ROOT / "automonetize.toml"):
@@ -213,10 +218,11 @@ class Doctor:
                                "if you must collect sales tax/VAT where you or your buyers are, set up Stripe → Tax; "
                                "the agent then applies it to every link by itself"))
         site = state.get("site_audit") or {}
-        if site.get("broken_links") or site.get("seo"):
-            issues = (site.get("broken_links") or []) + (site.get("seo") or [])
+        if site.get("broken_links") or site.get("seo") or site.get("a11y"):
+            issues = (site.get("broken_links") or []) + (site.get("seo") or []) + (site.get("a11y") or [])
             out.append(Finding("Website", "warn", f"{len(site.get('broken_links') or [])} broken link(s), "
-                               f"{len(site.get('seo') or [])} SEO note(s); e.g. {issues[0]}", "usually fixed by the next update"))
+                               f"{len(site.get('seo') or [])} SEO note(s), {len(site.get('a11y') or [])} accessibility "
+                               f"note(s); e.g. {issues[0]}", "usually fixed by the next update"))
         sec = state.get("security_audit") or {}
         for f in sec.get("findings", []):
             out.append(Finding(f"Security: {f['name']}", "fail" if f["status"] == "fail" else "warn", f["detail"], f["fix"]))
