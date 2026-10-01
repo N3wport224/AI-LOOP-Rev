@@ -72,3 +72,17 @@ def test_cli_parses():
 
     args = build_parser().parse_args(["catalog-import", "x.zip", "--check"])
     assert args.file == "x.zip" and args.check
+
+
+def test_non_https_checkout_links_are_refused(tmp_path):
+    import hashlib
+
+    from agent.state import StateStore
+
+    body = {"version": 1, "products": [{"slug": "x", "asset": {"checkout_url": "javascript:alert(1)"}}]}
+    good = {"catalog.json": json.dumps(body).encode()}
+    sums = "".join(f"{hashlib.sha256(b).hexdigest()}  {n}\n" for n, b in good.items()).encode()
+    fresh = StateStore(tmp_path / "f.db")
+    with pytest.raises(ValueError, match="isn't https"):
+        cp.import_bundle(fresh, SandboxedFileIO(tmp_path / "d"), bundle({**good, "SHA256SUMS": sums}))
+    fresh.close()

@@ -35,12 +35,15 @@ FEED = "feeds/new-employers.xml"
 
 
 # ------------------------------------------------------------------ Phase 265
-def new_employers(leads: list[dict[str, Any]], now: datetime, days: int = NEW_DAYS) -> dict[str, dict[str, Any]]:
+def new_employers(leads: list[dict[str, Any]], now: datetime, days: int = NEW_DAYS,
+                  excluded: set[str] | None = None) -> dict[str, dict[str, Any]]:
     """company key → {"name", "first", "postings": [...]}; empty while the data is too young."""
     from strategies.market_trends import _when
     from strategies.posting_quality import company_key, is_agency
 
     dated = [(lead, _when(lead)) for lead in leads if lead.get("company")]
+    if excluded:  # companies that asked to be left out aren't named here either (Phase 287)
+        dated = [(lead, t) for lead, t in dated if company_key(lead["company"]) not in excluded]
     dated = [(lead, t) for lead, t in dated if t is not None]
     if not dated or now - min(t for _, t in dated) < timedelta(days=HISTORY_DAYS):
         return {}
@@ -57,13 +60,19 @@ def new_employers(leads: list[dict[str, Any]], now: datetime, days: int = NEW_DA
     return out
 
 
+def _excluded(state: Any) -> set[str]:
+    from strategies.opt_out import excluded
+
+    return excluded(state)
+
+
 # ------------------------------------------------------------------ Phase 266
 def candidates(tagged: list[tuple[dict[str, Any], dict[str, Any]]], cfg: Any, state: Any) -> list[dict[str, Any]]:
     from strategies.product_factory import _slug, label
 
     from strategies.pool_cache import pool
 
-    fresh = new_employers(pool(state), state.clock())  # the whole history, not just recent postings
+    fresh = new_employers(pool(state), state.clock(), excluded=_excluded(state))  # the whole history, not just recent postings
     if not fresh:
         return []
     current = {str(lead.get("dedupe_key")) for lead, _ in tagged}
@@ -96,7 +105,7 @@ def _rows(state: Any) -> list[dict[str, Any]]:
     from strategies.pool_cache import pool
     from strategies.product_factory import facets, label
 
-    fresh = new_employers(pool(state), state.clock())
+    fresh = new_employers(pool(state), state.clock(), excluded=_excluded(state))
     out = []
     for e in fresh.values():
         techs = sorted({t for p in e["postings"] for t in facets(p)["techs"]})

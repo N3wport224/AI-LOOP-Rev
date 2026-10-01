@@ -14,7 +14,8 @@ refreshes get them:
   same company, title and location from different boards) is kept once: the copy with a salary, or
   the newer one.
 * **Phase 294, dead links** (``link_checks``): once a day the factory checks ``LINK_CHECKS_PER_DAY`` posting links
-  (HEAD request, robots.txt respected, within the API budget). A link that answers 404 or 410 marks
+  (HEAD request, robots.txt respected, within the API budget, public web addresses only: never
+  localhost, a private network or a bare IP). A link that answers 404 or 410 marks
   its posting as gone, and it's left out from then on.
 """
 
@@ -127,6 +128,26 @@ def clean(state: Any, leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 # ------------------------------------------------------------------ Phase 294
+def public_url(url: str) -> bool:
+    """Only public web addresses are checked: never localhost, a private network or a bare IP."""
+    import ipaddress
+
+    try:
+        parts = urllib.parse.urlsplit(str(url or ""))
+    except ValueError:
+        return False
+    host = (parts.hostname or "").lower()
+    if parts.scheme not in ("http", "https") or not host or "." not in host:
+        return False
+    if host == "localhost" or host.endswith((".local", ".localhost", ".internal", ".lan", ".home", ".corp")):
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False  # a bare IP address: job postings use hostnames
+    except ValueError:
+        return True
+
+
 def check_links(tools: Any) -> int:
     """Daily: HEAD a few posting links used by products on sale. Returns how many were dead."""
     from strategies.b2b_lead_aggregator import POOL_NICHE
@@ -143,7 +164,8 @@ def check_links(tools: Any) -> int:
     checked = set(state.get(CHECKED_URLS) or [])
     dead = set(state.get(DEAD) or [])
     todo = [(lead["dedupe_key"], lead["url"]) for lead in state.leads_for_niche(POOL_NICHE)
-            if lead.get("url") and lead["url"] not in checked and str(lead["dedupe_key"]) not in dead][:LINK_CHECKS_PER_DAY]
+            if lead.get("url") and public_url(lead["url"]) and lead["url"] not in checked
+            and str(lead["dedupe_key"]) not in dead][:LINK_CHECKS_PER_DAY]
     found = 0
     for key, url in todo:
         checked.add(url)

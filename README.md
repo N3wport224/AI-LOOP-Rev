@@ -2571,6 +2571,35 @@ there's something worth making. With `factory_adaptive` on, the factory may go f
 * **Phase 369, `automonetize bench`:** makes products from synthetic postings in a throwaway sandbox
   and prints the timings. Nothing is sent.
 
+### Audit after Phase 369
+
+This review covered:
+* static analysis with security rules on everything added since Phase 244;
+* a review of the new public surface:
+  * the opt-out and search-log endpoints, the request form and the widget;
+  * the status, new-employers, comparison and catalog pages;
+  * chat notifications, the link checker and catalog import.
+* both test suites (Python 3.11 and 3.13, 1,174 tests) and the simulator (14 steps);
+* a load test (`automonetize bench`): 100 products made back to back from 5,000 postings across
+  every product type.
+
+Fixed:
+* **The agent's public server could fail to start.** The form guard's aiohttp key was created on first
+  use, which crashes when the server is built in its own thread (as the webhook listener is). It is
+  now created at import, and a test builds the app in a thread.
+* **New employers ignored opt-outs:** the new-employers page and feed could still name a company that
+  asked to be left out.
+* **The dead-link checker could probe private addresses:** a posting's link could point at localhost,
+  a private network or a bare IP address, and it would have sent a HEAD request there. Only public web
+  addresses are checked now.
+* **Catalog import trusted checkout links:** a non-`https` checkout link in an imported catalog is now
+  refused.
+* **The abuse guard's memory wasn't fully bounded:** its strike and block lists could grow during a
+  flood from many networks.
+* **Factory speed:** technology slices now only scan their own technology's postings, and
+  company-name matching is cached. A product now takes 0.83 seconds on average at 5,000 postings
+  (1.14 seconds before; slowest 1.12 seconds, down from 1.54).
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

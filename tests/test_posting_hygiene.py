@@ -60,3 +60,11 @@ def test_dead_links_are_left_out(toolkit, state, config, clock, transport):
     config.link_checks = False
     clock.advance(hours=25)
     assert ph.check_links(toolkit) == 0
+
+
+def test_only_public_addresses_are_checked():
+    for url in ("https://jobs.example.com/1", "http://careers.acme.io/x"):
+        assert ph.public_url(url), url
+    for url in ("http://localhost/x", "http://127.0.0.1/admin", "http://192.168.1.1/", "http://[::1]/", "http://router.lan/",
+                "http://printer.local/", "ftp://jobs.example/1", "http://intranet/", "javascript:alert(1)"):
+        assert not ph.public_url(url), url

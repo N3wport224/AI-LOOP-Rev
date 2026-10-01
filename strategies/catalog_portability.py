@@ -12,8 +12,8 @@ Mac or a second installation selling the same products:
   under ``assets/`` and adds the products that aren't there yet, keeping their checkout links (the same
   Stripe account keeps selling them). Products already present are left alone.
 * **Phase 343, check first:** ``--check`` verifies and lists what would be imported, writing nothing.
-* **Phase 344, safe to open:** a bundle with a path outside ``assets/`` (or ``..``), a bad checksum, or
-  more than ``MAX_BYTES`` is refused before anything is written.
+* **Phase 344, safe to open:** a bundle with a path outside ``assets/`` (or ``..``), a bad checksum, a
+  checkout link that isn't ``https``, or more than ``MAX_BYTES`` is refused before anything is written.
 """
 
 from __future__ import annotations
@@ -106,6 +106,10 @@ def import_bundle(state: Any, files: Any, data: bytes, dry_run: bool = False) ->
     from strategies.product_factory import KIND, _hypothesis, ensure
 
     body = check(data)
+    for p in body.get("products") or []:
+        url = str((p.get("asset") or {}).get("checkout_url") or "")
+        if url and not url.startswith("https://"):
+            raise ValueError(f"refused: {p.get('slug')} has a checkout link that isn't https")
     ensure(state)
     existing = {r["slug"] for r in state._all("SELECT slug FROM factory_products")}
     new = [p for p in body["products"] if p["slug"] not in existing]

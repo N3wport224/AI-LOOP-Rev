@@ -43,3 +43,14 @@ def test_page_feed_and_weekly_line(state, config, clock):
     assert len(root.findall("./channel/item")) == 12
     assert kn.weekly_line(state).startswith("12 companies started hiring this week, e.g. Newco")
     assert pf.fresh_leads(state, 90)  # unaffected
+
+
+def test_opted_out_companies_are_not_named(state, config, clock):
+    from strategies import opt_out as oo
+
+    history(state, clock)
+    postings(state, clock, 12, ["rust"], prefix="newco", days_ago=2)
+    oo.record(state, "Newco 0", "jo@newco0.example")
+    state.set(oo.EXCLUDED, [__import__("strategies.posting_quality", fromlist=["x"]).company_key("Newco 0")])
+    files = kn.site_files(state, config, lambda t, b, d: b)
+    assert "<b>Newco 0</b>" not in files[kn.PAGE] and "<b>Newco 1</b>" in files[kn.PAGE]

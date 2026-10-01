@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -51,6 +52,11 @@ def drop_unlisted(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 # ------------------------------------------------------------------ Phase 231
 def company_key(name: Any) -> str:
+    return _company_key(str(name or ""))
+
+
+@lru_cache(maxsize=100_000)
+def _company_key(name: str) -> str:
     words = re.sub(r"[^\w\s&]", " ", str(name or "").lower()).split()
     while len(words) > 1 and words[-1] in SUFFIXES:
         words.pop()

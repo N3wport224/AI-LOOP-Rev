@@ -146,13 +146,17 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
 
     rising = rising_techs(state)  # Phase 223
     out = []
+    by_tech: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for lead, f in tagged:  # each slice only looks at its technology's postings, not all of them
+        for t in f["techs"]:
+            by_tech.setdefault(t, []).append((lead, f))
     for tech, n in tech_counts.items():
         if n < int(cfg.factory_min_rows):
             continue
         for region in ("", "us", "europe", "remote"):
             for level in ("", "senior", "junior"):
                 spec = slice_spec(tech, region, level)
-                rows = [lead for lead, f in tagged if matches(f, spec["filters"])]
+                rows = [lead for lead, f in by_tech.get(tech, []) if matches(f, spec["filters"])]
                 companies = {company_key(r.get("company")) for r in rows if r.get("company")}  # Phase 231
                 if len(rows) < int(cfg.factory_min_rows) or len(companies) < int(cfg.factory_min_companies):
                     continue

@@ -81,3 +81,31 @@ def test_doctor_shows_todays_counts(config, state):
     ag.Guard(state).check("5.5.5.5", {"website": "x"}, ())
     findings = {f.name: f for f in Doctor(config, state, Ctl(pid=1), run=runner({}), system="Linux").checks(deep=False)}
     assert findings["Public forms"].detail == "turned away today: 1 honeypot"
+
+
+def test_memory_stays_bounded_under_a_flood(state, monkeypatch):
+    monkeypatch.setattr(ag, "MAX_TRACKED", 50)
+    monkeypatch.setattr(ag, "BLOCK_AFTER", 1)
+    clock = Clock()
+    g = ag.Guard(None, clock)
+    for i in range(500):
+        g.check(f"10.0.{i // 250}.{i % 250}", {"website": "bot"}, ())
+    assert len(g._blocked) <= 50 and len(g._strikes) <= 51
+
+
+def test_the_app_builds_in_a_server_thread(kit):
+    """The webhook listener builds its app in a thread: nothing in it may need module-level code on the stack."""
+    import threading
+
+    errors = []
+
+    def build():
+        try:
+            build_app(WebhookProcessor(kit, use_sdk=False), power=PowerManager(NullBackend()))
+        except Exception as exc:  # noqa: BLE001 - recorded for the assertion
+            errors.append(exc)
+
+    t = threading.Thread(target=build)
+    t.start()
+    t.join(10)
+    assert errors == []

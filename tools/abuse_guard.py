@@ -24,7 +24,10 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Callable
 
+from aiohttp import web
+
 GLOBAL_PER_HOUR = 20
+MAX_TRACKED = 10_000
 BLOCK_AFTER = 10
 BLOCK_HOURS = 24
 STATS = "abuse_stats"
@@ -67,6 +70,17 @@ class Guard:
             q.append(now)
             if len(q) >= BLOCK_AFTER:
                 self._blocked[ip] = now + BLOCK_HOURS * 3600
+            if len(self._strikes) > MAX_TRACKED:  # bound memory under a flood from many networks
+                for key in [k for k, v in self._strikes.items() if not self._window(v, now)][: MAX_TRACKED // 2]:
+                    del self._strikes[key]
+                if len(self._strikes) > MAX_TRACKED:  # all recent: keep the most recent half
+                    keep = sorted(self._strikes, key=lambda k: self._strikes[k][-1], reverse=True)[: MAX_TRACKED // 2]
+                    self._strikes = defaultdict(deque, {k: self._strikes[k] for k in keep})
+            if len(self._blocked) > MAX_TRACKED:
+                for key in [k for k, until in self._blocked.items() if until <= now][: MAX_TRACKED // 2]:
+                    del self._blocked[key]
+                while len(self._blocked) > MAX_TRACKED:  # still full: the oldest blocks go first
+                    self._blocked.pop(min(self._blocked, key=self._blocked.get))
         self._count(reason)
 
     def check(self, ip: str, data: dict[str, Any], text_fields: tuple[str, ...] = ()) -> str | None:
@@ -83,8 +97,8 @@ class Guard:
                 busy = len(q) >= GLOBAL_PER_HOUR
                 if not busy:
                     q.append(now)
-            if len(self._posts) > 10_000:
-                for key in [k for k, v in self._posts.items() if not v][:5_000]:
+            if len(self._posts) > MAX_TRACKED:
+                for key in [k for k, v in self._posts.items() if not v][: MAX_TRACKED // 2]:
                     del self._posts[key]
         if blocked:
             self._count("blocked")
@@ -101,20 +115,17 @@ class Guard:
         return None
 
 
-_KEY: Any = None
+# Made at import time: aiohttp names an AppKey after the module that creates it, by walking the
+# stack for module-level code, which a server thread (the webhook listener) doesn't have.
+GUARD_KEY = web.AppKey("abuse_guard", Guard)
 
 
 def for_app(app: Any, state: Any) -> Guard:
     """One guard per web app, shared by its forms."""
-    global _KEY
-    from aiohttp import web
-
-    if _KEY is None:
-        _KEY = web.AppKey("abuse_guard", Guard)
-    guard = app.get(_KEY)
+    guard = app.get(GUARD_KEY)
     if guard is None:
         guard = Guard(state)
-        app[_KEY] = guard
+        app[GUARD_KEY] = guard
     return guard
 
 
