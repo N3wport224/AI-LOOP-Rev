@@ -502,6 +502,9 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
     from strategies import opt_out
 
     opt_out.mount(app, processor.tools, run_in_pool, client_ip, CaptureLimiter(opt_out.REQUESTS_PER_IP_HOUR))  # Phase 285
+    from strategies import search_demand
+
+    search_demand.mount(app, processor.tools, run_in_pool, client_ip, CaptureLimiter(search_demand.PER_IP_HOUR))  # Phase 350
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

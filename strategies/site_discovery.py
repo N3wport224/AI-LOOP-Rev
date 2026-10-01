@@ -78,14 +78,21 @@ while(ul.firstChild){ul.removeChild(ul.firstChild);}
 hits.slice(0,100).forEach(function(e){var li=document.createElement('li'),a=document.createElement('a');
 a.href='../'+e.u;a.textContent=e.t;li.appendChild(a);
 li.appendChild(document.createTextNode(': $'+(e.p/100).toFixed(2).replace('.00','')+(e.r?' · '+e.r+' rows':'')));
-ul.appendChild(li);});n.textContent=hits.length+' of '+all.length+' products';}
+ul.appendChild(li);});n.textContent=hits.length+' of '+all.length+' products';
+clearTimeout(timer);timer=setTimeout(function(){beacon(hits.length===0);},1500);}
+var logUrl=q.getAttribute('data-log'),timer=null,sent={};
+var dnt=navigator.doNotTrack==='1'||window.doNotTrack==='1';
+function beacon(zero){var s=q.value.toLowerCase().trim();if(!logUrl||dnt||s.length<3||sent[s])return;sent[s]=1;
+try{navigator.sendBeacon(logUrl,JSON.stringify({q:s,zero:zero}));}catch(e){}}
 fetch('../search.json').then(function(r){return r.json();}).then(function(d){all=d;show();});
-q.addEventListener('input',show);})();"""
+q.addEventListener('input',show);
+q.addEventListener('keydown',function(ev){if(ev.key==='Enter'){clearTimeout(timer);beacon(!ul.firstChild);}});})();"""
 
 
-def search_page(shell: Any) -> str:
+def search_page(shell: Any, log_url: str = "") -> str:
+    log = f' data-log="{html.escape(log_url)}"' if log_url else ""  # Phase 351
     body = ('<h1>Search the datasets</h1><p><label for="q">Technology, region or kind of list</label><br>'
-            '<input id="q" type="search" placeholder="e.g. rust, remote, salary" autocomplete="off" style="width:100%"></p>'
+            f'<input id="q" type="search" placeholder="e.g. rust, remote, salary" autocomplete="off" style="width:100%"{log}></p>'
             '<p class="muted" id="count" aria-live="polite"></p><ul id="results"></ul>'
             '<noscript><p>Search needs JavaScript: <a href="../catalog/">see every product in the catalog</a>.</p></noscript>'
             f"<script>{SEARCH_JS}</script>")
@@ -230,7 +237,8 @@ def site_files(pages: list[Any], state: Any, cfg: Any, shell_at: Any) -> dict[st
     catalog = catalog_pages(pages, state, shell_at)
     if catalog:  # search and its no-JavaScript fallback need something on sale
         out.update(catalog)
-        out.update({SEARCH_JSON: search_index(pages, state), "search/index.html": search_page(shell)})
+        log = f"{cfg.lead_capture_base}/v1/search-log" if cfg.lead_capture_base else ""
+        out.update({SEARCH_JSON: search_index(pages, state), "search/index.html": search_page(shell, log)})
     page = changes_page(state, shell)
     if page:
         out["changes/index.html"] = page

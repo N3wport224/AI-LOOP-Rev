@@ -328,6 +328,11 @@ class OwnerReports(Strategy):
             catalog_plan = plan_line(state, cfg)  # Phase 329
             if catalog_plan:
                 lines += ["", catalog_plan]
+            from strategies.search_demand import weekly_line as searches_line
+
+            searched = searches_line(state)  # Phase 353
+            if searched:
+                lines += ["", searched]
             from strategies.tech_passes import weekly_line as passes_line
 
             passes = passes_line(state)  # Phase 324

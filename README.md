@@ -2510,6 +2510,24 @@ For the site's forms that post to the agent: request a dataset, and leave your c
   from the forms for 24 hours.
 * **Phase 349, counted:** turned-away posts are counted per day and reason, and doctor shows today's.
 
+## What visitors look for (Phases 350-354)
+
+Site searches that find nothing say what to build next (`strategies/search_demand.py`).
+
+* **Phase 350, the endpoint:** `POST /v1/search-log` takes one search: up to 60 characters of
+  letters, digits and a few symbols.
+  * It is rate-limited and behind the forms' abuse guard.
+  * Only the words are stored: no address, cookie or identifier.
+* **Phase 351, from the search page:** `search/` sends a search after the visitor pauses typing (or
+  presses Enter), once per distinct search.
+  * Nothing is sent when the browser asks not to be tracked.
+  * It only runs when the agent has a public address.
+* **Phase 352, demand:** a search that found nothing, seen twice or more, counts like a customer
+  request for its technology, so the factory makes that product sooner.
+* **Phase 353, in Monday's report:** "Searched for on the site but not on sale: elixir (5), ...".
+* **Phase 354, kept small:** only the 500 most frequent searches are kept, for at most 90 days. The
+  privacy page says so.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
