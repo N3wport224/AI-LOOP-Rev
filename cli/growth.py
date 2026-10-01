@@ -710,6 +710,13 @@ def privacy_main(argv: list[str], confirm=input) -> int:
 
     from tools.privacy import export, forget, placeholder
 
+    if argv[:1] == ["inventory"]:  # Phase 393
+        from tools.data_retention import describe, inventory
+
+        config, state, _ = _setup()
+        for line in describe(inventory(state, config)):
+            print(line)
+        return 0
     if len(argv) < 2 or argv[0] not in ("export", "forget") or "@" not in argv[1]:
         say(RED, "Use: automonetize privacy export someone@example.com  (or: forget someone@example.com)")
         return 1

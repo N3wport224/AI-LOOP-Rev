@@ -70,7 +70,14 @@ def export(state: Any, config: Any, email: str) -> dict[str, Any]:
         "testimonials": [t for t in (state.get("testimonials") or []) if t.get("email") == email],
         "referral_link": any(v == email for v in (state.get("referral_tokens") or {}).values()),
         "suppressed": state.is_suppressed(email),
+        **_extra_export(state, email),  # Phase 390
     }
+
+
+def _extra_export(state: Any, email: str) -> dict[str, Any]:
+    from tools.data_retention import export_extra
+
+    return export_extra(state, email)
 
 
 def forget(state: Any, config: Any, email: str) -> dict[str, int]:
@@ -125,6 +132,9 @@ def forget(state: Any, config: Any, email: str) -> dict[str, int]:
                 kept.append(line)
         path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
         done["email log lines deleted"] = dropped
+    from tools.data_retention import forget_extra
+
+    done.update(forget_extra(state, email))  # Phase 391
     state.suppress(email, "privacy request")
     requests = dict(state.get(REQUESTS) or {})
     requests.pop(email, None)

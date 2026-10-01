@@ -189,6 +189,9 @@ class Housekeeping(Strategy):
             from strategies.catalog_hygiene import prune_retired
 
             retired_dirs = prune_retired(state, tools.files)  # Phase 213
+            from tools.data_retention import prune as prune_retention
+
+            pruned.update(prune_retention(state, tools.files))  # Phase 392
             from tools.qa import weekly as weekly_qa
 
             weekly_qa(state, tools.files)  # Phases 315-318

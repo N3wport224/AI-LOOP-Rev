@@ -35,7 +35,13 @@ def findings(gctx) -> dict[str, Any]:
     order = {"fail": 0, "warn": 1, "ok": 2}
     out.sort(key=lambda f: order.get(f["status"], 3))
     q = quiet(gctx.state)
-    return {"findings": out, "quiet": bool(q), "quiet_since": (q or {}).get("since")}
+    from tools.data_retention import inventory
+
+    try:
+        stores = inventory(gctx.state, gctx.fresh_config())  # Phase 394
+    except Exception:  # noqa: BLE001 - the inventory must never break the tab
+        stores = []
+    return {"findings": out, "quiet": bool(q), "quiet_since": (q or {}).get("since"), "privacy_inventory": stores}
 
 
 async def get_health(request: web.Request) -> web.Response:

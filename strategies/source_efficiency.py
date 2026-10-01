@@ -75,6 +75,7 @@ class ConditionalHttp:
         all_saved = dict(self.state.get(VALIDATORS) or {})
         entry = dict(saved)
         entry["not_modified"] = int(entry.get("not_modified") or 0) + (1 if not_modified else 0)
+        entry["used_at"] = self.state.now()  # kept while it's used (Phase 392)
         all_saved[key] = entry
         self.state.set(VALIDATORS, all_saved)
 

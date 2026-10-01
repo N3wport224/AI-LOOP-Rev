@@ -982,6 +982,7 @@ cut short.
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
 * `automonetize offers                                  # each offer's discount, emails sent and sales
 automonetize privacy export|forget EMAIL             # a customer's data: copy it, or erase it
+automonetize privacy inventory                    # every store holding personal data, and how long it's kept
 automonetize phone                                   # phone notifications for sales and alerts (ntfy)
 automonetize quiet on|off                            # hold or release all marketing email
 automonetize commands [--new]                        # the code for email commands (AM STATUS <code>)
@@ -2664,6 +2665,26 @@ People search for "<company> hiring"; this gives them a useful page (`strategies
 * **Phase 388, product types in doctor:** how many types the factory makes, and which it doesn't.
 * **Phase 389, kept complete:** a test fails if a variable the agent reads from `.env` is missing
   from `.env.example`.
+
+## Personal data in the newer stores (Phases 390-394)
+
+From `tools/data_retention.py`:
+
+* **Phase 390, export covers them:** `automonetize privacy export` now includes:
+  * opt-out requests made with that address;
+  * "email me when it's ready" requests;
+  * dataset requests they emailed.
+* **Phase 391, erase covers them:** `automonetize privacy forget`:
+  * anonymises their opt-out requests (the decision is kept, the address isn't);
+  * deletes their "it's ready" requests;
+  * removes the address from their dataset requests.
+* **Phase 392, kept no longer than needed:** daily, housekeeping:
+  * anonymises decided opt-out requests after a year;
+  * drops saved job-board responses unused for 30 days;
+  * forgets dead-posting marks for postings no longer stored.
+* **Phase 393, an inventory:** `automonetize privacy inventory` lists every store holding personal
+  data, how many records it holds, and how long they're kept.
+* **Phase 394, in the panel:** the Health tab's data includes the same inventory.
 
 ## Safety and consistency (Phases 140-144)
 

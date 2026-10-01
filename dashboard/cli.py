@@ -814,7 +814,7 @@ def cmd_todo(args: argparse.Namespace, console: Console) -> int:
 def cmd_privacy(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import privacy_main
 
-    return privacy_main([args.action, args.email] + (["--yes"] if args.yes else []))
+    return privacy_main([args.action] + ([args.email] if args.email else []) + (["--yes"] if args.yes else []))
 
 
 def cmd_offers(args: argparse.Namespace, console: Console) -> int:
@@ -1246,8 +1246,8 @@ def build_parser() -> argparse.ArgumentParser:
     td = sub.add_parser("todo", help="the few things only you can do, most valuable first, with the command for each")
     td.set_defaults(func=cmd_todo)
     pv = sub.add_parser("privacy", help="a customer's data: export it, or erase it (GDPR/CCPA requests)")
-    pv.add_argument("action", choices=["export", "forget"])
-    pv.add_argument("email")
+    pv.add_argument("action", choices=["export", "forget", "inventory"])
+    pv.add_argument("email", nargs="?", default="")
     pv.add_argument("--yes", action="store_true", help="don't ask for confirmation (forget)")
     pv.set_defaults(func=cmd_privacy)
     of = sub.add_parser("offers", help="each offer's discount, emails sent and sales since its last change")
