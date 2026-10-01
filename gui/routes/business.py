@@ -56,7 +56,10 @@ def products(gctx: Any) -> dict[str, Any]:
 
     state, cfg = gctx.state, gctx.fresh_config()
     cand = pf.next_candidate(state, cfg, peek=True) if cfg.product_factory else None
+    from strategies.factory_cadence import describe as describe_pace
+
     return {"catalog": pf.catalog(state), "interval_minutes": int(cfg.factory_interval_seconds) // 60,
+            "pace": describe_pace(state, cfg),
             "factory_on": bool(cfg.product_factory),
             "next": {"title": cand["title"], "rows": len(cand["rows"]) if cand.get("rows") else 0} if cand else None,
             "leaderboard": leaderboard(state)[:30], "leaky": leaky(state), "plan": _plan(state, cfg),

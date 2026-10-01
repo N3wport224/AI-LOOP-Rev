@@ -199,6 +199,10 @@ class Doctor:
         if scale.get("factory"):
             f = scale["factory"]
             out.append(Finding("Product factory", "ok" if f["ok"] else "warn", f["detail"], f["fix"]))
+        if cfg.product_factory:
+            from strategies.factory_cadence import describe as describe_pace
+
+            out.append(Finding("Factory pace", "ok", describe_pace(state, cfg)))  # Phase 359
         if scale.get("db"):
             db = scale["db"]
             out.append(Finding("Database size", "warn" if db["warn"] else "ok",

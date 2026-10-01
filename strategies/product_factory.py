@@ -202,6 +202,10 @@ def next_candidate(state: Any, cfg: Any, peek: bool = False) -> dict[str, Any] |
     from strategies.catalog_insight import enabled_types
 
     allowed = set(enabled_types(cfg))  # Phase 239
+    if not peek:  # Phase 355: how many good products are waiting (a cheap count, before the overlap checks)
+        from strategies.factory_cadence import note_queue
+
+        note_queue(state, sum(1 for kind, cands in by_type.items() if kind in allowed for c in cands if c["slug"] not in taken))
     for kind in product_types.rotation(state):
         if kind not in allowed:
             continue
@@ -446,7 +450,10 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
 
     passes_tick(tools)  # Phases 320-322: publish passes (daily), welcome and weekly deliveries
     last = state.get(LAST)
-    if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
+    from strategies.factory_cadence import effective
+
+    interval = effective(state, cfg)["seconds"]  # Phases 356-358
+    if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=interval):
         return {"made": None, "why": "not due yet", "published": published, "retired": retired, "refreshed": refreshed}
     from agent.disk_guard import builds_paused
 
@@ -478,10 +485,11 @@ def catalog(state: Any) -> dict[str, int]:
 
 def run_worker(tools: Any, stop: Any, is_stopped: Any = None) -> None:
     """The supervisor's ``factory`` worker: one tick every ``factory_interval_seconds``."""
-    interval = max(60, int(tools.config.factory_interval_seconds))
     from agent.scale_checks import record_factory_tick
+    from strategies.factory_cadence import effective
 
     while not stop.is_set():
+        interval = max(60, int(tools.config.factory_interval_seconds))
         try:
             if not (is_stopped and is_stopped()[0]):
                 tools.breaker.begin_cycle()
@@ -490,6 +498,10 @@ def run_worker(tools: Any, stop: Any, is_stopped: Any = None) -> None:
         except Exception as exc:  # noqa: BLE001 - the factory must never take the agent down
             tools.state.log_error("product_factory", f"factory tick failed: {exc!r}")
             record_factory_tick(tools.state, False, repr(exc)[:200])
+        try:
+            interval = effective(tools.state, tools.config)["seconds"]  # Phase 358: the pace is re-read each round
+        except Exception:  # noqa: BLE001 - fall back to the configured pace
+            pass
         stop.wait(interval)
 
 
@@ -504,8 +516,10 @@ class ProductFactory(Strategy):
         if not cfg.product_factory:
             return TaskResult(True, "product factory off", {"made": 0})
         last = state.get(LAST)
+        from strategies.factory_cadence import effective
+
         due = 1 if not last else int((state.clock() - datetime.fromisoformat(last)).total_seconds()
-                                     // max(60, int(cfg.factory_interval_seconds)))
+                                     // effective(state, cfg)["seconds"])
         made, why = [], ""
         for _ in range(min(6, due)):
             out = tick(tools, force=True)

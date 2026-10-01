@@ -2528,6 +2528,23 @@ Site searches that find nothing say what to build next (`strategies/search_deman
 * **Phase 354, kept small:** only the 500 most frequent searches are kept, for at most 90 days. The
   privacy page says so.
 
+## Adaptive factory pace (Phases 355-359)
+
+`factory_interval_seconds` (10 minutes) is a promise: at least one new product that often whenever
+there's something worth making. With `factory_adaptive` on, the factory may go faster
+(`strategies/factory_cadence.py`):
+
+* **Phase 355, the queue:** each time the factory picks a product it notes how many more good
+  candidates are waiting.
+* **Phase 356, faster when it pays:** the interval halves, down to 5 minutes, when all of these hold:
+  * at least 20 candidates are waiting;
+  * a factory product sold in the last 7 days;
+  * the catalog is under 80% of `factory_max_live`.
+* **Phase 357, never slower:** the effective interval is never longer than `factory_interval_seconds`.
+* **Phase 358, used everywhere:** the factory worker and the cycle's catch-up both use the effective
+  interval.
+* **Phase 359, visible:** doctor and the control panel show the current pace and why.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
