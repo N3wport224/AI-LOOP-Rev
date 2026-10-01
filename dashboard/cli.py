@@ -883,6 +883,18 @@ def cmd_qa(args: argparse.Namespace, console: Console) -> int:
     return qa_main([])
 
 
+def cmd_catalog_export(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import catalog_export_main
+
+    return catalog_export_main([args.file] if args.file else [])
+
+
+def cmd_catalog_import(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import catalog_import_main
+
+    return catalog_import_main([args.file] + (["--check"] if args.check else []))
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1265,6 +1277,13 @@ def build_parser() -> argparse.ArgumentParser:
     ch.set_defaults(func=cmd_chat)
     qa = sub.add_parser("qa", help="quality checks: downloads, row counts, pages, structured data, parsers")
     qa.set_defaults(func=cmd_qa)
+    ce = sub.add_parser("catalog-export", help="the catalog (products, downloads, checkout links; no customer data) in one zip")
+    ce.add_argument("file", nargs="?", default="")
+    ce.set_defaults(func=cmd_catalog_export)
+    ci = sub.add_parser("catalog-import", help="restore a catalog bundle on this installation (--check: verify only)")
+    ci.add_argument("file")
+    ci.add_argument("--check", action="store_true")
+    ci.set_defaults(func=cmd_catalog_import)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")

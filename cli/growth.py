@@ -379,6 +379,37 @@ def qa_main(argv: list[str]) -> int:
     return 1 if bad else 0
 
 
+def catalog_export_main(argv: list[str]) -> int:
+    """`automonetize catalog-export [file]` (Phases 340-341)."""
+    from pathlib import Path
+
+    from strategies.catalog_portability import export
+
+    _, state, files = _setup()
+    path = Path(argv[0]) if argv else ROOT / "data" / "exports" / f"catalog-{state.now()[:10]}.zip"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(export(state, files))
+    say(GREEN, f"✔ Wrote {path} ({path.stat().st_size // 1024} KB). It has no customer data.")
+    return 0
+
+
+def catalog_import_main(argv: list[str]) -> int:
+    """`automonetize catalog-import <file> [--check]` (Phases 342-344)."""
+    from pathlib import Path
+
+    from strategies.catalog_portability import import_bundle
+
+    _, state, files = _setup()
+    try:
+        report = import_bundle(state, files, Path(argv[0]).read_bytes(), dry_run="--check" in argv)
+    except (OSError, ValueError) as exc:
+        say(RED, f"Not imported: {exc}")
+        return 2
+    verb = "Would add" if "--check" in argv else "Added"
+    say(GREEN, f"✔ {verb} {len(report['new'])} product(s); {report['skipped']} already here.")
+    return 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

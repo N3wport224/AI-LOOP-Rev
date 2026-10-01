@@ -1571,6 +1571,8 @@ automonetize optout [approve ID|reject ID]  # companies asking to be left out of
 automonetize sources                      # what each job board brought, its speed, any back-off
 automonetize chat WEBHOOK-URL|test         # sales and alerts in Slack or Discord
 automonetize qa                           # quality checks: downloads, rows, pages, structured data, parsers
+automonetize catalog-export [file]         # the catalog in one zip (no customer data)
+automonetize catalog-import FILE [--check]  # restore it on another installation
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2475,6 +2477,23 @@ the catalog itself (`strategies/growth_plan.py`):
   after ("too early to tell" until 4 weeks have passed).
 * **Phase 339, type by technology:** 90-day revenue for each product type and the eight best
   technologies.
+
+## Take the catalog with you (Phases 340-344)
+
+Backups copy the whole database. This moves just the catalog, to a new Mac or a second installation
+(`strategies/catalog_portability.py`):
+
+* **Phase 340, export:** `automonetize catalog-export [file]` writes one zip.
+  * It holds every factory product (title, filters, status, price, checkout link, Stripe reference).
+  * For each product on sale it adds the current download, listing and sample.
+  * There are no orders, buyers or emails in it.
+* **Phase 341, checksums:** the bundle lists every file's SHA-256.
+* **Phase 342, import:** `automonetize catalog-import <file>` verifies the bundle, restores the files
+  and adds the products that aren't there yet, keeping their checkout links. Products already
+  present are left alone.
+* **Phase 343, check first:** `--check` verifies and lists what would be imported, writing nothing.
+* **Phase 344, safe to open:** a bundle is refused before anything is written if it has a path
+  outside `assets/`, a bad checksum, or is oversized.
 
 ## Safety and consistency (Phases 140-144)
 
