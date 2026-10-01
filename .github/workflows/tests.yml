@@ -1,0 +1,52 @@
+# Phase 45: the test suite on Linux *and macOS* for every push.
+# The agent runs on a Mac and its self-update (agent/self_update.py) installs a new version only if
+# this same suite passes there; running it on a macOS runner first catches platform problems early.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.12"
+    env:
+      AM_NO_SELF_UPDATE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]' pyflakes ruff
+      - name: Lint
+        run: |
+          python -m pyflakes agent strategies tools dashboard gui cli api tests
+      - name: Tests
+        run: python -m pytest -W error -p no:cacheprovider -o addopts="" -q
+      - name: End-to-end rehearsal
+        run: python -m cli.test_loop --no-color
