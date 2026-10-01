@@ -185,6 +185,18 @@ class Doctor:
             low = disk["free_gb"] < float(cfg.disk_warn_gb)
             out.append(Finding("Disk space", "warn" if low else "ok", f"{disk['free_gb']:.1f} GB free of {disk['total_gb']:.0f} GB",
                                "empty the Trash and delete large downloads" if low else ""))
+        ops = state.get("ops") or {}
+        down = [s for s, h in (ops.get("sources") or {}).items() if not h["ok"]]
+        if ops.get("sources"):
+            out.append(Finding("Job sources", "warn" if down else "ok",
+                               f"no postings lately from: {', '.join(down)}" if down else f"{len(ops['sources'])} answering",
+                               "nothing to do unless all fail; self-evolution can adapt parsers" if down else ""))
+        if ops.get("clock_skew_s") is not None:
+            off = abs(float(ops["clock_skew_s"])) > 120
+            out.append(Finding("Clock", "warn" if off else "ok", f"{ops['clock_skew_s']:+.0f}s from internet time",
+                               "System Settings → General → Date & Time → Set time automatically" if off else ""))
+        if ops.get("battery_saving"):
+            out.append(Finding("Power", "warn", "on battery: dataset and site builds wait for power", "plug the Mac in"))
         from agent.config_check import problems as config_problems
 
         for p in config_problems(cfg, ROOT / "automonetize.toml"):

@@ -11,7 +11,9 @@
   older zip files and version folders are deleted *unless an order points at them* (order
   recovery re-sends exactly what was bought), or another product still uses the file. The database
   rows stay, so sales history is complete.
-* **Database:** ``PRAGMA optimize`` keeps queries fast.
+* **Database:** ``PRAGMA optimize`` keeps queries fast. Once a month (Phase 106) ``VACUUM`` gives
+  the space of deleted rows back to the disk and defragments the file (a few seconds; skipped
+  when free disk is under twice the database size, since VACUUM needs a temporary copy).
 
 Every run records what it removed in kv ``housekeeping``.
 """
@@ -31,6 +33,22 @@ AUDIT_ROTATE_BYTES = 5 * 1024 * 1024
 ARCHIVE_KEEP_DAYS = 365
 CONTACT_KEEP_DAYS = 400
 WEBHOOK_KEEP_DAYS = 90
+VACUUM_DAYS = 30
+
+
+def maybe_vacuum(state: Any, db_path: Path, free_bytes: int | None = None) -> int:
+    """Phase 106: VACUUM once a month. Returns bytes reclaimed (0 when skipped or nothing changed)."""
+    last = state.get("vacuum_at")
+    if last and state.clock() - datetime.fromisoformat(last) < timedelta(days=VACUUM_DAYS):
+        return 0
+    db = Path(db_path)
+    size = db.stat().st_size if db.exists() else 0
+    free = shutil.disk_usage(str(db.parent)).free if free_bytes is None and db.exists() else (free_bytes or 0)
+    if not size or free < 2 * size:
+        return 0
+    state._exec("VACUUM")
+    state.set("vacuum_at", state.now())
+    return max(0, size - db.stat().st_size)
 
 
 def prune_logs(state: Any, cfg: Any) -> dict[str, int]:
@@ -120,11 +138,14 @@ class Housekeeping(Strategy):
             rotated = rotate_audit(cfg, state.clock())
             removed = prune_versions(state, tools.files, int(cfg.keep_versions))
             state._exec("PRAGMA optimize")
+            reclaimed = maybe_vacuum(state, Path(state.db_path))
         except Exception as exc:  # noqa: BLE001 - tidying must never stop the agent
             state.log_error("housekeeping", f"housekeeping failed: {exc!r}")
             return TaskResult(True, f"housekeeping failed: {exc!r}"[:200], {})
-        record = {"at": state.now(), "rows": pruned, "audit_rotated": rotated, "old_versions": removed}
+        record = {"at": state.now(), "rows": pruned, "audit_rotated": rotated, "old_versions": removed,
+                  "vacuum_reclaimed_bytes": reclaimed}
         state.set(KEY, record)
         parts = [f"{n} {k}" for k, n in pruned.items() if n] + ([f"{len(removed)} old version file(s)"] if removed else []) \
-            + (["audit log archived"] if rotated else [])
+            + (["audit log archived"] if rotated else []) \
+            + ([f"database compacted ({reclaimed / 1e6:.1f} MB freed)"] if reclaimed >= 100_000 else [])
         return TaskResult(True, "housekeeping: " + (", ".join(parts) or "nothing to tidy"), {"removed": len(removed), **pruned})

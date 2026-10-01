@@ -94,6 +94,7 @@ PLAN: list[tuple[str, int]] = [
     ("audit_security", 93),
     ("housekeeping", 92),
     ("check_disk", 5),  # first: a full disk pauses builds before they start
+    ("ops_checks", 6),  # job sources, clock, battery (heavy builds wait on battery)
     ("tune_offers", 68),
     ("process_bounces", 44),
     ("guard_payments", 46),
@@ -180,6 +181,9 @@ class Engine:
             from agent.disk_guard import DiskGuard
 
             self.handlers["check_disk"] = DiskGuard()
+            from agent.ops_checks import OpsChecks
+
+            self.handlers["ops_checks"] = OpsChecks()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online
@@ -452,6 +456,14 @@ class Engine:
             return payload
 
         outcome: dict[str, Any] = {"task": name, "task_id": task["id"]}
+        if getattr(self, "_full_plan", False):
+            from agent.ops_checks import HEAVY_TASKS, battery_saving
+
+            if name in HEAVY_TASKS and battery_saving(self.state):
+                self.state.finish_task(task["id"], "done", "skipped: on battery", 0)
+                self.state.log_action(cycle, hyp["id"], name, "skipped", "on battery: waits for power", 0.0)
+                outcome.update(status="skipped", summary="on battery")
+                return outcome
         try:
             result = retry_with_adjustment(
                 attempt, dict(task["payload"]), attempts=max_attempts, adjust=adjust, on_error=on_error,

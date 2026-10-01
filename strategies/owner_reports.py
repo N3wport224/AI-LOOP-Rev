@@ -12,7 +12,8 @@ also buzzes your phone (``tools/notify.py``, ``automonetize phone``).
 
 * **Daily digest**, once a day after ``owner_digest_hour`` (in ``subscription_timezone``):
   yesterday's and the week's revenue against the $10/day goal, MRR, what's on sale (with links),
-  free leads, outreach drafts waiting for you, and problems in the last 24 hours. On Mondays it
+  free leads, outreach drafts waiting for you, and problems in the last 24 hours (one line per
+  distinct problem with a count, Phase 109). On Mondays it
   also carries the week's share kit (ready-to-paste posts, ``strategies/share_kit.py``).
 
 Pointers only advance after a send succeeds, so a failed email is retried next cycle. In dry run
@@ -31,6 +32,34 @@ from tools.dispatcher import Email
 
 def money(cents: int) -> str:
     return f"${cents / 100:,.2f}"
+
+
+def _shape(message: str) -> str:
+    """The message with numbers, ids and quoted values blanked, so repeats of one problem group together."""
+    import re
+
+    text = re.sub(r"'[^']*'|\"[^\"]*\"", "…", message)
+    return re.sub(r"\d+", "#", text)[:160]
+
+
+def grouped_problems(state: Any, since: str, limit: int = 8) -> list[dict[str, Any]]:
+    """Phase 109: the last day's failures and alerts, one line per distinct problem with a count
+    (newest example shown), most frequent first, instead of the same error repeated."""
+    rows = state._all("SELECT source, message, created_at FROM errors WHERE kind IN ('operational_failure', 'alert') "
+                      "AND created_at >= ? ORDER BY id DESC LIMIT 500", (since,))
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (r["source"], _shape(r["message"]))
+        if key in groups:
+            groups[key]["n"] += 1
+        else:
+            groups[key] = {"source": r["source"], "message": r["message"], "n": 1, "last": r["created_at"]}
+    return sorted(groups.values(), key=lambda g: -g["n"])[:limit]  # stable: ties stay newest first
+
+
+def problem_line(p: dict[str, Any]) -> str:
+    times = f" (×{p['n']})" if p["n"] > 1 else ""
+    return f"- {p['source']}{times}: {p['message'][:200]}"
 
 
 def _max_id(state: Any, table: str, where: str = "") -> int:
@@ -181,8 +210,7 @@ class OwnerReports(Strategy):
         leads = state.free_subscriber_counts()
         drafts = state.outreach_counts().get("pending_review", 0)
         since = (state.clock() - timedelta(hours=24)).isoformat(timespec="seconds")
-        problems = state._all("SELECT source, message FROM errors WHERE kind IN ('operational_failure', 'alert') AND created_at >= ? "
-                              "ORDER BY id DESC LIMIT 5", (since,))
+        problems = grouped_problems(state, since)
         cycles = int(state._one("SELECT COUNT(DISTINCT cycle) AS n FROM actions WHERE created_at >= ?", (since,))["n"])
         from strategies.owner_todo import as_text as todo_text, todo
 
@@ -219,7 +247,7 @@ class OwnerReports(Strategy):
         if drafts:
             lines.append(f"Sales emails waiting for your OK: {drafts} (control panel → Outreach)")
         if problems:
-            lines += ["", "Problems in the last 24 hours:", *[f"- {p['source']}: {p['message'][:200]}" for p in problems]]
+            lines += ["", "Problems in the last 24 hours:", *[problem_line(p) for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):
             lines += ["", "Tip: `automonetize connect-marketing` puts your products on a public website and turns on articles."]
         if local.weekday() == 0:

@@ -1534,6 +1534,25 @@ toolkit's, to the plan size + 10.
 * If your config predates this, the to-do list says so. Re-run
   `bash deploy/tunnel/setup_tunnel.sh <your hostname>` to fix it.
 
+## Ops robustness (Phases 105-109)
+
+A new `ops_checks` task runs every cycle (`agent/ops_checks.py`). Its results appear in `automonetize
+doctor` and the Health tab.
+* **Phase 105, job-source health:** a job board that returned no postings for 3 runs in a row
+  triggers an alert (at most one a day per board) that includes its last error.
+* **Phase 107, clock check:** once a day, the Mac's clock is compared with GitHub's HTTPS `Date`
+  header. If it's more than 2 minutes off you get an alert, because Stripe rejects webhook signatures
+  that are more than 5 minutes off.
+* **Phase 108, battery saver:** on a MacBook running on battery, these tasks wait until it's plugged
+  in again: dataset builds, intel builds, site builds, source discovery, satellites and code
+  evolution. Sales, deliveries and email keep running. Turn it off with `battery_saver = false`.
+
+Two changes elsewhere:
+* **Phase 106, monthly VACUUM:** housekeeping compacts the database once a month. It skips this when
+  free disk is less than twice the database size.
+* **Phase 109, grouped errors:** the daily report lists each distinct problem once, with a count
+  (`task:build_site (×5): …`), instead of repeating the same error.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to
