@@ -35,7 +35,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 30         # must exceed len(engine.PLAN) (22), or every other cycle is cut short
+    max_actions_per_cycle: int = 45         # the engine raises it to len(PLAN) + 10 if set lower
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3
@@ -253,6 +253,15 @@ class Config:
     owner_reports: bool = True
     owner_email: str = ""                    # "" = sender_email
     owner_digest_hour: int = 8               # local hour (subscription_timezone) after which the digest goes out
+
+    # All-datasets bundle (strategies/bundle_engine.py)
+    bundle_min_niches: int = 2
+    bundle_discount: float = 0.4             # 40% off the sum of the parts
+
+    # Backups (agent/backup.py)
+    backups_enabled: bool = True
+    backup_dir: str = ""                     # "" = ~/Library/Application Support/AutoMonetize/backups (macOS)
+    backup_keep_days: int = 14
 
     # Autonomous code evolution (agent/evolution): off until explicitly switched on
     enable_autonomous_code_evolution: bool = False

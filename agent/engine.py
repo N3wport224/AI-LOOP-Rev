@@ -67,6 +67,10 @@ PLAN: list[tuple[str, int]] = [
     ("collect_metrics", 55),
     ("run_satellites", 58),
     ("optimize_pricing", 60),
+    ("sync_finance", 48),
+    ("answer_support", 49),
+    ("publish_bundle", 59),
+    ("backup_data", 97),
     ("report_owner", 98),
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
 ]
@@ -109,7 +113,9 @@ class Engine:
             self.tools = toolkit
         else:
             self.breaker = CircuitBreaker(
-                max_actions_per_cycle=config.max_actions_per_cycle,
+                # An old automonetize.toml may pin a cap below today's plan: never let that cut every
+                # cycle short as new tasks are added.
+                max_actions_per_cycle=max(config.max_actions_per_cycle, len(PLAN) + 10),
                 max_api_calls_per_cycle=config.max_api_calls_per_cycle,
                 max_consecutive_errors=config.max_consecutive_errors,
             )
@@ -125,6 +131,9 @@ class Engine:
             from agent.evolution.task import EvolutionStrategy
 
             self.handlers["evolve_code"] = EvolutionStrategy()
+            from agent.backup import Backups
+
+            self.handlers["backup_data"] = Backups()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online

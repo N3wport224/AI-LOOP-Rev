@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 640 tests, ~40 s, no network
+pytest                     # 658 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -900,6 +900,51 @@ so a failed email is retried. `owner_reports = false` turns them off.
 * Only drafts still pending can change: a decision is never flipped.
 * Approved emails go out with the next cycles, within the warm-up limit.
 
+## Business operations (Phases 16-19)
+
+**Phase 16: money you can see** (`strategies/finance.py`, task `sync_finance`). Each cycle the
+agent reads your Stripe balance and recent payouts (read-only):
+* what's ready to pay out;
+* what's still settling;
+* the last payout (amount, status, arrival date);
+* the total paid out so far.
+
+New Stripe accounts usually get the first payout 7-14 days after the first sale. The figures appear
+in the daily report, the control panel (**Stripe balance** card) and `automonetize doctor`.
+
+**Phase 17: customer support autopilot** (`strategies/support_desk.py`, task `answer_support`).
+* The agent reads your mailbox over IMAP. For Gmail, Fastmail, Outlook and iCloud this uses the same
+  login and app password as sending.
+* It opens the mailbox **read-only** and only looks at unread mail from addresses that bought
+  something or subscribe. Everything else is never downloaded or touched.
+* "I didn't get the file / resend / can't download" → everything that customer bought is re-sent
+  at once, through the order-recovery path with its per-address daily cap.
+* Refunds, cancellations, disputes and any other question from a customer → never answered
+  automatically. You get an alert email with the customer, subject and first lines.
+* Each message is handled once (remembered by Message-ID).
+
+**Phase 18: the all-datasets bundle** (`strategies/bundle_engine.py`, task `publish_bundle`).
+* Once two or more niches (`bundle_min_niches`) are on sale, one product bundles every niche's
+  newest dataset at `bundle_discount` (40%) off the sum, rounded to whole dollars.
+* It's an ordinary product (a zip of the datasets plus a Payment Link). Payment matching, delivery,
+  order recovery, revenue and sale emails all work unchanged.
+* A new dataset version rebuilds the zip in place, keeping the same link.
+* A new niche or price makes a new link and deactivates the old one in Stripe.
+
+**Phase 19: backups** (`agent/backup.py`, task `backup_data`).
+* **What:** the agent database, the evolution log, `.env` (mode 600) and `automonetize.toml`.
+* **When:** daily, kept 14 days (`backup_keep_days`); the newest is always kept.
+* **Where:** outside the project folder (`~/Library/Application Support/AutoMonetize/backups` on
+  macOS), so re-cloning or deleting the folder doesn't lose them.
+* **How:** copies use SQLite's online backup API, so they're consistent while the agent runs.
+* **Commands:**
+  * `automonetize backup` backs up now; `automonetize backup list` shows them.
+  * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
+    as a "pre-restore" backup. It then restores and starts the agent again.
+
+The plan has 30 tasks now. An old `automonetize.toml` that pins `max_actions_per_cycle` lower is
+raised to the plan size + 10 automatically, so no cycle is ever cut short.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to
@@ -1145,7 +1190,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `30` / `60` / `5` | Circuit breakers (the action cap must exceed the 25-task plan) |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `45` / `60` / `5` | Circuit breakers (raised to the plan size + 10 when set lower) |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
 | `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
 | `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |
@@ -1183,6 +1228,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `evolution_check_timeout_seconds` / `evolution_run_simulator` / `evolution_repo` | `1200` / `true` / this checkout | Worktree checks and the repository to evolve |
 | `evolution_min_tag_postings` / `evolution_plateau_cycles` | `5` / `5` | Diagnosis thresholds |
 | `owner_reports` / `owner_email` (`OWNER_EMAIL`) / `owner_digest_hour` | `true` / sender email / `8` | Sale emails, alerts, daily report |
+| `bundle_min_niches` / `bundle_discount` | `2` / `0.4` | All-datasets bundle |
+| `backups_enabled` / `backup_dir` / `backup_keep_days` | `true` / Application Support / `14` | Daily backups |
+| `imap_host` / `imap_username` / `IMAP_PASSWORD` | from the SMTP login for Gmail, Fastmail, Outlook, iCloud | Support inbox (read-only) |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
 | `blocked_recipient_tlds` | EU/EEA/UK/CH | Recipients never emailed |
@@ -1196,6 +1244,7 @@ automonetize go-live [--link]                       # switch to real payments (c
 automonetize connect-marketing                      # public GitHub Pages site + Dev.to articles
 automonetize doctor [--fix]                         # plain-words health check; safe fixes
 automonetize autostart                              # macOS: start at login, restart if stopped
+automonetize backup [list] | restore NAME [--yes]   # daily backups happen by themselves
 automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
 automonetize evolution [status|log|show ID [--output]|diagnose [--diff]|resume]   # self-evolution audit
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
@@ -1246,7 +1295,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 640 tests, ~40 s, no network
+pytest     # 658 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
@@ -1254,6 +1303,17 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 ```bash
 pytest -W error              # the audit's strict mode; also clean
 ```
+
+Phases 16 to 19 add 18 tests in `tests/test_business_ops.py`:
+* **Balance:** balance and payouts read, described, and errors reported.
+* **Bundle:** needs two niches; zip contents and price; refreshed in place; replaced with the old
+  link deactivated; delivered like any dataset.
+* **Support desk:** the IMAP login follows SMTP; classification reads only the customer's words;
+  resend and escalation, each once; the inbox scan is read-only and never downloads a stranger's
+  mail.
+* **Backups:** backup, prune and restore (including into an open database); the daily task; the
+  restore command (confirmation, pre-restore backup, stop/start).
+* **Action cap:** never below the plan size.
 
 Phases 12 to 15 add 10 tests in `tests/test_autopilot.py`, plus 16 for `go-live` and
 `connect-marketing`:

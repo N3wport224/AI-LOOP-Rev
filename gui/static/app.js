@@ -92,6 +92,12 @@
     $("#engine-reason").textContent = s.engine.reason ? "Engine " + s.engine.state + ": " + s.engine.reason : "";
     renderGrowth(s.growth || {});
     renderEvolution(s.evolution || {});
+    const fin = s.finance || {};
+    $("#k-balance").textContent = fin.at ? money((fin.available_cents || 0) + (fin.pending_cents || 0)) : "—";
+    $("#k-balance-sub").textContent = !fin.at ? "read after the next cycle"
+      : fin.error ? "couldn't read: " + fin.error
+      : `${money(fin.available_cents)} ready · ${money(fin.pending_cents)} on the way` +
+        (fin.last_payout ? ` · last payout ${money(fin.last_payout.amount_cents)} (${fin.last_payout.status}, ${fin.last_payout.arrival_date})` : "");
     const paused = s.engine.flag === "paused";
     $("#btn-pause").hidden = paused;
     $("#btn-resume").hidden = !paused;

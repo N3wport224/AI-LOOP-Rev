@@ -85,6 +85,7 @@ def build_status(gctx) -> dict[str, Any]:
         "leads": state.free_subscriber_counts(),
         "growth": snap.get("growth", {}),
         "evolution": snap.get("evolution", {}),
+        "finance": state.get("stripe_finance") or {},
         "dry_run": cfg.dry_run,
     }
 

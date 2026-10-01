@@ -124,6 +124,7 @@ class OwnerReports(Strategy):
     @staticmethod
     def digest_body(tools: Any, local: datetime) -> str:
         from dashboard.analytics import compute
+        from strategies.finance import describe
         from tools.catalog import live_products
 
         cfg, state = tools.config, tools.state
@@ -145,6 +146,7 @@ class OwnerReports(Strategy):
         lines = [
             f"Yesterday: {money(int(yesterday.get('net_cents', 0)))} net (goal {money(cfg.daily_target_cents)}/day)",
             f"Last 7 days: {money(week)} net · MRR {money(mrr)}",
+            describe(state.get("stripe_finance")),
             f"Agent: {cycles} cycles in the last 24 hours",
             "",
             f"On sale ({len(products)}):" if products else "On sale: nothing yet. Run `automonetize go-live` (see the README).",

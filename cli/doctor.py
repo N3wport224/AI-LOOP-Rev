@@ -149,6 +149,16 @@ class Doctor:
                                    self.update_code))
             elif code == 0:
                 out.append(Finding("Up to date", "ok", "latest version"))
+        from strategies.finance import describe
+
+        fin = state.get("stripe_finance")
+        if fin:
+            out.append(Finding("Money", "warn" if fin.get("error") else "ok", describe(fin).replace("Stripe balance: ", "")))
+        last_backup = state.get("last_backup_at")
+        if last_backup and state.clock() - datetime.fromisoformat(last_backup) < timedelta(days=2):
+            out.append(Finding("Backups", "ok", f"last backup {last_backup[:16]}"))
+        else:
+            out.append(Finding("Backups", "warn", "no backup in the last 2 days", "automonetize backup"))
         since = (state.clock() - timedelta(hours=24)).isoformat(timespec="seconds")
         rows = state._all("SELECT source, message FROM errors WHERE kind IN ('operational_failure', 'alert') AND created_at >= ? "
                           "ORDER BY id DESC LIMIT 3", (since,))

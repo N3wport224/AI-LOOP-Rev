@@ -34,7 +34,7 @@ min_hypothesis_days = 10         # ...and never before a niche is this old (hard
 stale_revenue_days = 14          # a niche whose last sale is older than this is re-evaluated
 signal_window_iterations = 12    # cycles with zero views AND zero sales before a pivot (needs GitHub traffic)
 daily_target_cents = 1000        # $10.00/day
-max_actions_per_cycle = 30
+max_actions_per_cycle = 45
 max_api_calls_per_cycle = 60
 max_consecutive_errors = 5
 http_rate_per_minute = 20
@@ -771,6 +771,18 @@ def cmd_autostart(args: argparse.Namespace, console: Console) -> int:
     return doctor(["autostart"])
 
 
+def cmd_backup(args: argparse.Namespace, console: Console) -> int:
+    from cli.backups import main as backups
+
+    return backups(["list"] if args.what == "list" else [])
+
+
+def cmd_restore(args: argparse.Namespace, console: Console) -> int:
+    from cli.backups import main as backups
+
+    return backups(["restore", args.name] + (["--yes"] if args.yes else []))
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -936,6 +948,14 @@ def build_parser() -> argparse.ArgumentParser:
     dr.set_defaults(func=cmd_doctor)
     au = sub.add_parser("autostart", help="macOS: start the agent at login and restart it if it stops (launchd)")
     au.set_defaults(func=cmd_autostart)
+
+    bk = sub.add_parser("backup", help="back up the agent's data now; `backup list` shows the backups")
+    bk.add_argument("what", nargs="?", choices=["now", "list"], default="now")
+    bk.set_defaults(func=cmd_backup)
+    rs = sub.add_parser("restore", help="restore a backup (the current data is backed up first)")
+    rs.add_argument("name")
+    rs.add_argument("--yes", action="store_true", help="don't ask for confirmation")
+    rs.set_defaults(func=cmd_restore)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")
