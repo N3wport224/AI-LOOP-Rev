@@ -21,6 +21,7 @@ from strategies.refresh_offers import RefreshOffers
 from strategies.referrals import Referrals
 from strategies.winback import WinBack
 from strategies.product_factory import ProductFactory
+from strategies.revenue_models import RevenueModels
 from strategies.bundle_upgrade import BundleUpgrade
 from strategies.sample_offer import SampleOffer
 from strategies.seasonal_sale import SeasonalSale
@@ -51,11 +52,11 @@ def default_strategies() -> list[Strategy]:
         ShareKit(), BuyerFollowup(), Bookkeeping(), StorefrontHealth(), ReleaseAnnouncer(), GoalPacing(), FreshnessGuard(),
         LaunchPromos(), RefreshOffers(), Referrals(), WinBack(),
         BundleUpgrade(), SampleOffer(), SeasonalSale(), BounceGuard(), OfferTuner(),
-        WebhookHealth(), PaymentGuard(), Plans(), PayoutWatch(), ProductFactory(),
+        WebhookHealth(), PaymentGuard(), Plans(), PayoutWatch(), ProductFactory(), RevenueModels(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "WebhookHealth", "PaymentGuard", "Plans", "PayoutWatch", "ProductFactory", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "WebhookHealth", "PaymentGuard", "Plans", "PayoutWatch", "ProductFactory", "RevenueModels", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]

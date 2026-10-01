@@ -1563,7 +1563,8 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
+* **Phase 113, task timings:** `automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
+automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
@@ -1743,6 +1744,28 @@ The factory takes these in turn with the slices, so the catalog grows in several
   * The new version goes behind the same checkout and price, so buyers always get current data.
   * A sale on any version keeps a product from being retired.
 
+## More ways to get paid (Phases 155-159)
+
+The `publish_offers` task creates each offer once (it needs live payments and working email). The
+site's `more/` page lists them.
+* **Phase 155, custom dataset ($29):**
+  * Checkout asks "Technology, region or seniority?".
+  * The agent reads the answer, builds that slice from every current posting and emails it.
+  * If it can't, the order waits for you with an alert quoting the request. You reply or refund:
+    money decisions stay yours.
+* **Phase 156, name your price (from $3):** a supporter product. The buyer picks the amount and gets
+  the catalog index: every product with its link.
+* **Phase 157, sponsorship ($49 a week):** after payment you get an alert. Nothing shows until you
+  run `automonetize sponsor approve ORDER_ID "line" https://url`. The line then appears at the top
+  of the home and pricing pages for 7 days, marked as sponsored.
+* **Phase 158, lifetime pass ($149):** download links for everything on sale now, then a weekly
+  email with links to products first released that week. It needs the tunnel for download links.
+* **Phase 159, gift card ($25):** the buyer gets a one-time code worth what they paid, valid for a
+  year, usable on any product. New payment links accept promotion codes.
+
+Storefront health now checks a rotating window of 40 products per run, so a large catalog doesn't
+use up the API budget.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -1812,6 +1835,7 @@ and shows its last runs.
 | 36 | `publish_api_tier` | Offer the developer API as a subscription. |
 | 37 | `publish_dossier_tier` | Offer per-company dossiers. |
 | 38 | `publish_annual_plan` | Offer a yearly plan. |
+| 39 | `publish_offers` | Create the custom-dataset, name-your-price, sponsorship, lifetime and gift-card offers. |
 | 40 | `dispatch_outreach` | Send the outreach emails you approved, within limits. |
 | 44 | `process_bounces` | Read bounces; pause marketing email if too many bounce. |
 | 45 | `sync_revenue` | Record new sales from Stripe (and other storefronts). |
@@ -1826,6 +1850,7 @@ and shows its last runs.
 | 51 | `deliver_subscriptions` | Send subscribers their weekly update. |
 | 52 | `nurture_leads` | Send free-sample subscribers their weekly sample. |
 | 53 | `follow_up_buyers` | One "did it arrive?" email per order, with 1-click ratings. |
+| 53 | `serve_passes` | Weekly new-dataset email to lifetime-pass holders; end expired sponsorships. |
 | 54 | `create_launch_promos` | Create a launch discount code for a new dataset. |
 | 55 | `announce_releases` | Tell past buyers about a new version. |
 | 55 | `collect_metrics` | Record views, impressions and purchases per niche. |

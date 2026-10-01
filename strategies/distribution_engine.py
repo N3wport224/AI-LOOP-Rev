@@ -83,7 +83,14 @@ def fulfil_order(tools, order: dict[str, Any]) -> str:
         tools.state.set_order_status(current["id"], "needs_manual_delivery")
         return "manual"
     try:
-        if asset["kind"] == "dossier":
+        from strategies.revenue_models import FULFILLED, fulfil as fulfil_offer
+
+        if asset["kind"] in FULFILLED:
+            outcome = fulfil_offer(tools, current, asset)
+            if outcome == "manual":
+                tools.state.set_order_status(current["id"], "needs_manual_delivery")
+                return "manual"
+        elif asset["kind"] == "dossier":
             from strategies.dossier_engine import fulfil_dossier
 
             outcome = fulfil_dossier(tools, current, asset)

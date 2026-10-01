@@ -123,6 +123,8 @@ def site_pages(tools) -> list[ProductPage]:
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
         if not niche or kind in ("subscription", "team_license", "subscription_annual") or (niche, kind) in seen:
             continue
+        if kind in ("custom_request", "pay_what_you_want", "sponsorship", "lifetime", "gift"):
+            continue  # offers have their own page (more/), not a product page
         if kind == "micro" and (asset.get("status") != "published" or not asset.get("checkout_url")):
             continue  # factory products appear once they can be bought; retired ones disappear
         seen.add((niche, kind))
@@ -297,7 +299,13 @@ class InboundSyndicator(Strategy):
         live = bool(tools.github.configured() and cfg.github_pages_repo and cfg.pages_base_url)
         key = indexnow_key(cfg, tools.state) if cfg.indexnow_enabled and live else ""
         builder = SiteBuilder(cfg, tools.files, tools.github)
-        out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key)
+        from strategies.revenue_models import more_page, sponsor_html
+        from tools.offer_pages import _shell
+
+        extra = {"more/index.html": more_page(tools.state, lambda title, body, desc: _shell(
+            title, body, tools.config.site_title, description=desc))}
+        out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key, extra=extra,
+                            sponsor=sponsor_html(tools.state))
         from tools.site_audit import audit_site, record
 
         audit = audit_site(out, cfg.pages_base_url)

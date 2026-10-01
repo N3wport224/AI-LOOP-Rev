@@ -295,7 +295,9 @@ class WebhookProcessor:
             product_ref=s.get("payment_link"),
             occurred_at=_iso(s.get("created")) or tools.state.now(),
             asset_id=asset_hint, channel=channel, campaign=campaign,
-            meta={k: str(meta[k]) for k in ("kind", "company_id") if meta.get(k)} or None,
+            meta={**{k: str(meta[k]) for k in ("kind", "company_id") if meta.get(k)},
+                  **{f"field:{f.get('key')}": str((f.get("text") or {}).get("value") or "")[:500]
+                     for f in s.get("custom_fields") or [] if isinstance(f, dict) and f.get("key")}} or None,
         )
         stripe_sf = next((sf for sf in tools.storefronts if sf.name == "stripe"), None)
         fee_pct = stripe_sf.fee_pct if stripe_sf else tools.config.stripe_fee_pct

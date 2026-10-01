@@ -173,6 +173,30 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def sponsor_main(argv: list[str]) -> int:
+    """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
+    from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor
+
+    _, state, _ = _setup()
+    if argv[:1] == ["approve"] and len(argv) >= 4 and argv[1].isdigit():
+        try:
+            entry = approve_sponsor(state, int(argv[1]), argv[2], argv[3])
+        except ValueError as exc:
+            say(RED, str(exc))
+            return 2
+        say(GREEN, f"✔ Live until {entry['ends'][:16].replace('T', ' ')} UTC: \"{entry['line']}\" → {entry['url']} "
+                   "(on the site after the next build)")
+        return 0
+    if argv[:1] == ["approve"]:
+        say(RED, 'Use: automonetize sponsor approve ORDER_ID "Your line (max 90 characters)" https://their.site')
+        return 2
+    live = active_sponsor(state)
+    print(f"Showing now: \"{live['line']}\" until {live['ends'][:16]}" if live else "No sponsor showing.")
+    for s in state.get(SPONSORS) or []:
+        print(f"  order {s['id']}  {s['status']:<8} {s['email']}  {s.get('line', '')}")
+    return 0
+
+
 def factory_main(argv: list[str]) -> int:
     """`automonetize factory [--now] [--next]` (Phase 148): the product catalog; make one now; preview the next."""
     from strategies import product_factory as pf

@@ -170,7 +170,7 @@ def test_stripe_tax_is_applied_to_links_when_active(kit, state, transport, confi
     assert parse_qs(call["body"].decode())["automatic_tax[enabled]"] == ["true"]
     from tools.storefront.stripe_pages_publisher import link_options
 
-    assert link_options(config) == {"automatic_tax": {"enabled": True}}
+    assert link_options(config) == {"allow_promotion_codes": True, "automatic_tax": {"enabled": True}}
 
 
 @pytest.mark.parametrize("task", ["check_webhook", "guard_payments"])

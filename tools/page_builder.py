@@ -627,7 +627,8 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 """
 
 
-def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "") -> str:
+def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "", sponsor: str = "",
+                 more: bool = False) -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
         f'{html.escape(p.summary[:160])} '
@@ -641,11 +642,12 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 {canonical}{head_extra}<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="feeds/radar.xml">
 <style>{CSS}</style></head><body>
 <h1>{html.escape(site_title)}</h1>
+{sponsor}
 <p class="lede">Who is hiring, what they run, and who is about to buy: company-level tech stack intelligence, refreshed continuously.</p>
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> · <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -728,7 +730,8 @@ class SiteBuilder:
         return f"{base}/lead-magnet/capture" if base else ""
 
     def build(self, pages: list[ProductPage], feed_items: list[FeedItem], now: datetime,
-              matrix: list[MatrixPage] | None = None, indexnow_key: str = "") -> dict[str, str | bytes]:
+              matrix: list[MatrixPage] | None = None, indexnow_key: str = "", extra: dict[str, str] | None = None,
+              sponsor: str = "") -> dict[str, str | bytes]:
         cfg = self.config
         out: dict[str, str | bytes] = {}
         matrix = matrix or []
@@ -753,7 +756,9 @@ class SiteBuilder:
 
         contact = cfg.sender_email or cfg.owner_email or ""
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title, verification_meta(cfg)
-                                         + site_more.home_jsonld(self.base_url, cfg.site_title, contact))
+                                         + site_more.home_jsonld(self.base_url, cfg.site_title, contact), sponsor=sponsor,
+                                         more="more/index.html" in (extra or {}))
+        out.update(extra or {})  # e.g. more/ (strategies/revenue_models.py)
         out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
             title, body, cfg.site_title, description=desc))
         out[site_more.LLMS] = site_more.llms_txt(pages, self.base_url, cfg.site_title)
@@ -776,7 +781,7 @@ class SiteBuilder:
         from tools.offer_pages import render_pricing, render_thanks
 
         out["thanks/index.html"] = render_thanks(pages, cfg.site_title)
-        out["pricing/index.html"] = render_pricing(pages, cfg.site_title)
+        out["pricing/index.html"] = render_pricing(pages, cfg.site_title, sponsor=sponsor)
         for m in matrix:
             out[m.path] = render_matrix_page(m, self.base_url, cfg.site_title, capture, cfg.lead_magnet_sample_size)
         # Every page links to the intel index, so it always exists (an empty one says pages come as data grows):

@@ -161,6 +161,12 @@ class Config:
     factory_max_live: int = 500              # most factory products on sale at once
     factory_retire_days: int = 60            # a product with no sale after this long is retired
     factory_prices: list[int] = field(default_factory=lambda: [500, 900, 1400])  # cents: <60 rows, <200, larger
+    # More ways to get paid (strategies/revenue_models.py)
+    offer_custom_request: bool = True        # $29 custom dataset built to order
+    offer_pay_what_you_want: bool = True     # name-your-price supporter product (from $3)
+    offer_sponsorship: bool = True           # $49/week sponsor line, shown only after you approve it
+    offer_lifetime: bool = True              # $149 lifetime pass: every dataset now and future
+    offer_gift: bool = True                  # $25 gift card codes
     battery_saver: bool = True               # on battery, heavy builds wait until the Mac is plugged in
 
     # Pricing engine

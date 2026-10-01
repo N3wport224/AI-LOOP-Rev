@@ -252,7 +252,7 @@ class StripeStorefront:
 # ---------------------------------------------------------------------------- landers
 def link_options(config: Any, meta: dict[str, str] | None = None) -> dict[str, Any]:
     """Extra Payment Link settings every new link gets (Stripe Tax when it's active on the account)."""
-    opts: dict[str, Any] = {}
+    opts: dict[str, Any] = {"allow_promotion_codes": True}  # launch codes, sales and gift cards (Phase 159)
     if getattr(config, "stripe_automatic_tax", False):
         opts["automatic_tax"] = {"enabled": True}
     if getattr(config, "checkout_thank_you_live", False):  # set once the thanks page is confirmed online

@@ -84,7 +84,7 @@ def render_changelog(page: Any, site_title: str) -> str:
     return _shell(f"{page.title} version history", body, site_title, description=desc[:158], depth=2)  # <dataset>/changelog/
 
 
-def render_pricing(pages: list[Any], site_title: str) -> str:
+def render_pricing(pages: list[Any], site_title: str, sponsor: str = "") -> str:
     rows = []
     for p in sorted((p for p in pages if p.kind == "dataset" and p.checkout_url), key=lambda p: p.title):
         from tools.site_extras import POPULAR_BADGE
@@ -101,7 +101,7 @@ def render_pricing(pages: list[Any], site_title: str) -> str:
     from tools.site_extras import banner_html
 
     banner = next((p.banner for p in pages if getattr(p, "banner", "")), "")
-    body = (banner_html(banner) + "<h1>Pricing</h1><p>Every dataset is a download of companies hiring right now, with their tech stack and how "
+    body = (banner_html(banner) + sponsor + "<h1>Pricing</h1><p>Every dataset is a download of companies hiring right now, with their tech stack and how "
             "urgently they're hiring. Pay once, or subscribe for weekly updates.</p>")
     if rows:
         body += ('<div class="wrap"><table><thead><tr><th>Dataset</th><th>One-off</th><th>Weekly updates</th><th>Yearly</th>'

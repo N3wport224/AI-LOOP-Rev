@@ -23,7 +23,8 @@ from strategies.base import Strategy, TaskContext, TaskResult
 
 KEY = "storefront_health"
 STRIPE_API = "https://api.stripe.com/v1"
-ZIP_KINDS = {"lead_directory", "bundle", "team_license"}
+ZIP_KINDS = {"lead_directory", "bundle", "team_license", "micro"}
+CHECK_WINDOW = 40  # products checked per run: with a large factory catalog, a rotating window covers them all
 
 
 def check_link(tools: Any, ref: str) -> str | None:
@@ -67,7 +68,12 @@ def inspect(tools: Any) -> list[dict[str, Any]]:
     from tools.catalog import live_products
 
     out = []
-    for p in live_products(tools.state):
+    products = live_products(tools.state)
+    if len(products) > CHECK_WINDOW:
+        start = int(tools.state.get("storefront_check_offset") or 0) % len(products)
+        products = (products + products)[start:start + CHECK_WINDOW]
+        tools.state.set("storefront_check_offset", start + CHECK_WINDOW)
+    for p in products:
         asset = tools.state.get_asset(p["id"]) or {}
         problems = [msg for msg in (check_link(tools, str(asset.get("product_ref") or "")), check_page(tools, p.get("lander_url", "")),
                                     check_file(tools, asset)) if msg]

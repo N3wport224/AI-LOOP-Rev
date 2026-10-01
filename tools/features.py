@@ -85,6 +85,11 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Money", "Milestone emails", "owner_reports", None),
     ("Money", "Monthly and yearly books", "bookkeeping", None),
     ("Products", "Product factory (one new product every 10 minutes)", "product_factory", _live),
+    ("Products", "Custom datasets built to order", "offer_custom_request", _live),
+    ("Products", "Name your price", "offer_pay_what_you_want", _live),
+    ("Products", "Sponsorships (you approve each)", "offer_sponsorship", _live),
+    ("Products", "Lifetime pass", "offer_lifetime", _all(_live, _tunnel)),
+    ("Products", "Gift cards", "offer_gift", _live),
     ("Money", "Offer tuning", "offer_tuning", None),
 ]
 
