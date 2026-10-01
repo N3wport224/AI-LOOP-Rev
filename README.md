@@ -1255,7 +1255,7 @@ See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested 
 pytest -W error              # the audit's strict mode; also clean
 ```
 
-Phases 12 to 15 add 10 tests in `tests/test_autopilot.py`, plus 17 for `go-live` and
+Phases 12 to 15 add 10 tests in `tests/test_autopilot.py`, plus 16 for `go-live` and
 `connect-marketing`:
 * **Catalog:** the catalog lists one row per live link.
 * **Catch-up:** catch-up publishing of satellite datasets.
