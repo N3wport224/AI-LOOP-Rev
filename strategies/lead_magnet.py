@@ -130,6 +130,10 @@ def capture(tools, email: str | None, niche: str | None = None, source: str = ""
     addr = normalize_email(email)
     if addr is None:
         return CaptureResult("invalid")
+    from tools.disposable import is_disposable
+
+    if is_disposable(addr, cfg):
+        return CaptureResult("disposable")
     if state.free_captures_since(state.clock() - timedelta(hours=1)) >= cfg.lead_magnet_max_per_hour:
         state.log_error("lead_magnet", "hourly capture cap reached; rejecting signups", kind="security")
         return CaptureResult("rate_limited")
@@ -535,7 +539,7 @@ class LeadEndpoints:
         res = capture(self.tools, form.get("email"), form.get("niche"), form.get("source", ""), form.get("ref", ""),
                       form.get("website", ""), ip, self.limiter, form.get("copy", "")[:10])
         after = (lambda sid=res.subscriber_id: send_sample(self.tools, sid)) if res.send_sample and res.subscriber_id else None
-        status = {"invalid": 400, "rate_limited": 429, "disabled": 404}.get(res.status, 200)
+        status = {"invalid": 400, "disposable": 400, "rate_limited": 429, "disabled": 404}.get(res.status, 200)
         if wants_json:
             import json
 
@@ -543,6 +547,9 @@ class LeadEndpoints:
                                 "application/json", {"Cache-Control": "no-store"}, after)
         if res.status == "invalid":
             page = _page(cfg, "Please check your email address", "That address doesn't look right. Go back and try again.", 400)
+        elif res.status == "disposable":
+            page = _page(cfg, "Please use your real email", "Temporary inboxes can't receive the weekly sample. Go back and "
+                                                            "use the address you actually read.", 400)
         elif res.status == "rate_limited":
             page = _page(cfg, "Too many requests", "Please try again in a little while.", 429)
         elif res.status == "disabled":

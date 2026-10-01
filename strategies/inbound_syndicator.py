@@ -118,7 +118,7 @@ def site_pages(tools) -> list[ProductPage]:
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
-        if not niche or kind == "subscription" or (niche, kind) in seen:
+        if not niche or kind in ("subscription", "team_license", "subscription_annual") or (niche, kind) in seen:
             continue
         seen.add((niche, kind))
         base = f"assets/{niche}/v{asset['version']}" if kind == "dataset" else f"assets/{niche}/{kind}-v{asset['version']}"
@@ -141,6 +141,15 @@ def site_pages(tools) -> list[ProductPage]:
         from strategies.testimonials import approved_for
 
         page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
+        if kind == "dataset":
+            from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for
+
+            team, annual = plan_for(tools.state, TEAM_KIND, niche), plan_for(tools.state, ANNUAL_KIND, niche)
+            if team:
+                page.team_url, page.team_price_cents, page.team_seats = team["checkout_url"], int(team["price_cents"]), \
+                    int(cfg.team_license_seats)
+            if annual:
+                page.annual_url, page.annual_price_cents = annual["checkout_url"], int(annual["price_cents"])
         if bandit and kind == "dataset":
             facts = {"label": niche_title(niche).replace(" Remote", ""), "companies": metrics.get("companies") or 0,
                      "hot": metrics.get("high_intent") or metrics.get("high_urgency") or 0,

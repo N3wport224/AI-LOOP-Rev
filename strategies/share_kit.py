@@ -130,10 +130,16 @@ def fingerprint(products: list[dict[str, Any]], promos: dict[int, dict[str, Any]
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def build_kit(state: Any, files: Any) -> dict[str, Any]:
+def shareable(state: Any) -> list[dict[str, Any]]:
+    """Promotable products minus the variants that are offered on their dataset's page (team, yearly)."""
     from strategies.freshness_guard import promotable
 
-    products = promotable(state)[:MAX_PRODUCTS]  # stale datasets are not advertised
+    return [p for p in promotable(state) if p["kind"] not in ("team_license", "subscription_annual")]
+
+
+def build_kit(state: Any, files: Any) -> dict[str, Any]:
+
+    products = shareable(state)[:MAX_PRODUCTS]  # stale datasets are not advertised
     promos = promos_for(state, products)
     posts: list[dict[str, str]] = []
     for p in products:
@@ -155,11 +161,9 @@ class ShareKit(Strategy):
     tasks = ("refresh_share_kit",)
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
-        from strategies.freshness_guard import promotable
-
         state = ctx.tools.state
         current = state.get(KEY) or {}
-        products = promotable(state)[:MAX_PRODUCTS]
+        products = shareable(state)[:MAX_PRODUCTS]
         fp = fingerprint(products, promos_for(state, products))
         age_ok = current.get("generated_at") and \
             state.clock() - datetime.fromisoformat(current["generated_at"]) < timedelta(days=REFRESH_DAYS)

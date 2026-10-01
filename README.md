@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 788 tests, ~40 s, no network
+pytest                     # 804 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 54 tasks now (Phases 20-54 added twenty-four). An old `automonetize.toml` that pins
+The plan has 57 tasks now (Phases 20-59 added twenty-seven). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -1265,6 +1265,33 @@ gets one alert and a to-do item with both order ids. The refund stays your decis
 * When it isn't, the doctor tells you, because whether you must collect sales tax or VAT depends
   on where you and your buyers are.
 
+## More ways to buy (Phases 55-59)
+
+**Phase 55: team license** (`strategies/plans.py`, task `publish_team_license`).
+* For each dataset on sale: the same file plus `LICENSE-TEAM.txt`, for up to `team_license_seats`
+  (10) people in one organisation, at `team_license_multiplier` (3x) the price.
+* It's shown on the dataset's page ("Buying for a team?"), not as a separate page or post.
+* A new dataset version rebuilds the team file behind the same link. A new price makes a new link
+  and retires the old one.
+
+**Phase 56: yearly plan** (task `publish_annual_plan`).
+* For each monthly subscription, a yearly option at `annual_months_paid` (10) months' price.
+* It's synced and delivered like the monthly plan.
+
+**Phase 57: thank-you page** (`tools/offer_pages.py`, task `checkout_thank_you`).
+* The site gets `thanks/` (noindex), which confirms the file is on its way and offers the bundle,
+  weekly updates and the team license.
+* Once that page is confirmed online, every live Payment Link redirects there after payment, and
+  new links do too.
+
+**Phase 58: disposable emails refused** (`tools/disposable.py`).
+* The free-sample form refuses throwaway inboxes (mailinator, yopmail, 10minutemail and about 45
+  more, including subdomains) with a polite page.
+* Add your own with `blocked_signup_domains`.
+
+**Phase 59: pricing page.** The site gets `pricing/`: every dataset with its one-off, weekly,
+yearly and team prices side by side, plus the bundle.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1567,6 +1594,10 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `team_license` / `team_license_multiplier` / `team_license_seats` | `true` / `3.0` / `10` | Team license per dataset |
+| `annual_plan` / `annual_months_paid` | `true` / `10` | Yearly subscription option |
+| `checkout_thank_you` | `true` | Redirect buyers to the site's thank-you page after paying |
+| `blocked_signup_domains` | `[]` | Extra disposable domains to refuse at the sample form |
 | `download_link_days` / `download_link_uses` | `7` / `5` | Private links for files too big to attach |
 | `webhook_check_hours` / `card_testing_threshold` | `6` / `10` | Webhook check interval; failed charges per hour that alert |
 | `log_keep_days` / `keep_versions` | `90` / `3` | Housekeeping: log retention, dataset versions kept (sold ones always kept) |
@@ -1642,7 +1673,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 788 tests, ~40 s, no network
+pytest     # 804 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

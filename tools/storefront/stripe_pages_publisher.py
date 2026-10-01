@@ -255,7 +255,14 @@ def link_options(config: Any, meta: dict[str, str] | None = None) -> dict[str, A
     opts: dict[str, Any] = {}
     if getattr(config, "stripe_automatic_tax", False):
         opts["automatic_tax"] = {"enabled": True}
+    if getattr(config, "checkout_thank_you_live", False):  # set once the thanks page is confirmed online
+        opts["after_completion"] = thank_you_redirect(config)
     return opts
+
+
+def thank_you_redirect(config: Any) -> dict[str, Any]:
+    base = str(config.pages_base_url).rstrip("/")
+    return {"type": "redirect", "redirect": {"url": f"{base}/thanks/?session_id={{CHECKOUT_SESSION_ID}}"}}
 
 
 def _cell(value: Any) -> str:

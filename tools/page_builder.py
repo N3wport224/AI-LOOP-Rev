@@ -82,6 +82,11 @@ class ProductPage:
     copy_targets: dict[str, str] = field(default_factory=dict)   # cta variant -> href
     telemetry_url: str = ""
     testimonials: list[str] = field(default_factory=list)  # approved customer quotes (strategies/testimonials.py)
+    team_url: str = ""             # team license (strategies/plans.py)
+    team_price_cents: int = 0
+    team_seats: int = 0
+    annual_url: str = ""           # yearly subscription
+    annual_price_cents: int = 0
 
     @property
     def slug(self) -> str:
@@ -264,6 +269,12 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
     if page.subscription_url and page.subscription_price_cents:
         cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.subscription_url)}" rel="noopener">'
                 f"Weekly updates: ${page.subscription_price_cents / 100:.2f}/{html.escape(page.subscription_interval)}</a>")
+    if page.annual_url and page.annual_price_cents:
+        cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.annual_url)}" rel="noopener">'
+                f"Yearly: ${page.annual_price_cents / 100:.0f}/year</a>")
+    if page.team_url and page.team_price_cents:
+        cta += (f'<p class="muted">Buying for a team? <a data-checkout href="{html.escape(page.team_url)}" rel="noopener">'
+                f"Team license for up to {page.team_seats} people: ${page.team_price_cents / 100:.0f}</a></p>")
     proof = []
     if page.data_updated_at:
         proof.append(f'Updated <time class="ago" datetime="{html.escape(page.data_updated_at)}">'
@@ -705,6 +716,10 @@ class SiteBuilder:
         total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")
         out["radar-badge.svg"] = render_badge_svg("tech radar", f"{total_roles} hiring signals tracked")
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title)
+        from tools.offer_pages import render_pricing, render_thanks
+
+        out["thanks/index.html"] = render_thanks(pages, cfg.site_title)
+        out["pricing/index.html"] = render_pricing(pages, cfg.site_title)
         for m in matrix:
             out[m.path] = render_matrix_page(m, self.base_url, cfg.site_title, capture, cfg.lead_magnet_sample_size)
         if matrix:

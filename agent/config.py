@@ -296,6 +296,16 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Plans and conversion (Phases 55-59)
+    team_license: bool = True
+    team_license_multiplier: float = 3.0     # team price = dataset price x this, whole dollars
+    team_license_seats: int = 10
+    annual_plan: bool = True
+    annual_months_paid: int = 10             # yearly = 10 x monthly ("2 months free")
+    checkout_thank_you: bool = True          # after payment, Stripe sends buyers to the site's thank-you page
+    checkout_thank_you_live: bool = False    # internal: set by the agent once the page is confirmed online
+    blocked_signup_domains: list[str] = field(default_factory=list)  # extra disposable domains to refuse
+
     # Delivery & payments (Phases 50-54)
     download_link_days: int = 7              # large files: private link lifetime
     download_link_uses: int = 5
@@ -425,7 +435,8 @@ _PLAIN_ENV = {
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
-_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts"}
+_LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts",
+                "blocked_signup_domains"}
 _JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix", "dunning_reminder_days"}
 
 

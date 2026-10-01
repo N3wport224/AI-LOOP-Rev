@@ -346,7 +346,9 @@ class SubscriptionEngine(Strategy):
         new_subs = invoices = welcomes = 0
         from api.auth import API_KIND
 
-        for asset in [a for a in tools.state.list_assets() if a["kind"] in (SUB_KIND, API_KIND) and a.get("product_ref")]:
+        from strategies.plans import ANNUAL_KIND
+
+        for asset in [a for a in tools.state.list_assets() if a["kind"] in (SUB_KIND, API_KIND, ANNUAL_KIND) and a.get("product_ref")]:
             created = int(datetime.fromisoformat(asset["created_at"]).timestamp())
             for s in sf.client.completed_sessions(asset["product_ref"], created):
                 if s.get("mode") == "subscription":

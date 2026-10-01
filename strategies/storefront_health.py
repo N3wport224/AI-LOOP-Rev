@@ -23,7 +23,7 @@ from strategies.base import Strategy, TaskContext, TaskResult
 
 KEY = "storefront_health"
 STRIPE_API = "https://api.stripe.com/v1"
-ZIP_KINDS = {"lead_directory", "bundle"}
+ZIP_KINDS = {"lead_directory", "bundle", "team_license"}
 
 
 def check_link(tools: Any, ref: str) -> str | None:
