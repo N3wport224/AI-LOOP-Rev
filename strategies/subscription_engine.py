@@ -231,8 +231,10 @@ def send_welcome(tools, subscriber_id: int) -> str:
     """Email the current full dataset to a new subscriber (once)."""
     state = tools.state
     sub = next((s for s in state.list_subscribers() if s["id"] == subscriber_id), None)
-    if not sub or not sub.get("email") or not sub.get("niche"):
-        return "skipped"
+    from strategies.tech_passes import is_pass
+
+    if not sub or not sub.get("email") or not sub.get("niche") or is_pass(sub.get("niche")):
+        return "skipped"  # (technology passes send their own welcome)
     done = state.subscription_delivery(subscriber_id, "welcome")
     if done and done["status"] == "delivered":
         return "delivered"
@@ -381,7 +383,11 @@ class SubscriptionEngine(Strategy):
         sent = dry = failed = skipped = 0
         packages: dict[str, tuple[str, int, str]] = {}
         refreshed = self.refresh_subscribed_niches(ctx, period)
+        from strategies.tech_passes import is_pass
+
         for sub in tools.state.list_subscribers(DELIVERABLE):
+            if is_pass(sub.get("niche")):
+                continue  # technology passes are delivered by strategies/tech_passes.py
             if not sub.get("email") or not sub.get("niche"):
                 skipped += 1
                 continue

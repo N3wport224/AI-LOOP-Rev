@@ -439,6 +439,9 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     if not force:  # a "make one now" (panel, CLI) stays quick: the daily link check waits for the scheduled tick
         check_links(tools)  # Phase 294
     refreshed = refresh_due(tools)
+    from strategies.tech_passes import tick as passes_tick
+
+    passes_tick(tools)  # Phases 320-322: publish passes (daily), welcome and weekly deliveries
     last = state.get(LAST)
     if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
         return {"made": None, "why": "not due yet", "published": published, "retired": retired, "refreshed": refreshed}

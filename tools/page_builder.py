@@ -72,6 +72,7 @@ class ProductPage:
     subscription_url: str = ""
     subscription_price_cents: int = 0
     subscription_interval: str = "month"
+    subscription_label: str = ""   # what the subscription is, when not "Weekly updates" (technology passes)
     # Social proof, all computed from real data; a zero/empty field is simply not shown.
     data_updated_at: str = ""      # newest lead refresh (ISO)
     profiles_added_7d: int = 0     # companies first seen in the last 7 days
@@ -299,7 +300,8 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
                    if page.copy_arms and page.telemetry_url else "")
     if page.subscription_url and page.subscription_price_cents:
         cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.subscription_url)}" rel="noopener">'
-                f"Weekly updates: ${page.subscription_price_cents / 100:.2f}/{html.escape(page.subscription_interval)}</a>")
+                f"{html.escape(page.subscription_label or 'Weekly updates')}: ${page.subscription_price_cents / 100:.2f}/"
+                f"{html.escape(page.subscription_interval)}</a>")
     if page.annual_url and page.annual_price_cents:
         cta += (f' <a class="cta alt" data-checkout href="{html.escape(page.annual_url)}" rel="noopener">'
                 f"Yearly: ${page.annual_price_cents / 100:.0f}/year</a>")

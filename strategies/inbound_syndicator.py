@@ -165,6 +165,12 @@ def site_pages(tools) -> list[ProductPage]:
 
             page.files_html = (update_note(tools.state, niche)  # Phase 278
                                + bx.file_list_html((listing.get("filters") or {}).get("type", "slice")))
+            from strategies.tech_passes import offer_for
+
+            offer = offer_for(tools.state, str((listing.get("filters") or {}).get("tech") or ""))  # Phase 323
+            if offer and not page.subscription_url:
+                page.subscription_url, page.subscription_price_cents = offer["url"], offer["price_cents"]
+                page.subscription_label = "Every dataset on this technology, updated weekly"
         if kind == "micro":
             from strategies.marketing_optimizer import display_title
             from strategies.product_factory import label as tech_label

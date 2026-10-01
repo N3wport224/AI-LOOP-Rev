@@ -2400,6 +2400,25 @@ when something is wrong.
   * This found that one malformed field in one posting could make a board's whole feed unreadable.
   * Parsers now skip just that posting, and a broken RSS feed is refused cleanly.
 
+## Technology passes (Phases 320-324)
+
+One subscription for everything about a technology (`strategies/tech_passes.py`).
+
+* **Phase 320, the offer:** once a technology has 4 factory products on sale, a monthly subscription
+  goes on sale, e.g. "Every Rust Dataset, Updated Weekly" at $19/month.
+  * It's a Stripe recurring Payment Link; at most 2 new passes are created in any 24 hours.
+  * It needs working delivery email and public download links (the tunnel), since it's delivered by
+    link.
+* **Phase 321, welcome:** a new subscriber gets download links for every current product about the
+  technology at once.
+* **Phase 322, every week:** on the usual delivery day, subscribers get fresh links to the current
+  version of each product, including new ones.
+  * Only active subscriptions get it; cancelling in Stripe stops it.
+  * The standard weekly-update subscription skips pass subscribers, so nobody gets two emails.
+* **Phase 323, offered where it matters:** product pages about the technology show "Every dataset on
+  this technology, updated weekly: $19.00/month" next to their own price.
+* **Phase 324, counted:** Monday's report shows pass subscribers and their monthly revenue.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

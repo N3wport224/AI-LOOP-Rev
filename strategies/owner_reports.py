@@ -323,6 +323,11 @@ class OwnerReports(Strategy):
                 lines += ["", newcomers]
             from strategies.source_efficiency import describe as describe_boards
 
+            from strategies.tech_passes import weekly_line as passes_line
+
+            passes = passes_line(state)  # Phase 324
+            if passes:
+                lines += ["", passes]
             boards = describe_boards(state)  # Phase 299
             if boards:
                 lines += ["", boards]
