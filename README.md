@@ -1983,6 +1983,23 @@ Every action needs the panel's sign-in and CSRF token. The panel only listens on
     product goes on sale, then forgotten (or after 90 days).
 * **Phase 209, what's in the download:** factory product pages list the files in the zip.
 
+## Catalog hygiene (Phases 210-214)
+
+* **Phase 210, retired pages come down:** the site publisher deletes pages that are no longer built
+  (a retired product, an empty hub).
+  * Only files it published itself (in its manifest) are ever deleted, at most 25 per build.
+  * If a build is less than half the size of what's published, nothing is deleted and you get an
+    alert instead: a bug can't wipe the site.
+* **Phase 211, Stripe stays tidy:** when the factory retires a product, its Stripe product is
+  archived as well as its Payment Link closed.
+* **Phase 212, prices follow demand:** at the weekly refresh, a product with 3 or more kept orders
+  in 30 days moves up one price step ($5, $7, $9, $14, $19, $29). The new price gets a new checkout
+  and the old link is closed. Prices never go down by themselves or past the top step.
+* **Phase 213, disk stays tidy:** housekeeping deletes the files of products retired more than 30
+  days ago that nobody bought (bought files stay, so order recovery can re-send them).
+* **Phase 214, current numbers at checkout:** each refresh updates the Stripe product's description
+  with the new row count.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

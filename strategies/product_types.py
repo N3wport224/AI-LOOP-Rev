@@ -309,12 +309,24 @@ def refresh_due(tools: Any, limit: int = REFRESH_PER_TICK) -> list[str]:
             made = build_pack(cand, cfg, state.clock(), state, tools.files)
         else:
             made = pf.content_for(cand, cfg, state.clock())
-        made["price_cents"] = int(asset.get("price_cents") or made["price_cents"])  # same checkout, same price
+        from strategies import catalog_hygiene as ch
+
+        current = int(asset.get("price_cents") or made["price_cents"])
+        made["price_cents"] = current  # same checkout, same price...
+        checkout = {"checkout_url": asset.get("checkout_url") or "", "product_ref": asset.get("product_ref")}
+        higher = ch.next_price(state, row["slug"], current)
+        if higher > current and asset.get("checkout_url"):  # ...unless it's selling well (Phase 212)
+            new = ch.reprice(tools, asset, row["title"], made["summary"], higher)
+            if new:
+                checkout = {"checkout_url": new["checkout_url"], "product_ref": new["product_ref"]}
+                made["price_cents"] = higher
         zip_rel = pf.write_files(tools, row["slug"], version, made, row["title"], filters)
         aid = state.add_asset(asset.get("hypothesis_id"), pf.KIND, row["title"], zip_rel, version, made["rows"], made["price_cents"],
-                              product_ref=asset.get("product_ref"))
+                              product_ref=checkout["product_ref"])
         state.update_asset(aid, niche=row["slug"], status="published", provider=asset.get("provider") or "stripe",
-                           checkout_url=asset.get("checkout_url") or "")
+                           checkout_url=checkout["checkout_url"])
+        if checkout["product_ref"]:
+            ch.sync_description(tools, str(checkout["product_ref"]), made["summary"])  # Phase 214
         state.update_asset(int(asset["id"]), status="superseded")
         state._exec("UPDATE factory_products SET asset_id = ?, rows = ?, refreshed_at = ? WHERE slug = ?",
                     (aid, made["rows"], state.now(), row["slug"]))

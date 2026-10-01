@@ -370,6 +370,9 @@ def retire_unsold(tools: Any) -> list[str]:
             except Exception as exc:  # noqa: BLE001 - retried next time
                 state.log_error("product_factory", f"couldn't retire {row['slug']}: {exc!r}")
                 continue
+            from strategies.catalog_hygiene import archive
+
+            archive(tools, ref)  # Phase 211: the Stripe product too, best effort
         state.update_asset(int(row["asset_id"]), status="retired")
         state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), row["slug"]))
         retired.append(row["slug"])

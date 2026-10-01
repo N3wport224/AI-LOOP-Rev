@@ -186,6 +186,9 @@ class Housekeeping(Strategy):
             pruned = prune_logs(state, cfg)
             rotated = rotate_audit(cfg, state.clock())
             removed = prune_versions(state, tools.files, int(cfg.keep_versions))
+            from strategies.catalog_hygiene import prune_retired
+
+            retired_dirs = prune_retired(state, tools.files)  # Phase 213
             state._exec("PRAGMA optimize")
             reclaimed = maybe_vacuum(state, Path(state.db_path))
             trimmed = trim_launchd_logs()
@@ -197,5 +200,6 @@ class Housekeeping(Strategy):
         state.set(KEY, record)
         parts = [f"{n} {k}" for k, n in pruned.items() if n] + ([f"{len(removed)} old version file(s)"] if removed else []) \
             + (["audit log archived"] if rotated else []) \
+            + ([f"{retired_dirs} retired product folder(s)"] if retired_dirs else []) \
             + ([f"database compacted ({reclaimed / 1e6:.1f} MB freed)"] if reclaimed >= 100_000 else [])
         return TaskResult(True, "housekeeping: " + (", ".join(parts) or "nothing to tidy"), {"removed": len(removed), **pruned})

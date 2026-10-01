@@ -55,6 +55,15 @@ class GitHubClient:
         result = self._call("PUT", f"/repos/{repo}/contents/{quote(path)}", json_body=body)
         return {"changed": True, "html_url": (result or {}).get("content", {}).get("html_url", "")}
 
+    def delete_file(self, repo: str, path: str, message: str, branch: str) -> bool:
+        """Delete a file. False when it's already gone."""
+        current = self.get_file(repo, path, branch)
+        if not current:
+            return False
+        self._call("DELETE", f"/repos/{repo}/contents/{quote(path)}",
+                   json_body={"message": message, "sha": current["sha"], "branch": branch})
+        return True
+
     # -- gists ---------------------------------------------------------------------
     def upsert_gist(self, gist_id: str | None, description: str, files: dict[str, str], public: bool = True) -> dict[str, Any]:
         payload = {"description": description, "files": {name: {"content": body} for name, body in files.items()}}

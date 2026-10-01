@@ -46,6 +46,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from tools.storefront.github import GitHubClient
 
 FEED_PATH = "feeds/radar.xml"
+STALE_DELETES_PER_RUN = 25
 
 # "Updated 2 hours ago", computed in the visitor's browser so a static page never shows a stale
 # relative time. Without JS the absolute timestamp stays visible.
@@ -861,10 +862,38 @@ class SiteBuilder:
                     break
                 changed += bool(res.get("changed"))
                 manifest[rel] = digest
+            if not self.pending and state is not None:
+                changed += self._delete_stale(out, manifest, prefix, branch, state)
         finally:
             if state is not None:
                 state.set(key, manifest)
         return changed
+
+    def _delete_stale(self, out: dict[str, str | bytes], manifest: dict[str, str], prefix: str, branch: str, state: Any) -> int:
+        """Phase 210: pages that are no longer built (a retired product, a removed hub) are taken down.
+        Only files this agent published (in its manifest) are ever deleted, and never when the build
+        looks broken (much smaller than what's published), so a bug can't wipe the site."""
+        from tools.errors import CircuitOpenError
+
+        stale = sorted(rel for rel in manifest if rel not in out)
+        if not stale:
+            return 0
+        if len(out) < 0.5 * len(manifest):
+            state.log_error("site", f"not removing {len(stale)} old page(s): this build has {len(out)} files against "
+                                    f"{len(manifest)} published, which looks wrong", kind="alert")
+            return 0
+        removed = 0
+        for rel in stale[:STALE_DELETES_PER_RUN]:
+            try:
+                self.github.delete_file(self.config.github_pages_repo, prefix + rel, f"site: remove {rel}", branch)
+            except CircuitOpenError:
+                break
+            except Exception as exc:  # noqa: BLE001 - the page stays up; tried again next build
+                state.log_error("site", f"couldn't remove {rel}: {exc!r}")
+                break
+            manifest.pop(rel, None)
+            removed += 1
+        return removed
 
 
 # ----------------------------------------------------------------------------- IndexNow
