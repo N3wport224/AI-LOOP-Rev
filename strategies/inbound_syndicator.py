@@ -381,6 +381,11 @@ class InboundSyndicator(Strategy):
 
         extra.update(site_files(pages, tools.state, cfg, lambda title, body, desc, depth: _shell(  # Phases 225-229
             title, body, cfg.site_title, description=desc, depth=depth)))
+        from strategies import widget
+
+        if "search.json" in extra:  # Phases 300-304: the cards read the search index
+            extra.update(widget.site_files(tools.state, cfg, pages, lambda title, body, desc, depth: _shell(
+                title, body, cfg.site_title, description=desc, depth=depth)))
         from strategies.buyer_experience import library_page, request_page
 
         extra["library/index.html"] = library_page(cfg, shell)

@@ -2335,6 +2335,21 @@ From `strategies/source_efficiency.py`:
 * **Phase 299, what each board brings:** `automonetize sources` and Monday's report show, for the
   last 30 days, new postings per board and how many no other board had.
 
+## Embeddable product cards (Phases 300-304)
+
+Two lines of HTML put a dataset on any page (`strategies/widget.py`).
+
+* **Phase 300, the data:** the card reads `search.json`, which is already on the site.
+* **Phase 301, the script:** `widget.js` turns every `<div data-am-product="SLUG"></div>` into a small
+  card with the title, rows, price and a link. It builds the card from text only, and uses no
+  cookies or storage.
+* **Phase 302, how to embed:** `embed/products/` shows the two lines for the best sellers and newest
+  products.
+* **Phase 303, affiliates get credit:** `data-am-ref="CODE"` adds the affiliate's tracking to the
+  link, so sales through the card are theirs.
+* **Phase 304, small and quiet:** the script is plain ASCII, stays under 4 KB and makes one request,
+  to this site. A test enforces all of this, and the card was checked in headless Chromium.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
