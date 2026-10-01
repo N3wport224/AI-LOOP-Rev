@@ -1570,6 +1570,7 @@ automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one 
 automonetize optout [approve ID|reject ID]  # companies asking to be left out of the datasets
 automonetize sources                      # what each job board brought, its speed, any back-off
 automonetize chat WEBHOOK-URL|test         # sales and alerts in Slack or Discord
+automonetize qa                           # quality checks: downloads, rows, pages, structured data, parsers
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2383,6 +2384,21 @@ Applied to every site build before it's checked and published (`tools/site_perf.
   `sitemap-1.xml`, `sitemap-2.xml` and so on, and `sitemap.xml` becomes their index.
 * **Phase 314, the whole site:** total size and file count are recorded. Past 800 MB (GitHub Pages
   allows 1 GB) or 50,000 files you get one alert a day.
+
+## Quality checks (Phases 315-319)
+
+`automonetize qa` (`tools/qa.py`). Housekeeping also runs checks 315-318 weekly and raises one alert
+when something is wrong.
+
+* **Phase 315, downloads:** every product on sale has a download that opens, matches its
+  `SHA256SUMS`, and includes a README.
+* **Phase 316, rows:** each download's main CSV parses and holds as many rows as the product says.
+* **Phase 317, pages:** every built page has a `lang`, a `<title>`, a meta description and one
+  `<h1>`.
+* **Phase 318, structured data:** every JSON-LD block on the site parses and has a `@type`.
+* **Phase 319, parsers survive junk:** each job-board parser is fed random and truncated payloads.
+  * This found that one malformed field in one posting could make a board's whole feed unreadable.
+  * Parsers now skip just that posting, and a broken RSS feed is refused cleanly.
 
 ## Safety and consistency (Phases 140-144)
 

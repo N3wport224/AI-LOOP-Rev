@@ -189,6 +189,9 @@ class Housekeeping(Strategy):
             from strategies.catalog_hygiene import prune_retired
 
             retired_dirs = prune_retired(state, tools.files)  # Phase 213
+            from tools.qa import weekly as weekly_qa
+
+            weekly_qa(state, tools.files)  # Phases 315-318
             state._exec("PRAGMA optimize")
             reclaimed = maybe_vacuum(state, Path(state.db_path))
             trimmed = trim_launchd_logs()

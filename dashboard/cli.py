@@ -877,6 +877,12 @@ def cmd_chat(args: argparse.Namespace, console: Console) -> int:
     return chat_main(args.rest)
 
 
+def cmd_qa(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import qa_main
+
+    return qa_main([])
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1256,6 +1262,8 @@ def build_parser() -> argparse.ArgumentParser:
     ch = sub.add_parser("chat", help="sales and alerts in Slack or Discord: chat WEBHOOK-URL saves and tests; chat test")
     ch.add_argument("rest", nargs="*")
     ch.set_defaults(func=cmd_chat)
+    qa = sub.add_parser("qa", help="quality checks: downloads, row counts, pages, structured data, parsers")
+    qa.set_defaults(func=cmd_qa)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")

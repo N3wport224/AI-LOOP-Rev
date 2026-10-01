@@ -157,6 +157,14 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _append(leads: list[Lead], build: Callable[[], Lead]) -> None:
+    """Phase 319: a posting with a malformed field is skipped; the rest of the feed is kept."""
+    try:
+        leads.append(build())
+    except (TypeError, ValueError, AttributeError, KeyError, OverflowError, OSError):
+        pass
+
+
 def parse_remoteok(payload: Any) -> list[Lead]:
     leads = []
     items = payload if isinstance(payload, list) else []
@@ -164,8 +172,7 @@ def parse_remoteok(payload: Any) -> list[Lead]:
         if not isinstance(item, dict) or not _field(item, "remoteok", "position"):
             continue  # first element is the API legal notice
         f = lambda name, default=None: _field(item, "remoteok", name, default)  # noqa: E731
-        leads.append(
-            Lead(
+        _append(leads, lambda: Lead(
                 source="remoteok",
                 source_id=str(f("id", "")),
                 company=_clean(f("company")),
@@ -179,8 +186,7 @@ def parse_remoteok(payload: Any) -> list[Lead]:
                 posted_at=_ts(f("date") or f("epoch")),
                 salary_min=_int_or_none(f("salary_min")),
                 salary_max=_int_or_none(f("salary_max")),
-            )
-        )
+            ))
     _note_shape("remoteok", items, len(leads))
     return leads
 
@@ -188,12 +194,12 @@ def parse_remoteok(payload: Any) -> list[Lead]:
 def parse_arbeitnow(payload: Any) -> list[Lead]:
     leads = []
     data = payload.get("data", []) if isinstance(payload, dict) else []
+    data = data if isinstance(data, list) else []
     for item in data:
         if not isinstance(item, dict):
             continue
         f = lambda name, default=None: _field(item, "arbeitnow", name, default)  # noqa: E731
-        leads.append(
-            Lead(
+        _append(leads, lambda: Lead(
                 source="arbeitnow",
                 source_id=str(f("slug", "")),
                 company=_clean(f("company_name")),
@@ -204,8 +210,7 @@ def parse_arbeitnow(payload: Any) -> list[Lead]:
                 tags=[str(t).lower() for t in (f("tags") or []) + (f("job_types") or [])],
                 description=_clean(f("description")),
                 posted_at=_ts(f("created_at")),
-            )
-        )
+            ))
     _note_shape("arbeitnow", data if isinstance(data, list) else [], sum(1 for lead in leads if lead.title and lead.company))
     return leads
 

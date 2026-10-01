@@ -363,6 +363,22 @@ def chat_main(argv: list[str], transport=None) -> int:
     return 0 if ok else 1
 
 
+def qa_main(argv: list[str]) -> int:
+    """`automonetize qa` (Phases 315-319): exit 1 if anything is wrong."""
+    from tools.qa import run_all
+
+    _, state, files = _setup()
+    results = run_all(state, files)
+    bad = 0
+    for area, problems in results.items():
+        say(GREEN if not problems else RED, f"{'✔' if not problems else '✖'} {area}: "
+                                            f"{'all good' if not problems else f'{len(problems)} problem(s)'}")
+        for p in problems[:20]:
+            print(f"    {p}")
+        bad += len(problems)
+    return 1 if bad else 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

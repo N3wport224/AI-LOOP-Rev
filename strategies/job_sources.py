@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any
 
-from strategies.b2b_lead_aggregator import Lead, _clean, _note_shape, _ts
+from strategies.b2b_lead_aggregator import Lead, _append, _clean, _note_shape, _ts
 
 SOURCE_MIN_HOURS = {"remotive": 6, "jobicy": 6, "himalayas": 6, "weworkremotely": 6}
 FETCHED = "source_fetched_at"
@@ -62,12 +62,13 @@ def _int(v: Any) -> int | None:
 # ------------------------------------------------------------------ Phase 195: Remotive
 def parse_remotive(payload: Any) -> list[Lead]:
     items = payload.get("jobs", []) if isinstance(payload, dict) else []
+    items = items if isinstance(items, list) else []
     leads = []
     for j in items:
         if not isinstance(j, dict) or not j.get("title") or not j.get("company_name"):
             continue
         pay = _money(j.get("salary"))
-        leads.append(Lead(source="remotive", source_id=str(j.get("id") or ""), company=_clean(j.get("company_name")),
+        _append(leads, lambda: Lead(source="remotive", source_id=str(j.get("id") or ""), company=_clean(j.get("company_name")),
                           title=_clean(j.get("title")), url=str(j.get("url") or ""),
                           location=_clean(j.get("candidate_required_location")) or "Remote", remote=True,
                           tags=[str(t).lower() for t in (j.get("tags") or [])] + [str(j.get("category") or "").lower()],
@@ -84,12 +85,13 @@ def fetch_remotive(http, depth: int = 1) -> list[Lead]:
 # ------------------------------------------------------------------ Phase 196: Jobicy
 def parse_jobicy(payload: Any) -> list[Lead]:
     items = payload.get("jobs", []) if isinstance(payload, dict) else []
+    items = items if isinstance(items, list) else []
     leads = []
     for j in items:
         if not isinstance(j, dict) or not j.get("jobTitle") or not j.get("companyName"):
             continue
         tags = [str(t).lower() for key in ("jobIndustry", "jobType") for t in (j.get(key) or []) if isinstance(t, str)]
-        leads.append(Lead(source="jobicy", source_id=str(j.get("id") or ""), company=_clean(j.get("companyName")),
+        _append(leads, lambda: Lead(source="jobicy", source_id=str(j.get("id") or ""), company=_clean(j.get("companyName")),
                           title=_clean(j.get("jobTitle")), url=str(j.get("url") or ""), location=_clean(j.get("jobGeo")) or "Remote",
                           remote=True, tags=tags, description=_clean(j.get("jobDescription") or j.get("jobExcerpt")),
                           posted_at=_ts(j.get("pubDate")), salary_min=_int(j.get("annualSalaryMin")),
@@ -105,6 +107,7 @@ def fetch_jobicy(http, depth: int = 1) -> list[Lead]:
 # ------------------------------------------------------------------ Phase 197: Himalayas
 def parse_himalayas(payload: Any) -> list[Lead]:
     items = payload.get("jobs", []) if isinstance(payload, dict) else []
+    items = items if isinstance(items, list) else []
     leads = []
     for j in items:
         if not isinstance(j, dict) or not j.get("title") or not j.get("companyName"):
@@ -112,9 +115,12 @@ def parse_himalayas(payload: Any) -> list[Lead]:
         where = j.get("locationRestrictions") or []
         when = j.get("pubDate")
         if isinstance(when, (int, float)):
-            when = datetime.fromtimestamp(when, tz=timezone.utc).isoformat()
+            try:
+                when = datetime.fromtimestamp(when, tz=timezone.utc).isoformat()
+            except (OverflowError, OSError, ValueError):
+                when = ""
         level = j.get("seniority") or []
-        leads.append(Lead(source="himalayas", source_id=str(j.get("guid") or j.get("applicationLink") or ""),
+        _append(leads, lambda: Lead(source="himalayas", source_id=str(j.get("guid") or j.get("applicationLink") or ""),
                           company=_clean(j.get("companyName")), title=_clean(j.get("title")),
                           url=str(j.get("applicationLink") or j.get("guid") or ""),
                           location=", ".join(map(str, where))[:120] if where else "Remote", remote=True,
@@ -133,7 +139,10 @@ def fetch_himalayas(http, depth: int = 1) -> list[Lead]:
 def parse_wwr(xml_text: str) -> list[Lead]:
     if "<!DOCTYPE" in xml_text[:2048].upper() or "<!ENTITY" in xml_text.upper():
         raise ValueError("rss: DOCTYPE/ENTITY declarations are refused")
-    root = ET.fromstring(xml_text)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"rss: not well-formed ({exc})") from None
     items = root.findall("./channel/item")
     leads = []
     for it in items:
@@ -148,7 +157,7 @@ def parse_wwr(xml_text: str) -> list[Lead]:
             when = parsedate_to_datetime(when).isoformat()
         except (TypeError, ValueError):
             when = ""
-        leads.append(Lead(source="weworkremotely", source_id=it.findtext("guid") or it.findtext("link") or "",
+        _append(leads, lambda: Lead(source="weworkremotely", source_id=it.findtext("guid") or it.findtext("link") or "",
                           company=_clean(company), title=_clean(role), url=it.findtext("link") or "",
                           location=_clean(it.findtext("region")) or "Remote", remote=True,
                           tags=[str(it.findtext("category") or "").lower()],
