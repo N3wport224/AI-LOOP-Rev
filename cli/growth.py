@@ -65,6 +65,23 @@ def offers_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def customers_main(argv: list[str]) -> int:
+    from tools.customers import describe, export_csv, report
+
+    _, state, files = _setup()
+    if "--report" in argv:
+        r = report(state)
+        say(BOLD, describe(r))
+        for ch, v in r["by_channel"].items():
+            print(f"  first came from {ch:<12} {v['customers']:>4} customer(s), lifetime value ${v['ltv_cents'] / 100:,.2f}")
+        for month, v in r["by_month"].items():
+            print(f"  first bought in {month}  {v['customers']:>4} customer(s), lifetime value ${v['ltv_cents'] / 100:,.2f}")
+        return 0
+    path, n = export_csv(state, files)
+    say(GREEN, f"✔ {n} customer(s) written to {path}")
+    return 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 

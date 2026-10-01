@@ -206,6 +206,11 @@ class OwnerReports(Strategy):
             lines += ["", "Problems in the last 24 hours:", *[f"- {p['source']}: {p['message'][:200]}" for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):
             lines += ["", "Tip: `automonetize connect-marketing` puts your products on a public website and turns on articles."]
+        if local.weekday() == 0:
+            from tools.customers import describe as describe_customers
+            from tools.customers import report as customer_report
+
+            lines += ["", describe_customers(customer_report(state))]
         kit = state.get("share_kit")
         if local.weekday() == 0 and kit and kit.get("posts"):
             from strategies.share_kit import as_text

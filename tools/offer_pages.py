@@ -25,8 +25,10 @@ def _money(cents: int) -> str:
     return f"${cents / 100:,.2f}".replace(".00", "")
 
 
-def _shell(title: str, body: str, site_title: str, noindex: bool = False) -> str:
+def _shell(title: str, body: str, site_title: str, noindex: bool = False, description: str = "") -> str:
     robots = '<meta name="robots" content="noindex">' if noindex else ""
+    if description:
+        robots += f'<meta name="description" content="{html.escape(description)}">'
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, '
             f'initial-scale=1"><title>{html.escape(title)} · {html.escape(site_title)}</title>{robots}<style>{CSS}</style></head>'
             f'<body>{body}<p class="muted"><a href="../">All datasets</a></p></body></html>\n')
@@ -56,6 +58,27 @@ def render_thanks(pages: list[Any], site_title: str) -> str:
     return _shell("Thank you", body, site_title, noindex=True)
 
 
+def render_changelog(page: Any, site_title: str) -> str:
+    """Phase 66: every version of one dataset, with how much it grew: proof the data is alive."""
+    rows = []
+    versions = list(page.versions)
+    for i, v in enumerate(versions):
+        older = versions[i + 1] if i + 1 < len(versions) else None
+        delta = int(v["rows"]) - int(older["rows"]) if older else None
+        change = (f"+{delta}" if delta and delta > 0 else str(delta)) if delta is not None else "first release"
+        rows.append(f"<tr><td>v{int(v['version'])}</td><td>{html.escape(str(v['date']))}</td><td>{int(v['rows']):,}</td>"
+                    f"<td>{html.escape(change)}</td></tr>")
+    latest = versions[0] if versions else {}
+    label = f"Get v{int(latest.get('version', 1))}: {_money(page.price_cents)}"
+    body = (f"<h1>{html.escape(page.title)}: version history</h1>"
+            f"<p>A new version is built whenever new job postings arrive. Buyers get the newest version; subscribers get "
+            f"every update.</p><p>{_a(page.checkout_url, label)}</p>"
+            '<div class="wrap"><table><thead><tr><th>Version</th><th>Date</th><th>Rows</th><th>Change</th></tr></thead><tbody>'
+            + "".join(rows) + "</tbody></table></div>")
+    desc = f"Every release of {page.title}: dates, row counts and growth. Updated whenever new job postings arrive."
+    return _shell(f"{page.title} version history", body, site_title, description=desc[:158])
+
+
 def render_pricing(pages: list[Any], site_title: str) -> str:
     rows = []
     for p in sorted((p for p in pages if p.kind == "dataset" and p.checkout_url), key=lambda p: p.title):
@@ -76,4 +99,5 @@ def render_pricing(pages: list[Any], site_title: str) -> str:
         body += f"<h2>Everything</h2><p>All datasets in one download: {_money(bundle.price_cents)}. {_a(bundle.checkout_url, 'Get the bundle')}</p>"
     if not rows and not bundle:
         body += "<p>Products appear here as soon as they're on sale.</p>"
-    return _shell("Pricing", body, site_title)
+    return _shell("Pricing", body, site_title, description="Every hiring dataset side by side: one-off downloads, weekly "
+                                                           "updates, yearly plans, team licenses and the all-datasets bundle.")

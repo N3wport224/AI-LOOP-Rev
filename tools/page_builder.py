@@ -87,10 +87,19 @@ class ProductPage:
     team_seats: int = 0
     annual_url: str = ""           # yearly subscription
     annual_price_cents: int = 0
+    versions: list[dict[str, Any]] = field(default_factory=list)  # [{version, date, rows}] newest first (changelog page)
 
     @property
     def slug(self) -> str:
         return self.niche if self.kind == "dataset" else f"{self.niche}-{self.kind}"
+
+
+def meta_description(text: str, limit: int = 158) -> str:
+    """Search engines show about 160 characters: cut at a word boundary instead of mid-word."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rsplit(" ", 1)[0].rstrip(",;:.-") + "…"
 
 
 def _cell(value: Any) -> str:
@@ -228,7 +237,7 @@ def _server_pick(arms: dict[str, Any]) -> str | None:
 def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tech Stack Intel") -> str:
     url = page_url(base_url, page.slug)
     title = html.escape(page.title)
-    desc = html.escape(page.summary[:300])
+    desc = html.escape(meta_description(page.summary))
     price = f"${page.price_cents / 100:.2f}"
     m = page.metrics
     kpis = [
@@ -322,7 +331,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {rows}
 </tbody></table></div>
 <p class="muted">Built from public job-board APIs; every record links to its source. Delivered instantly by email as CSV + JSON + an executive summary.{f" Updated {html.escape(page.updated_at[:10])}." if page.updated_at else ""}</p>
-<p class="muted"><a href="../">All datasets</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a></p>
+<p class="muted"><a href="../">All datasets</a> · <a href="../intel/">Hiring intel by technology</a> · <a href="../feeds/radar.xml">RSS</a>{' · <a href="changelog/">Version history</a>' if page.versions else ""}</p>
 {copy_script}
 <script>{COPY_APPLY_JS if copy_script else ""}
 {ATTRIBUTION_JS}
@@ -510,7 +519,7 @@ def dataset_jsonld(page: MatrixPage, url: str, brand: str) -> dict[str, Any]:
 def render_matrix_page(page: MatrixPage, base_url: str = "", brand: str = "Tech Stack Intel",
                        lead_capture_url: str = "", sample_size: int = 10) -> str:
     url = f"{base_url.rstrip('/')}/{page.path}" if base_url else ""
-    title, desc = html.escape(page.title), html.escape(page.description[:300])
+    title, desc = html.escape(page.title), html.escape(meta_description(page.description))
     st = page.stats
     kpis = [("Companies", st.get("companies")), ("Open roles", st.get("roles")), ("Posted in 7 days", st.get("companies_7d")),
             ("Posted in 30 days", st.get("companies_30d")), ("High buying intent", st.get("high_intent"))]
@@ -716,14 +725,20 @@ class SiteBuilder:
         total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")
         out["radar-badge.svg"] = render_badge_svg("tech radar", f"{total_roles} hiring signals tracked")
         out["index.html"] = render_index(pages, self.base_url, cfg.site_title)
+        from tools.offer_pages import render_changelog
+
+        for p in pages:
+            if p.kind == "dataset" and p.versions:
+                out[f"{p.slug}/changelog/index.html"] = render_changelog(p, cfg.site_title)
         from tools.offer_pages import render_pricing, render_thanks
 
         out["thanks/index.html"] = render_thanks(pages, cfg.site_title)
         out["pricing/index.html"] = render_pricing(pages, cfg.site_title)
         for m in matrix:
             out[m.path] = render_matrix_page(m, self.base_url, cfg.site_title, capture, cfg.lead_magnet_sample_size)
-        if matrix:
-            out[f"{MATRIX_DIR}/index.html"] = render_matrix_index(matrix, self.base_url, cfg.site_title)
+        # Every page links to the intel index, so it always exists (an empty one says pages come as data grows):
+        # the site audit caught that link 404ing on small sites.
+        out[f"{MATRIX_DIR}/index.html"] = render_matrix_index(matrix, self.base_url, cfg.site_title)
         if indexnow_key:
             out[f"{indexnow_key}.txt"] = indexnow_key
         out["sitemap.xml"] = render_sitemap(pages, self.base_url, matrix)

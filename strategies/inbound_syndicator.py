@@ -144,6 +144,10 @@ def site_pages(tools) -> list[ProductPage]:
         if kind == "dataset":
             from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for
 
+            page.versions = [{"version": a["version"], "date": str(a["created_at"])[:10], "rows": int(a["lead_count"] or 0)}
+                             for a in tools.state.list_assets()
+                             if a["kind"] == "lead_directory" and (a.get("niche") or "") == niche
+                             and a.get("status") in ("published", "staged")][:30]
             team, annual = plan_for(tools.state, TEAM_KIND, niche), plan_for(tools.state, ANNUAL_KIND, niche)
             if team:
                 page.team_url, page.team_price_cents, page.team_seats = team["checkout_url"], int(team["price_cents"]), \
@@ -275,6 +279,10 @@ class InboundSyndicator(Strategy):
         key = indexnow_key(cfg, tools.state) if cfg.indexnow_enabled and live else ""
         builder = SiteBuilder(cfg, tools.files, tools.github)
         out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key)
+        from tools.site_audit import audit_site, record
+
+        audit = audit_site(out, cfg.pages_base_url)
+        record(tools.state, audit)
         changed = builder.publish(out, tools.state)
         # Tell search engines only once everything is live, so they never fetch a half-published site.
         submitted = self.submit_index(tools, out, key) if key and not builder.pending else 0

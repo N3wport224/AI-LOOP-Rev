@@ -200,6 +200,11 @@ class Doctor:
             out.append(Finding("Sales tax", "warn", f"Stripe Tax is {pay['tax_status']}: no tax is collected",
                                "if you must collect sales tax/VAT where you or your buyers are, set up Stripe → Tax; "
                                "the agent then applies it to every link by itself"))
+        site = state.get("site_audit") or {}
+        if site.get("broken_links") or site.get("seo"):
+            issues = (site.get("broken_links") or []) + (site.get("seo") or [])
+            out.append(Finding("Website", "warn", f"{len(site.get('broken_links') or [])} broken link(s), "
+                               f"{len(site.get('seo') or [])} SEO note(s); e.g. {issues[0]}", "usually fixed by the next update"))
         sec = state.get("security_audit") or {}
         for f in sec.get("findings", []):
             out.append(Finding(f"Security: {f['name']}", "fail" if f["status"] == "fail" else "warn", f["detail"], f["fix"]))

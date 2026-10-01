@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 818 tests, ~40 s, no network
+pytest                     # 828 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -985,6 +985,8 @@ automonetize privacy export|forget EMAIL             # a customer's data: copy i
 automonetize phone                                   # phone notifications for sales and alerts (ntfy)
 automonetize quiet on|off                            # hold or release all marketing email
 automonetize commands [--new]                        # the code for email commands (AM STATUS <code>)
+automonetize customers [--report]                   # customer CSV; repeat rate and lifetime value
+automonetize uninstall [--deactivate-links] [--delete-data]   # stop and remove the background service
 automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
@@ -1326,6 +1328,37 @@ yearly and team prices side by side, plus the bundle.
 * The doctor's checks, problems first, with **Fix** buttons for the safe automatic fixes (start the
   agent, autostart, install an update).
 * A quiet-mode switch. CSRF-protected like every other button.
+
+## Site quality and customer insight (Phases 65-69)
+
+**Phase 65: site audit** (`tools/site_audit.py`, run on every site build, before publishing).
+* Checks for broken internal links, a missing title or meta description (best 50-160
+  characters), anything but exactly one `<h1>`, images without alt text, and pages over 500 KB.
+* New broken links raise one alert, and the doctor shows the rest.
+* Its first run found two real problems, now fixed:
+  * meta descriptions are now cut at a word boundary at 158 characters;
+  * the `intel/` index always exists, because every page links to it.
+
+**Phase 66: version history pages.** Each dataset gets `<dataset>/changelog/`, listing every
+version with its date, row count and growth, linked from the product page. It's proof the data is
+alive, and fresh content for search engines.
+
+**Phase 67: customer list** (`tools/customers.py`, `automonetize customers`).
+* Writes `data/exports/customers.csv` with one row per buyer: first and last purchase, number of
+  purchases, total spent, products and first channel.
+* Also shows whether they're subscribed or suppressed and when they last got an email.
+* Refunded, disputed and erased customers aren't included.
+
+**Phase 68: lifetime value** (`automonetize customers --report`).
+* Shows the repeat-purchase rate, average lifetime value, and lifetime value by first channel and
+  by first-purchase month.
+* A one-line summary appears in Monday's report.
+
+**Phase 69: uninstall** (`automonetize uninstall`, asks you to type UNINSTALL).
+* Takes a final backup, stops the agent and removes the launchd jobs.
+* Keeps your data unless you add `--delete-data` (which asks you to type DELETE).
+* `--deactivate-links` also switches off every live Payment Link, so nobody can buy what will no
+  longer be delivered.
 
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
@@ -1711,7 +1744,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 818 tests, ~40 s, no network
+pytest     # 828 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

@@ -837,6 +837,19 @@ def cmd_commands(args: argparse.Namespace, console: Console) -> int:
     return commands_main(["--new"] if args.new else [])
 
 
+def cmd_customers(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import customers_main
+
+    return customers_main(["--report"] if args.report else [])
+
+
+def cmd_uninstall(args: argparse.Namespace, console: Console) -> int:
+    from cli.uninstall import main as uninstall
+
+    return uninstall([flag for flag, on in (("--yes", args.yes), ("--delete-data", args.delete_data),
+                                            ("--deactivate-links", args.deactivate_links)) if on])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -1041,6 +1054,14 @@ def build_parser() -> argparse.ArgumentParser:
     co = sub.add_parser("commands", help="control the agent by email from your phone: shows the command code")
     co.add_argument("--new", action="store_true", help="replace the code (the old one stops working)")
     co.set_defaults(func=cmd_commands)
+    cu = sub.add_parser("customers", help="customer list as CSV (data/exports/customers.csv); --report: repeat rate and lifetime value")
+    cu.add_argument("--report", action="store_true")
+    cu.set_defaults(func=cmd_customers)
+    un = sub.add_parser("uninstall", help="stop the agent and remove its background service (data kept unless --delete-data)")
+    un.add_argument("--deactivate-links", action="store_true", help="also switch off every live Stripe Payment Link")
+    un.add_argument("--delete-data", action="store_true", help="also delete the data folder and backups")
+    un.add_argument("--yes", action="store_true", help="don't ask for confirmation")
+    un.set_defaults(func=cmd_uninstall)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)
