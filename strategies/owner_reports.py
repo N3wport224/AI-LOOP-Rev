@@ -293,7 +293,9 @@ class OwnerReports(Strategy):
             lines.append(f"Sales emails waiting for your OK: {drafts} (control panel → Outreach)")
         from strategies.marketing_engine import CALENDAR, describe as describe_marketing
 
-        lines += ["", describe_marketing(state)]
+        from strategies.marketing_optimizer import describe as describe_optimizer
+
+        lines += ["", describe_marketing(state), *describe_optimizer(state)]
         if problems:
             lines += ["", "Problems in the last 24 hours:", *[problem_line(p) for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):

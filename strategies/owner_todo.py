@@ -105,6 +105,12 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
             nxt = next(d for d in directories(state) if not d["done"])
             add(8, f"Submit the catalog to {nxt['name']}", "listings in directories and data marketplaces bring steady "
                 f"visitors ({len(done)} of 2 done)", 10, f"automonetize marketing directories (then: directories done {nxt['key']})")
+    from strategies.marketing_optimizer import leaky
+
+    leaks = leaky(state)
+    if leaks:
+        add(6, f"Look at {leaks[0]['title']}", f"{leaks[0]['checkouts']} checkouts started, no sale: the price, description or "
+            "preview is probably putting buyers off", 10, "open its page on your site and its link in Stripe")
     from strategies.ratings import unhappy
 
     sad = unhappy(state)

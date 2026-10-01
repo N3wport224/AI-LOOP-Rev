@@ -195,6 +195,11 @@ def marketing_main(argv: list[str]) -> int:
         for d in directories(state):
             print(f"  [{'x' if d['done'] else ' '}] {d['key']:<24} {d['name']}  {d['url']}")
         return 0
+    if argv[:1] == ["report"]:
+        from strategies.marketing_optimizer import report
+
+        print(report(state))
+        return 0
     if argv[:1] == ["plan"]:
         for day, name in me.calendar(state):
             print(f"{day}  {name}")

@@ -1566,7 +1566,7 @@ Two changes elsewhere:
 * **Phase 113, task timings:** `automonetize marketplace-export          # listing kits to upload to Gumroad / Lemon Squeezy / data marketplaces
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
-automonetize marketing [plan|scores|done ID|skip ID]   # drafts to post, the week's plan, what works
+automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
 automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
@@ -1892,6 +1892,23 @@ Automatic plays whose effect can't be measured, such as the blog, are never paus
 * **Phase 189, hiring heatmap:** `tools/hiring-heatmap/` is a free page of open roles per technology
   and region, updated daily, the kind of page people cite and link to.
 
+## Marketing optimisation (Phases 190-194)
+
+* **Phase 190, product funnel:** for each product over 30 days, checkouts started and kept orders.
+  A product with 5+ checkouts and no sale goes on the to-do list and into the report: its price,
+  description or preview is probably putting buyers off.
+* **Phase 191, title tests:**
+  * A product with enough traffic (10+ checkouts in 30 days) shows a benefit-led title for a week
+    ("Rust Jobs in Europe: 24 Companies Hiring Now").
+  * After that week, the title with more checkouts stays. The Stripe product name never changes.
+  * Products with little traffic aren't tested, because the result would be noise.
+* **Phase 192, paused strategies are visible:** the daily report names any strategy the engine is
+  resting (8 plays without a checkout). It comes back by itself after 30 days.
+* **Phase 193, return on your time:** for the drafts you post, revenue per minute you spent. The
+  report names the best use of your time.
+* **Phase 194:** `automonetize marketing report` shows it all in one place: funnel, title tests,
+  strategy scores, return on time and paused strategies.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -1999,6 +2016,7 @@ and shows its last runs.
 | 67 | `run_sale` | Run the quarterly sale. |
 | 68 | `tune_offers` | Adjust discounts by what they sold. |
 | 69 | `plan_marketing` | Plan the day's traffic plays: automatic ones run, drafts wait for you to post. |
+| 70 | `optimize_marketing` | Product funnels (checkouts vs sales) and weekly title tests where traffic allows. |
 | 92 | `housekeeping` | Tidy logs, old versions and the database; delete data nobody needs. |
 | 93 | `audit_security` | Fix file permissions; report exposed secrets and risky settings. |
 | 94 | `send_heartbeat` | Ping your heartbeat URL so you hear if the Mac stops. |

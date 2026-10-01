@@ -154,7 +154,10 @@ def site_pages(tools) -> list[ProductPage]:
         page.refund_days = int(cfg.refund_policy_days or 0)
         page.related_html = bought_together_html(index, asset) if kind in ("dataset", "micro") else ""
         if kind == "micro":
+            from strategies.marketing_optimizer import display_title
             from strategies.product_factory import label as tech_label
+
+            page.title = display_title(tools.state, niche, page.title)  # Phase 191
             from tools import seo_scale
 
             data = listing.get("insight") or {}

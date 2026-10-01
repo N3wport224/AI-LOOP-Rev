@@ -102,6 +102,7 @@ PLAN: list[tuple[str, int]] = [
     ("ops_checks", 6),  # job sources, clock, battery (heavy builds wait on battery)
     ("tune_offers", 68),
     ("plan_marketing", 69),  # traffic plays: automatic ones run, drafts wait for you
+    ("optimize_marketing", 70),  # product funnels, title tests
     ("process_bounces", 44),
     ("guard_payments", 46),
     ("check_webhook", 62),
