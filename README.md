@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 804 tests, ~40 s, no network
+pytest                     # 818 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -982,6 +982,9 @@ cut short.
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
 * `automonetize offers                                  # each offer's discount, emails sent and sales
 automonetize privacy export|forget EMAIL             # a customer's data: copy it, or erase it
+automonetize phone                                   # phone notifications for sales and alerts (ntfy)
+automonetize quiet on|off                            # hold or release all marketing email
+automonetize commands [--new]                        # the code for email commands (AM STATUS <code>)
 automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
@@ -1292,6 +1295,38 @@ gets one alert and a to-do item with both order ids. The refund stays your decis
 **Phase 59: pricing page.** The site gets `pricing/`: every dataset with its one-off, weekly,
 yearly and team prices side by side, plus the bundle.
 
+## Running it from your phone (Phases 60-64)
+
+**Phase 60: phone notifications** (`tools/notify.py`).
+* `automonetize phone` makes a private topic, saves `NTFY_TOPIC`, sends a test and tells you what
+  to tap in the free ntfy app (no account).
+* Every sale and alert then buzzes your phone. Messages never contain a customer's address.
+
+**Phase 61: email commands** (`agent/owner_commands.py`).
+* From your owner address, email the sender address with the subject `AM STATUS <code>`. The code
+  is at the bottom of every daily report, and `automonetize commands --new` replaces it.
+* Commands:
+  * `STATUS`, `TODO`;
+  * `PAUSE`, `RESUME` (cycles stop; deliveries continue);
+  * `QUIET`, `LOUD` (hold or release marketing email);
+  * `HELP`.
+* The agent replies to confirm. Commands are read before the pause check, so `RESUME` works while
+  paused. Mail without the code, or from anyone else, is ignored.
+
+**Phase 62: quiet mode** (`tools/contact_policy.py`).
+* `automonetize quiet on|off`, the Health tab, or `AM QUIET`/`AM LOUD` by email.
+* Holds every marketing email and approved sales email. Purchases, receipts and support replies
+  always go out.
+
+**Phase 63: report preferences.**
+* `sale_alerts` = `each` (default) | `daily` (in the digest only) | `off`.
+* `owner_digest` = `daily` | `weekly` (Mondays) | `off`.
+
+**Phase 64: Health tab** (control panel, `gui/routes/health.py`).
+* The doctor's checks, problems first, with **Fix** buttons for the safe automatic fixes (start the
+  agent, autostart, install an update).
+* A quiet-mode switch. CSRF-protected like every other button.
+
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
 
@@ -1594,6 +1629,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `NTFY_TOPIC` (`ntfy_topic`) / `ntfy_server` | empty / ntfy.sh | Phone notifications (`automonetize phone`) |
+| `sale_alerts` / `owner_digest` | `each` / `daily` | Sale emails: each, daily or off; digest: daily, weekly or off |
+| `owner_commands` | `true` | Email commands from your owner address with the command code |
 | `team_license` / `team_license_multiplier` / `team_license_seats` | `true` / `3.0` / `10` | Team license per dataset |
 | `annual_plan` / `annual_months_paid` | `true` / `10` | Yearly subscription option |
 | `checkout_thank_you` | `true` | Redirect buyers to the site's thank-you page after paying |
@@ -1673,7 +1711,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 804 tests, ~40 s, no network
+pytest     # 818 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

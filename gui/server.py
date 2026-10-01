@@ -18,6 +18,7 @@ from gui.context import CTX, SESSION_KEY, GuiContext, ctx
 from gui.routes import control as control_routes
 from gui.routes import outreach as outreach_routes
 from gui.routes import share as share_routes
+from gui.routes import health as health_routes
 from gui.routes import settings as settings_routes
 
 log = logging.getLogger("automonetize.gui")
@@ -140,7 +141,7 @@ def build_app(gctx: GuiContext) -> web.Application:
         web.get("/", index), web.get("/login", login_get), web.post("/login", login_post), web.get("/auth/launch", launch),
         web.post("/logout", logout), web.get("/api/session", session_info), web.get("/static/{name}", static),
         web.get("/favicon.ico", favicon),
-        *settings_routes.routes(), *control_routes.routes(), *outreach_routes.routes(), *share_routes.routes(),
+        *settings_routes.routes(), *control_routes.routes(), *outreach_routes.routes(), *share_routes.routes(), *health_routes.routes(),
     ])
     return app
 

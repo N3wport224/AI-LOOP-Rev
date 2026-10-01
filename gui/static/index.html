@@ -19,6 +19,7 @@
     <button role="tab" data-tab="control" aria-selected="true">Control</button>
     <button role="tab" data-tab="outreach" aria-selected="false">Outreach <span id="outreach-count" class="muted"></span></button>
     <button role="tab" data-tab="share" aria-selected="false">Share</button>
+    <button role="tab" data-tab="health" aria-selected="false">Health</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
     <button id="logout" class="link">Sign out</button>
@@ -138,6 +139,20 @@
         (never a name or email). Nothing is shown without your OK.</p>
       <p class="message" id="quotes-message" role="status"></p>
       <div id="quotes-list"></div>
+    </div>
+  </section>
+
+  <section id="tab-health" class="tab" hidden>
+    <div class="card">
+      <h2>Health check</h2>
+      <p class="muted">The same checks as <code>automonetize doctor</code>. Problems first; "Fix" applies the safe automatic fixes.</p>
+      <div class="actions">
+        <button id="health-refresh">Check again</button>
+        <button id="quiet-toggle">Quiet mode</button>
+        <span class="muted" id="quiet-state"></span>
+      </div>
+      <p class="message" id="health-message" role="status"></p>
+      <div class="table-wrap"><table id="health-table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th><th>What to do</th><th></th></tr></thead><tbody></tbody></table></div>
     </div>
   </section>
 

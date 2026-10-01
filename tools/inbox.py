@@ -78,7 +78,8 @@ def imap_settings(config: Any) -> tuple[str, str, str]:
 
 
 def scan_mail(host: str, username: str, password: str, wanted: Callable[[str], bool], since: str,
-              imap_factory: Callable[[str], Any] = imaplib.IMAP4_SSL, max_messages: int = 300) -> list[dict[str, str]]:
+              imap_factory: Callable[[str], Any] = imaplib.IMAP4_SSL, max_messages: int = 300,
+              unseen_only: bool = True) -> list[dict[str, str]]:
     """Unread messages since ``since`` (IMAP date, e.g. 01-Oct-2026) whose sender passes ``wanted``.
 
     Read-only: headers first, bodies only for wanted senders, all with BODY.PEEK so nothing is marked
@@ -88,7 +89,7 @@ def scan_mail(host: str, username: str, password: str, wanted: Callable[[str], b
     try:
         conn.login(username, password)
         conn.select("INBOX", readonly=True)
-        status, data = conn.search(None, f"(UNSEEN SINCE {since})")
+        status, data = conn.search(None, f"(UNSEEN SINCE {since})" if unseen_only else f"(SINCE {since})")
         if status != "OK":
             return out
         for num in (data[0].split() if data and data[0] else [])[-max_messages:]:

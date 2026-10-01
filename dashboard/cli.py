@@ -819,6 +819,24 @@ def cmd_offers(args: argparse.Namespace, console: Console) -> int:
     return offers_main([])
 
 
+def cmd_phone(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import phone_main
+
+    return phone_main([])
+
+
+def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import quiet_main
+
+    return quiet_main([args.mode] if args.mode else [])
+
+
+def cmd_commands(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import commands_main
+
+    return commands_main(["--new"] if args.new else [])
+
+
 def cmd_books(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import books_main
 
@@ -1015,6 +1033,14 @@ def build_parser() -> argparse.ArgumentParser:
     pv.set_defaults(func=cmd_privacy)
     of = sub.add_parser("offers", help="each offer's discount, emails sent and sales since its last change")
     of.set_defaults(func=cmd_offers)
+    ph = sub.add_parser("phone", help="phone notifications for every sale and alert (free ntfy app, no account)")
+    ph.set_defaults(func=cmd_phone)
+    qu = sub.add_parser("quiet", help="hold all marketing email (on) or let it go out again (off); purchases always go out")
+    qu.add_argument("mode", nargs="?", choices=["on", "off"])
+    qu.set_defaults(func=cmd_quiet)
+    co = sub.add_parser("commands", help="control the agent by email from your phone: shows the command code")
+    co.add_argument("--new", action="store_true", help="replace the code (the old one stops working)")
+    co.set_defaults(func=cmd_commands)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM")
     bo.set_defaults(func=cmd_books)

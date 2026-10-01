@@ -8,8 +8,9 @@ don't go through here.
 Rules, in order:
 
 1. **Suppressed** addresses (unsubscribed, bounced, privacy request) never get one.
-2. **Paused**: while the bounce guard (``strategies/bounce_guard.py``) has paused promotions, no
-   promotional email goes out at all; follow-ups too.
+2. **Paused**: while the bounce guard (``strategies/bounce_guard.py``) has paused promotions, or
+   you've switched on quiet mode (``automonetize quiet on``, the panel, or an email command), no
+   marketing email goes out at all; approved sales emails wait too.
 3. **Per person**: at most one *promotional* email per ``announce_min_gap_days`` (14), across all
    offer types. A follow-up after a purchase doesn't count against it.
 4. **Per day**: at most ``promo_daily_cap`` (150) marketing emails in total, well under consumer
@@ -46,10 +47,34 @@ def ensure(state: Any) -> None:
         state._contact_log_ready = True
 
 
+QUIET_KEY = "quiet_mode"
+
+
+def quiet(state: Any) -> dict[str, Any] | None:
+    """Quiet mode (Phase 62): you switched marketing email off; purchases and support still go out."""
+    q = state.get(QUIET_KEY)
+    if q and (not q.get("until") or datetime.fromisoformat(q["until"]) > state.clock()):
+        return q
+    return None
+
+
+def set_quiet(state: Any, on: bool, reason: str = "", days: float | None = None) -> None:
+    if on:
+        until = (state.clock() + timedelta(days=days)).isoformat(timespec="seconds") if days else None
+        state.set(QUIET_KEY, {"since": state.now(), "until": until, "reason": reason or "quiet mode"})
+    else:
+        state.set(QUIET_KEY, None)
+    state.log_action(int(state.get("iteration", 0)), None, "quiet_mode", "ok", ("on: " + (reason or "")) if on else "off")
+
+
 def paused(state: Any) -> dict[str, Any] | None:
+    """Marketing email held: the bounce guard's pause, or quiet mode."""
     pause = state.get(PAUSE_KEY)
     if pause and datetime.fromisoformat(pause["until"]) > state.clock():
         return pause
+    q = quiet(state)
+    if q:
+        return {"until": q.get("until") or "you turn it off", "reason": f"quiet mode, {q.get('reason') or 'on'}"}
     return None
 
 

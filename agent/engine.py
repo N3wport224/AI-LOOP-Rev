@@ -155,6 +155,7 @@ class Engine:
         for strategy in strategies if strategies is not None else default_strategies():
             for task in strategy.tasks:
                 self.handlers[task] = strategy
+        self._full_plan = strategies is None
         if strategies is None:
             # Self-evolution is registered here, not in strategies/, which evolution may edit.
             from agent.evolution.task import EvolutionStrategy
@@ -309,6 +310,11 @@ class Engine:
             return self._run_cycle()
 
     def _run_cycle(self) -> CycleReport:
+        if getattr(self, "_full_plan", False):
+            # Before the pause/stop checks, so "AM RESUME" works while paused.
+            from agent.owner_commands import poll
+
+            poll(self.tools, engine=self)
         cycle = self.state.incr("iteration")
         self.state.set("last_cycle_at", self.state.now())
         if self.state.get("started_at") is None:

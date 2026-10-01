@@ -60,6 +60,7 @@
     if (name === "logs") refreshLogs();
     if (name === "outreach") loadOutreach();
     if (name === "share") { loadShare(); loadQuotes(); }
+    if (name === "health") loadHealth();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -218,6 +219,39 @@
     msg.textContent = r.message || (r.ok ? "Done." : "Failed.");
     msg.className = "message " + (r.ok ? "ok" : "bad");
     loadQuotes();
+  }
+
+  // ------------------------------------------------------------------ health
+  let quietOn = false;
+  async function loadHealth() {
+    let d;
+    try { d = await api("/api/health"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    quietOn = !!d.quiet;
+    $("#quiet-toggle").textContent = quietOn ? "Turn quiet mode off" : "Quiet mode (hold marketing email)";
+    $("#quiet-state").textContent = quietOn ? "Marketing email is held; purchases and support still go out." : "";
+    const icon = { ok: "✔ ok", warn: "! warn", fail: "✘ fail" };
+    $("#health-table tbody").replaceChildren(...(d.findings || []).map((f) => el("tr", {},
+      el("td", { text: f.name }), el("td", { class: "status-" + f.status, text: icon[f.status] || f.status }),
+      el("td", { text: f.detail }), el("td", { text: f.fix || "" }),
+      el("td", {}, f.can_fix ? el("button", { class: "primary", "data-fix": f.name, text: "Fix" }) : el("span")))));
+  }
+
+  async function healthFix(name) {
+    const msg = $("#health-message");
+    msg.textContent = "Working…";
+    const r = await api("/api/health/fix", { method: "POST", body: { name } });
+    msg.textContent = r.message || (r.ok ? "Done." : "Failed.");
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    loadHealth();
+  }
+
+  async function toggleQuiet() {
+    const r = await api("/api/quiet", { method: "POST", body: { on: !quietOn } });
+    const msg = $("#health-message");
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    loadHealth();
   }
 
   async function copyShare(i) {
@@ -432,6 +466,12 @@
       const b = e.target.closest("[data-outreach]");
       if (b) outreachAction(b.dataset.outreach, [Number(b.dataset.id)]);
     });
+    $("#health-table").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-fix]");
+      if (b) healthFix(b.dataset.fix);
+    });
+    $("#health-refresh").addEventListener("click", loadHealth);
+    $("#quiet-toggle").addEventListener("click", toggleQuiet);
     $("#quotes-list").addEventListener("click", (e) => {
       const b = e.target.closest("[data-quote]");
       if (b) quoteAction(b.dataset.quote, Number(b.dataset.id));

@@ -6,6 +6,10 @@ Every cycle (the ``report_owner`` task), to ``owner_email`` (default: the sender
   buyer. The first run only records where it starts, so you don't get the whole history.
 * **Alerts**: anything the agent flagged for a human (a quarantine, an evolution rollback, a
   delivery it couldn't make), at most one email per cycle.
+Preferences (Phase 63): ``sale_alerts`` = each | daily (only in the digest) | off, and
+``owner_digest`` = daily | weekly (Mondays) | off. With ``NTFY_TOPIC`` set, every sale and alert
+also buzzes your phone (``tools/notify.py``, ``automonetize phone``).
+
 * **Daily digest**, once a day after ``owner_digest_hour`` (in ``subscription_timezone``):
   yesterday's and the week's revenue against the $10/day goal, MRR, what's on sale (with links),
   free leads, outreach drafts waiting for you, and problems in the last 24 hours. On Mondays it
@@ -77,6 +81,17 @@ class OwnerReports(Strategy):
                          f"({s.get('email') or 'n/a'})")
         n = len(orders) + len(subs)
         subject = f"💰 New sale: {money(total)}" if n == 1 else f"💰 {n} new sales: {money(total)}"
+        from tools.notify import push
+
+        first = state.get_asset(orders[0]["asset_id"]) if orders and orders[0].get("asset_id") else None
+        push(tools.http, tools.config, subject.replace("💰 ", ""), (first or {}).get("title") or "subscription",
+             tags="moneybag")
+        if tools.config.sale_alerts != "each":  # "daily": the digest has them; "off": no sale emails at all
+            if orders:
+                state.set("owner_last_order_id", int(orders[-1]["id"]))
+            if subs:
+                state.set("owner_last_subscriber_id", int(subs[-1]["id"]))
+            return False
         today = tools.revenue.daily_summary()
         body = "\n".join(["Good news, the agent just made a sale.", "", *lines, "",
                           f"Today so far: {money(today['net_cents'])} net of your {money(today['target_cents'])}/day goal.",
@@ -96,6 +111,10 @@ class OwnerReports(Strategy):
         rows = state._all("SELECT * FROM errors WHERE kind = 'alert' AND id > ? ORDER BY id LIMIT 20", (last,))
         if not rows:
             return False
+        from tools.notify import push
+
+        push(tools.http, tools.config, f"AutoMonetize needs attention ({len(rows)})", rows[0]["message"][:300], priority="high",
+             tags="warning")
         body = "\n".join(["The agent flagged something for you:", "",
                           *[f"- {r['created_at'][:16]} {r['source']}: {r['message'][:400]}" for r in rows], "",
                           "Details: run `am` then `automonetize doctor` in Terminal.", "", "AutoMonetize"])
@@ -115,6 +134,8 @@ class OwnerReports(Strategy):
         local = state.clock().astimezone(tz)
         day = local.date().isoformat()
         if local.hour < int(cfg.owner_digest_hour) or state.get("owner_digest_date") == day:
+            return False
+        if cfg.owner_digest == "off" or (cfg.owner_digest == "weekly" and local.weekday() != 0):
             return False
         body = self.digest_body(tools, local)
         tools.dispatcher.send_transactional(Email(to=to, subject=f"📊 AutoMonetize daily report: {local:%a %d %b}", body=body,
@@ -192,5 +213,9 @@ class OwnerReports(Strategy):
             lines += ["", "This week's share kit: copy, paste, post (each link tracks which channel sold):", "", as_text(kit)]
         else:
             lines += ["", "Share your links: every visitor is a chance at a sale (ready-made posts: control panel → Share)."]
+        if cfg.owner_commands and cfg.sender_email:
+            from agent.owner_commands import help_text
+
+            lines += ["", help_text(cfg, state)]
         lines += ["", "AutoMonetize"]
         return "\n".join(lines)

@@ -1,4 +1,4 @@
-"""`automonetize share`, `pace`, `todo`, `offers`, `books [YYYY-MM]`, `heartbeat [URL]` and `privacy`."""
+"""Owner commands: `share`, `pace`, `todo`, `offers`, `books`, `heartbeat`, `privacy`, `phone`, `quiet`, `commands`."""
 
 from __future__ import annotations
 
@@ -142,4 +142,59 @@ def privacy_main(argv: list[str], confirm=input) -> int:
     for what, n in done.items():
         print(f"  {what}: {n}")
     print("  Backups still hold the old data until they age out (14 days).")
+    return 0
+
+
+def phone_main(argv: list[str] | None = None, transport=None) -> int:
+    """`automonetize phone`: phone notifications for sales and alerts (ntfy, free, no account)."""
+    from agent.setup_autonomous import load_env_into
+    from agent.tunnel import update_env_file
+    from cli.go_live import restart
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+    from tools.notify import enabled, new_topic, push
+
+    config, state, _ = _setup()
+    if not enabled(config):
+        config.ntfy_topic = new_topic()
+        update_env_file(ROOT / ".env", {"NTFY_TOPIC": config.ntfy_topic})
+    tools = build_toolkit(config, state, CircuitBreaker(100, 100, 100), transport=transport, sleep=lambda s: None)
+    ok = push(tools.http, config, "AutoMonetize is connected", "You'll get a buzz here for every sale and anything that needs you.",
+              tags="tada")
+    say(BOLD, "Phone notifications, 2 minutes:")
+    print("  1. Install the free ntfy app (App Store or Google Play).")
+    print(f"  2. In the app: + (subscribe) → topic name: {config.ntfy_topic}")
+    print("     Keep this name private: anyone with it can read your notifications.")
+    if ok:
+        say(GREEN, "✔ A test notification was sent: it appears in the app once you've subscribed.")
+    else:
+        say(YELLOW, "Couldn't reach ntfy.sh right now; the agent will keep trying for each sale.")
+    restart(load_env_into(ROOT / ".env"))
+    return 0
+
+
+def quiet_main(argv: list[str]) -> int:
+    """`automonetize quiet on|off`: hold or release all marketing email."""
+    from tools.contact_policy import quiet, set_quiet
+
+    _, state, _ = _setup()
+    if argv[:1] == ["on"]:
+        set_quiet(state, True, "turned on from the terminal")
+        say(GREEN, "✔ Quiet mode on: no marketing email goes out. Purchases and support replies still do.")
+    elif argv[:1] == ["off"]:
+        set_quiet(state, False)
+        say(GREEN, "✔ Quiet mode off: marketing email goes out again, within the usual limits.")
+    else:
+        q = quiet(state)
+        print(f"Quiet mode is {'on since ' + q['since'][:16] if q else 'off'}. Use: automonetize quiet on | off")
+    return 0
+
+
+def commands_main(argv: list[str]) -> int:
+    """`automonetize commands [--new]`: the email command code."""
+    from agent.owner_commands import code, help_text
+
+    config, state, _ = _setup()
+    code(state, new="--new" in argv)
+    print(help_text(config, state))
     return 0

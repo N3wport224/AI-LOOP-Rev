@@ -296,6 +296,13 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Remote control (Phases 60-64)
+    ntfy_topic: str = ""                     # phone notifications via ntfy.sh (`automonetize phone`)
+    ntfy_server: str = ""                    # "" = https://ntfy.sh
+    sale_alerts: str = "each"                # each | daily (digest only) | off
+    owner_digest: str = "daily"              # daily | weekly (Mondays) | off
+    owner_commands: bool = True              # email commands from owner_email with the command code
+
     # Plans and conversion (Phases 55-59)
     team_license: bool = True
     team_license_multiplier: float = 3.0     # team price = dataset price x this, whole dollars
@@ -422,6 +429,7 @@ _PLAIN_ENV = {
     "ENABLE_AUTONOMOUS_CODE_EVOLUTION": "enable_autonomous_code_evolution",
     "OWNER_EMAIL": "owner_email",
     "HEALTHCHECK_URL": "heartbeat_url",
+    "NTFY_TOPIC": "ntfy_topic",
     # Aliases accepted for hand-edited .env files (and the names the GUI shows).
     "STRIPE_API_KEY": "stripe_secret_key",
     "SMTP_HOST": "smtp_host",
