@@ -109,6 +109,6 @@ def all_candidates(tagged: list[tuple[dict[str, Any], dict[str, Any]]], cfg: Any
 
 
 # The kinds (each module registers its own on import).
-KIND_MODULES = ("strategies.kinds_roles", "strategies.kinds_countries")
+KIND_MODULES = ("strategies.kinds_roles", "strategies.kinds_countries", "strategies.kinds_attributes")
 for _module in KIND_MODULES:
     import_module(_module)

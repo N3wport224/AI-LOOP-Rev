@@ -2192,6 +2192,21 @@ Also fixed in this batch: previewing the next product (control panel, `automonet
 --next`, `AM CATALOG`) moved the factory's rotation, so the product made next could differ from the
 one shown. Previews no longer move it.
 
+## What the job offers (Phases 255-259)
+
+From `strategies/kinds_attributes.py`:
+
+* **Phase 255, reading the posting:** the title, tags, location and description are checked for
+  visa sponsorship or relocation help, contract or freelance work, junior-friendly roles, work from
+  anywhere, and a four-day week. A negation ("we can't sponsor visas") cancels a match.
+* **Phase 256, visa sponsorship** (`visa-sponsorship[-<tech>]`): roles offering a visa or help
+  relocating.
+* **Phase 257, contract and freelance** (`contract-roles[-<tech>]`).
+* **Phase 258, junior-friendly** (`junior-friendly-roles[-<tech>]`): junior, graduate, entry-level,
+  intern and apprentice roles.
+* **Phase 259, work from anywhere and four-day weeks** (`work-from-anywhere[-<tech>]`,
+  `four-day-week`). The four-day week list is rarer, so it needs only 10 postings from 5 companies.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
