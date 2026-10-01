@@ -396,6 +396,10 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         return handler
 
     async def health(request: web.Request) -> web.Response:
+        # Through the tunnel (cloudflared adds CF-Connecting-IP) anyone can call this: event counts
+        # would tell them how much is selling, so only local callers (control panel, setup) get them.
+        if request.remote not in ("127.0.0.1", "::1") or "CF-Connecting-IP" in request.headers:
+            return web.json_response({"ok": True})
         return web.json_response({"ok": True, "events": processor.tools.state.webhook_event_counts()})
 
     async def drain(app: web.Application) -> None:
@@ -440,21 +444,30 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
 
     recovery_endpoint.mount(app, processor.tools, run_in_pool, client_ip, executor, held, pending)
 
+    from strategies.lead_magnet import CaptureLimiter
+
+    link_limiter = CaptureLimiter(300)  # per IP and hour, for /d/ and /r/: plenty for buyers, useless for guessing
+    private = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex", "X-Content-Type-Options": "nosniff",
+               "Referrer-Policy": "no-referrer"}
+
     async def download(request: web.Request) -> web.StreamResponse:
         from tools import download_links
 
+        if not link_limiter.allow(client_ip(request)):
+            return web.Response(status=429, text="too many requests; try again later", headers=private)
         path, why = await run_in_pool(download_links.redeem, processor.tools.state, processor.tools.files,
                                       request.match_info.get("token", ""))
         if path is None:
-            return web.Response(status=404, text=why, headers={"Cache-Control": "no-store"})
-        return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{path.name}"',
-                                               "Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+            return web.Response(status=404, text=why, headers=private)
+        return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{path.name}"', **private})
 
     app.router.add_get("/d/{token}", download)
 
     async def rating(request: web.Request) -> web.Response:
         from strategies import ratings
 
+        if not link_limiter.allow(client_ip(request)):
+            return web.Response(status=429, text="too many requests; try again later", headers=private)
         token = request.match_info.get("token", "")
         try:
             score = int(request.match_info.get("score", "0"))
@@ -466,8 +479,7 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
         else:
             outcome = await run_in_pool(ratings.record, state, token, score)
             status, body = ratings.thanks_page(cfg, score, outcome)
-        return web.Response(status=status, text=body, content_type="text/html",
-                            headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+        return web.Response(status=status, text=body, content_type="text/html", headers=private)
 
     app.router.add_route("GET", "/r/{token}/{score}", rating)
     app.router.add_route("POST", "/r/{token}/{score}", rating)

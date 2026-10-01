@@ -132,3 +132,46 @@ def test_each_dataset_has_its_own_update_feed(kit, config, clock):
     assert "changelog/feed.xml" not in render_product_page(page())
     out = SiteBuilder(config, kit.files).build([p], [], clock())
     assert "python-remote/changelog/feed.xml" in out
+
+
+# ------------------------------------------------------------------ audit fixes
+def test_healthz_hides_counts_through_the_tunnel_and_links_are_rate_limited(kit, state, config):
+    async def scenario(client):
+        local = await (await client.get("/healthz")).json()
+        assert "events" in local
+        public = await (await client.get("/healthz", headers={"CF-Connecting-IP": "203.0.113.9"})).json()
+        assert public == {"ok": True}
+        r = await client.get("/r/nope/3", headers={"CF-Connecting-IP": "203.0.113.7"})
+        assert r.status == 404 and r.headers["X-Content-Type-Options"] == "nosniff"
+        for _ in range(299):
+            await client.get("/d/nope", headers={"CF-Connecting-IP": "203.0.113.7"})
+        assert (await client.get("/d/nope", headers={"CF-Connecting-IP": "203.0.113.7"})).status == 429
+        assert (await client.get("/d/nope", headers={"CF-Connecting-IP": "203.0.113.8"})).status == 404
+
+    serve(kit, scenario)
+
+
+def test_a_rating_and_the_last_download_are_taken_once(kit, state, config, monkeypatch):
+    from tools import download_links
+
+    config.public_webhook_url = "https://hooks.example.com/webhook"
+    token = ratings.links(state, config, {"id": 7, "email": "a@co.example"})[3].split("/r/")[1].split("/")[0]
+    stale = ratings.lookup(state, token)  # read before another click lands
+    state._exec("UPDATE ratings SET score = 2 WHERE order_pk = 7")
+    monkeypatch.setattr(ratings, "lookup", lambda st, t: stale)
+    assert ratings.record(state, token, 3) == "already"
+    monkeypatch.undo()
+    assert ratings.lookup(state, token)["score"] == 2
+
+    kit.files.write_bytes("assets/x/x.zip", b"zip")
+    link = download_links.issue(state, config, "assets/x/x.zip", "a@co.example")
+    dl = link.rsplit("/", 1)[1]
+    real_resolve = kit.files.resolve
+
+    def resolve_while_another_click_lands(rel):  # between the check and the count
+        state._exec("UPDATE download_tokens SET downloads = max_downloads")
+        return real_resolve(rel)
+
+    monkeypatch.setattr(kit.files, "resolve", resolve_while_another_click_lands)
+    path, why = download_links.redeem(state, kit.files, dl)
+    assert path is None and "used up" in why

@@ -89,3 +89,14 @@ def test_dependency_check_reports_old_and_missing(tmp_path):
 
     assert check(py, installed) == [{"package": "aiohttp", "need": ">=99", "have": "3.10.0"},
                                     {"package": "nope-pkg", "need": ">=1", "have": ""}]
+
+
+def test_feature_switches_are_real_settings():
+    from dataclasses import fields as dc_fields
+
+    from agent.config import Config
+    from tools.features import FEATURES
+
+    names = {f.name for f in dc_fields(Config)}
+    assert [flag for _, _, flag, _ in FEATURES if flag and flag not in names] == []
+    assert len({name for _, name, _, _ in FEATURES}) == len(FEATURES)

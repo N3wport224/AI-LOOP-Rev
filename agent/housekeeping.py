@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import gzip
 import shutil
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,12 @@ def maybe_vacuum(state: Any, db_path: Path, free_bytes: int | None = None) -> in
     free = shutil.disk_usage(str(db.parent)).free if free_bytes is None and db.exists() else (free_bytes or 0)
     if not size or free < 2 * size:
         return 0
-    state._exec("VACUUM")
+    try:
+        state._exec("VACUUM")
+    except sqlite3.OperationalError as exc:  # busy (another process reading): try again tomorrow, don't fail housekeeping
+        state.set("vacuum_at", (state.clock() - timedelta(days=VACUUM_DAYS - 1)).isoformat(timespec="seconds"))
+        state.log_error("housekeeping", f"database compaction postponed: {exc}")
+        return 0
     state.set("vacuum_at", state.now())
     return max(0, size - db.stat().st_size)
 

@@ -68,7 +68,10 @@ def record(state: Any, token: str, score: int) -> str:
         return "invalid"
     if row["score"] is not None:
         return "already"
-    state._exec("UPDATE ratings SET score = ?, rated_at = ? WHERE token_hash = ?", (score, state.now(), _h(token)))
+    done = state._exec("UPDATE ratings SET score = ?, rated_at = ? WHERE token_hash = ? AND score IS NULL",
+                       (score, state.now(), _h(token))).rowcount  # atomic: a double click records once
+    if not done:
+        return "already"
     if score == 1:
         order = state._one("SELECT * FROM orders WHERE id = ?", (row["order_pk"],)) or {}
         state.log_error("ratings", f"{row['email']} rated their purchase \"not good\" (order {order.get('order_id', row['order_pk'])}). "

@@ -90,7 +90,11 @@ def power_source(run: Callable[..., Any] = subprocess.run, system: str | None = 
 
 
 def battery_saving(state: Any) -> bool:
-    return bool((state.get(KEY) or {}).get("battery_saving"))
+    """Only a recent reading counts: if the checks stopped running, builds aren't held forever."""
+    record = state.get(KEY) or {}
+    if not record.get("battery_saving") or not record.get("at"):
+        return False
+    return state.clock() - datetime.fromisoformat(record["at"]) < timedelta(hours=3)
 
 
 class OpsChecks(Strategy):

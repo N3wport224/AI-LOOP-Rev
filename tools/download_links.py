@@ -73,7 +73,11 @@ def redeem(state: Any, files: Any, token: str) -> tuple[Path | None, str]:
         return None, "file unavailable"
     if not path.is_file():
         return None, "file unavailable"
-    state._exec("UPDATE download_tokens SET downloads = downloads + 1 WHERE token_hash = ?", (_h(token),))
+    # Atomic: two clicks at once can't both take the last download.
+    took = state._exec("UPDATE download_tokens SET downloads = downloads + 1 WHERE token_hash = ? AND downloads < max_downloads",
+                       (_h(token),)).rowcount
+    if not took:
+        return None, "this link has been used up: reply to your order email for a new one"
     return path, ""
 
 

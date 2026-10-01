@@ -1594,6 +1594,28 @@ Two changes elsewhere:
   * every CLI command is in this README;
   * every setting is explained.
 
+### Audit after Phase 119
+
+A full review: static analysis (pyflakes, ruff with bugbear and bandit rules), a security pass over
+every public route, the control panel, SQL construction and secrets (including git history), the
+consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
+* **Download links weren't reachable through the tunnel.** `/d/` and `/r/` are now routed. Re-run
+  the tunnel setup once (the to-do list says so).
+* **`/healthz` revealed sales volume.** Through the tunnel it showed webhook event counts. It now
+  answers `{"ok": true}` publicly; the counts are only shown to local callers.
+* **Download and rating links had no rate limit.** They now allow 300 requests per IP per hour and
+  send `nosniff` and `no-referrer` headers.
+* **Two simultaneous clicks could double-count.** The last download of a link and a rating are now
+  taken atomically.
+* **A second rating click showed the wrong page.** It said "thanks" for a vote that wasn't recorded;
+  it now says the rating is already in.
+* **The battery saver could hold builds indefinitely.** If its checks stopped, an old "on battery"
+  reading kept heavy builds paused. Readings older than 3 hours are now ignored.
+* **A failed VACUUM repeated every cycle.** If the database is busy, compaction now waits a day
+  instead of failing housekeeping each cycle.
+* **Documentation gaps:** 36 settings had no description, and three commands were missing from
+  the README.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to

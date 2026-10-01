@@ -116,3 +116,35 @@ def test_repeated_errors_become_one_line_with_a_count(state, clock):
     assert [(g["source"], g["n"]) for g in groups] == [("task:build_site", 5), ("ops_checks", 1)]
     assert problem_line(groups[0]).startswith("- task:build_site (×5): attempt 4/3")
     assert "(×" not in problem_line(groups[1])
+
+
+# ------------------------------------------------------------------ audit fixes
+def test_a_stale_battery_reading_does_not_hold_builds(toolkit, state, transport, clock):
+    from agent.ops_checks import battery_saving
+
+    date_header(transport, 0)
+    run_ops(toolkit, BATT)
+    assert battery_saving(state)
+    clock.advance(hours=4)  # the checks stopped running
+    assert not battery_saving(state)
+
+
+def test_a_busy_database_postpones_vacuum_by_a_day(state, clock, tmp_path, monkeypatch):
+    import sqlite3
+
+    db = tmp_path / "x.db"
+    db.write_bytes(b"x" * 1000)
+    real = state._exec
+
+    def busy(sql, args=()):
+        if sql == "VACUUM":
+            raise sqlite3.OperationalError("database is locked")
+        return real(sql, args)
+
+    monkeypatch.setattr(state, "_exec", busy)
+    assert maybe_vacuum(state, db, free_bytes=10_000) == 0
+    assert maybe_vacuum(state, db, free_bytes=10_000) == 0 and len(state.recent_errors(10)) == 1  # not retried at once
+    clock.advance(days=1, minutes=1)
+    monkeypatch.setattr(state, "_exec", real)
+    maybe_vacuum(state, db, free_bytes=10_000)
+    assert state.get("vacuum_at") == state.now()

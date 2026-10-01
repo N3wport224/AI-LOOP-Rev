@@ -67,6 +67,7 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Customers", "Referral rewards", "referrals", _postal),
     ("Customers", "Support desk (resends, alerts)", None, _imap),
     ("Customers", "Testimonials", None, _imap),
+    ("Customers", "1-click ratings", "buyer_followup", _all(_live, _postal, _tunnel)),
     ("Protection", "Refund and dispute tracking", None, _live),
     ("Protection", "Card-testing and duplicate guards", None, _live),
     ("Protection", "Bounce guard", None, _imap),
@@ -78,6 +79,10 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Upkeep", "Heartbeat", None, lambda c, s: None if c.heartbeat_url else "a ping URL (automonetize heartbeat)"),
     ("Upkeep", "Phone notifications", None, lambda c, s: None if c.ntfy_topic else "a topic (automonetize phone)"),
     ("Upkeep", "Email commands", "owner_commands", _imap),
+    ("Upkeep", "Daily phone summary", "digest_push", lambda c, s: None if c.ntfy_topic else "a topic (automonetize phone)"),
+    ("Upkeep", "Battery saver", "battery_saver", None),
+    ("Upkeep", "Job-source and clock checks", None, None),
+    ("Money", "Milestone emails", "owner_reports", None),
     ("Money", "Monthly and yearly books", "bookkeeping", None),
     ("Money", "Offer tuning", "offer_tuning", None),
 ]
