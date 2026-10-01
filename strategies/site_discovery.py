@@ -159,7 +159,8 @@ def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
     for i in range(weeks):
         hi = now - timedelta(days=7 * i)
         lo = hi - timedelta(days=7)
-        out.append({"from": lo.date().isoformat(), "to": hi.date().isoformat(), "added": [], "retired": [], "prices": []})
+        out.append({"from": lo.date().isoformat(), "to": hi.date().isoformat(), "added": [], "retired": [], "prices": [],
+                    "updated": []})
 
     def bucket(when: str) -> dict[str, Any] | None:
         try:
@@ -181,6 +182,12 @@ def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
             b = bucket(r["retired_at"])
             if b is not None:
                 b["retired"].append(r["title"])
+    from strategies.version_diffs import refreshes
+
+    for slug, title, d in refreshes(state, start.isoformat(timespec="seconds")):  # Phase 279
+        b = bucket(d["at"])
+        if b is not None:
+            b["updated"].append((slug, title, d))
     for p in price_history(state, 200):
         b = bucket(p["at"])
         if b is not None:
@@ -189,7 +196,7 @@ def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
 
 
 def changes_page(state: Any, shell: Any) -> str:
-    weeks = [w for w in changes(state) if w["added"] or w["retired"] or w["prices"]]
+    weeks = [w for w in changes(state) if w["added"] or w["retired"] or w["prices"] or w["updated"]]
     if not weeks:
         return ""
     body = ["<h1>What's new</h1><p>New datasets, retired ones and price changes, week by week.</p>"]
@@ -199,6 +206,11 @@ def changes_page(state: Any, shell: Any) -> str:
             parts.append(f"<p><b>New ({len(w['added'])}):</b></p><ul>" + "".join(
                 f'<li><a href="../{html.escape(slug)}/">{html.escape(title)}</a></li>' if slug else f"<li>{html.escape(title)}</li>"
                 for slug, title in w["added"][:50]) + "</ul>")
+        if w["updated"]:
+            parts.append(f"<p><b>Updated ({len(w['updated'])}):</b></p><ul>" + "".join(
+                f'<li><a href="../{html.escape(slug)}/">{html.escape(title)}</a>: +{d["new_rows"]} new rows'
+                + (f", +{d['companies_added']} companies" if d.get("companies_added") else "") + "</li>"
+                for slug, title, d in w["updated"][:50]) + "</ul>")
         if w["retired"]:
             parts.append(f"<p><b>Retired ({len(w['retired'])}):</b> " + html.escape(", ".join(w["retired"][:30])) + "</p>")
         if w["prices"]:

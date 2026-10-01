@@ -2256,6 +2256,18 @@ checksums.
 * **Phase 274, checksums:** `SHA256SUMS` lists every file's SHA-256. The hourly integrity check also
   verifies a random 20 downloads each hour, so a damaged file is rebuilt like a missing one.
 
+## What changed (Phases 275-279)
+
+Each weekly refresh says what's new (`strategies/version_diffs.py`).
+
+* **Phase 275, the diff:** a refreshed product's rows are compared with the previous version's:
+  companies added and gone, postings new and no longer listed.
+* **Phase 276, CHANGES.md:** the refreshed download includes the diff, naming the companies.
+* **Phase 277, remembered:** the last diff of each product is kept.
+* **Phase 278, on the product page:** "Updated weekly. Last update (date): +N new postings, +M
+  companies".
+* **Phase 279, on the What's new page:** each week lists the refreshes that added something.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

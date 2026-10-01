@@ -340,6 +340,9 @@ def refresh_due(tools: Any, limit: int = REFRESH_PER_TICK) -> list[str]:
             if new:
                 checkout = {"checkout_url": new["checkout_url"], "product_ref": new["product_ref"]}
                 made["price_cents"] = higher
+        from strategies.version_diffs import on_refresh
+
+        on_refresh(tools, row["slug"], row["title"], str(asset.get("path") or ""), made, version)  # Phases 275-277
         zip_rel = pf.write_files(tools, row["slug"], version, made, row["title"], filters)
         aid = state.add_asset(asset.get("hypothesis_id"), pf.KIND, row["title"], zip_rel, version, made["rows"], made["price_cents"],
                               product_ref=checkout["product_ref"])

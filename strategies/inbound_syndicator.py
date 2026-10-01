@@ -158,7 +158,10 @@ def site_pages(tools) -> list[ProductPage]:
         counts = bx.ratings_for(tools.state, niche)
         page.ratings_html, page.aggregate_rating = bx.ratings_html(counts), bx.aggregate_rating(counts)
         if kind == "micro":
-            page.files_html = bx.file_list_html((listing.get("filters") or {}).get("type", "slice"))
+            from strategies.version_diffs import update_note
+
+            page.files_html = (update_note(tools.state, niche)  # Phase 278
+                               + bx.file_list_html((listing.get("filters") or {}).get("type", "slice")))
         if kind == "micro":
             from strategies.marketing_optimizer import display_title
             from strategies.product_factory import label as tech_label
