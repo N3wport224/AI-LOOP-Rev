@@ -162,6 +162,7 @@ class Config:
     factory_max_live: int = 500              # most factory products on sale at once
     factory_retire_days: int = 60            # a product with no sale after this long is retired
     factory_prices: list[int] = field(default_factory=lambda: [500, 900, 1400])  # cents: <60 rows, <200, larger
+    factory_types: list[str] = field(default_factory=lambda: ["slice", "salary", "top", "remote_first", "fast_hiring", "pack"])  # kinds of product the factory makes
     # More ways to get paid (strategies/revenue_models.py)
     marketing_engine: bool = True            # plan traffic plays daily: automatic ones run, drafts wait for you
     marketing_drafts_per_day: int = 3        # most ready-to-post drafts queued per day

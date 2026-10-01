@@ -2,7 +2,7 @@
 
 * ``GET /api/products``: the factory catalog (on sale, waiting, retired), what it makes next, the
   revenue leaderboard and products with checkouts but no sales. ``POST /api/products/make`` makes
-  one product now.
+  one product now. ``GET /api/products.csv`` downloads the catalog (Phase 237).
 * ``GET /api/marketing``: drafts waiting for you (with their text and tracked link), the week's
   plan, strategy scores and the optimiser's notes. ``POST /api/marketing/mark`` records a draft as
   posted or skipped.
@@ -64,6 +64,15 @@ def products(gctx: Any) -> dict[str, Any]:
 
 async def get_products(request: web.Request) -> web.Response:
     return _json(await _run(products, ctx(request)))
+
+
+async def get_products_csv(request: web.Request) -> web.Response:
+    """Phase 237: the whole catalog as a spreadsheet."""
+    from strategies.catalog_insight import catalog_csv
+
+    body = await _run(catalog_csv, ctx(request).state)
+    return web.Response(text=body, content_type="text/csv", charset="utf-8",
+                        headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="catalog.csv"'})
 
 
 async def post_make(request: web.Request) -> web.Response:
@@ -158,7 +167,8 @@ async def post_affiliate(request: web.Request) -> web.Response:
 
 
 def routes() -> list[web.RouteDef]:
-    return [web.get("/api/products", get_products), web.post("/api/products/make", post_make),
+    return [web.get("/api/products", get_products), web.get("/api/products.csv", get_products_csv),
+            web.post("/api/products/make", post_make),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),
             web.post("/api/affiliate/add", post_affiliate)]

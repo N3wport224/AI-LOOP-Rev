@@ -299,12 +299,27 @@ def sponsor_main(argv: list[str]) -> int:
 
 
 def factory_main(argv: list[str]) -> int:
-    """`automonetize factory [--now] [--next]` (Phase 148): the product catalog; make one now; preview the next."""
+    """`automonetize factory [--now] [--next] [--types] [--csv]` (Phases 148, 235): the product catalog; make one
+    now; preview the next; results by product type; the catalog as a spreadsheet."""
     from strategies import product_factory as pf
     from tools import build_toolkit
     from tools.circuit_breaker import CircuitBreaker
 
     config, state, _ = _setup()
+    if "--types" in argv:
+        from strategies.catalog_insight import describe_types
+
+        for line in describe_types(state) or ["No products yet."]:
+            print(line)
+        return 0
+    if "--csv" in argv:
+        from strategies.catalog_insight import catalog_csv
+
+        path = ROOT / "data" / "exports" / "catalog.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(catalog_csv(state), encoding="utf-8")
+        say(GREEN, f"✔ Wrote {path}")
+        return 0
     if "--next" in argv:
         cand = pf.next_candidate(state, config)
         print(f"Next: {cand['title']} ({len(cand['rows'])} postings, {cand['companies']} companies)" if cand else

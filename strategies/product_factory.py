@@ -192,7 +192,12 @@ def next_candidate(state: Any, cfg: Any) -> dict[str, Any] | None:
         return None
     by_type = product_types.all_candidates(state, cfg)
     made_keys = key_sets(made)
+    from strategies.catalog_insight import enabled_types
+
+    allowed = set(enabled_types(cfg))  # Phase 239
     for kind in product_types.rotation(state):
+        if kind not in allowed:
+            continue
         for cand in by_type.get(kind, []):
             if cand["slug"] in taken:
                 continue

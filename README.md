@@ -1569,7 +1569,7 @@ automonetize products                     # every product ranked by revenue
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
-automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
+automonetize factory [--now|--next|--types|--csv]  # the catalog; make one now; preview the next; by type; spreadsheet
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
@@ -2089,6 +2089,27 @@ From `strategies/posting_quality.py`:
   and each one's share of the rows.
 * **Phase 234, how current it is:** the README also says how many postings were seen on their board
   in the last 7 days.
+
+## Catalog insight (Phases 235-239)
+
+What the factory is making, and what of it sells (`strategies/catalog_insight.py`).
+
+* **Phase 235, by product type:** `automonetize factory --types` shows, for each type:
+  * products on sale and retired;
+  * orders and revenue in the last 90 days;
+  * revenue per product.
+
+  `--csv` writes the whole catalog to `data/exports/catalog.csv`.
+* **Phase 236, by email:** `AM CATALOG <code>` replies with the same summary, the five best sellers
+  and the next product.
+* **Phase 237, catalog spreadsheet:** the control panel's Products tab has "Download the catalog
+  (CSV)".
+* **Phase 238, weekly line:** Monday's report says how many products were made, retired and
+  repriced in the past week, and which type earns most per product.
+* **Phase 239, choose the product types:** `factory_types` lists the types the factory makes
+  (default: all six).
+  * Leave one out to stop making it.
+  * What's already on sale stays on sale and keeps refreshing.
 
 ## Safety and consistency (Phases 140-144)
 

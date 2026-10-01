@@ -311,6 +311,11 @@ class OwnerReports(Strategy):
             asks = request_summary(state)
             if asks:
                 lines += ["", asks]
+            from strategies.catalog_insight import weekly_line
+
+            catalog_week = weekly_line(state)  # Phase 238
+            if catalog_week:
+                lines += ["", catalog_week]
             from strategies.money_insight import abandoned, describe_abandoned, describe_trends, niche_trends
 
             week = (state.get(CALENDAR) or {}).get("items") or []
