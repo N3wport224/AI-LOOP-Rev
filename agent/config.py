@@ -151,6 +151,7 @@ class Config:
     public_webhook_url: str = ""             # https://<tunnel hostname>/webhook, set by setup_tunnel.sh
     power_assertions: bool = True            # hold off idle sleep while a cycle or webhook is in flight
     schedule_wake: bool = True               # ask pmset to wake the Mac for the next cycle (needs sudo -n)
+    digest_push: bool = True                 # one-line daily summary to your phone (needs ntfy_topic)
     battery_saver: bool = True               # on battery, heavy builds wait until the Mac is plugged in
 
     # Pricing engine

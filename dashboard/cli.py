@@ -828,7 +828,13 @@ def cmd_phone(args: argparse.Namespace, console: Console) -> int:
 def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import quiet_main
 
-    return quiet_main([args.mode] if args.mode else [])
+    return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
+
+
+def cmd_timings(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import timings_main
+
+    return timings_main(["--days", str(args.days)])
 
 
 def cmd_commands(args: argparse.Namespace, console: Console) -> int:
@@ -1100,6 +1106,10 @@ def build_parser() -> argparse.ArgumentParser:
     ph.set_defaults(func=cmd_phone)
     qu = sub.add_parser("quiet", help="hold all marketing email (on) or let it go out again (off); purchases always go out")
     qu.add_argument("mode", nargs="?", choices=["on", "off"])
+    qu.add_argument("--days", type=float, help="turn quiet mode off by itself after this many days")
+    ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
+    ti.add_argument("--days", type=int, default=7)
+    ti.set_defaults(func=cmd_timings)
     qu.set_defaults(func=cmd_quiet)
     co = sub.add_parser("commands", help="control the agent by email from your phone: shows the command code")
     co.add_argument("--new", action="store_true", help="replace the code (the old one stops working)")

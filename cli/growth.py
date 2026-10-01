@@ -173,6 +173,17 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def timings_main(argv: list[str]) -> int:
+    """`automonetize timings [--days N]` (Phase 113)."""
+    from tools.timings import table, timings
+
+    days = int(argv[argv.index("--days") + 1]) if "--days" in argv else 7
+    _, state, _ = _setup()
+    rows = timings(state, days)
+    print(table(rows) if rows else f"No task runs recorded in the last {days} days.")
+    return 0
+
+
 def features_main(argv: list[str]) -> int:
     from tools.features import overview
 
@@ -300,19 +311,34 @@ def phone_main(argv: list[str] | None = None, transport=None) -> int:
 
 
 def quiet_main(argv: list[str]) -> int:
-    """`automonetize quiet on|off`: hold or release all marketing email."""
+    """`automonetize quiet on [--days N]|off`: hold or release all marketing email (Phase 112: for N days)."""
     from tools.contact_policy import quiet, set_quiet
 
+    days = None
+    if "--days" in argv:
+        i = argv.index("--days")
+        try:
+            days = float(argv[i + 1])
+            if not 0 < days <= 365:
+                raise ValueError
+        except (IndexError, ValueError):
+            say(RED, "--days needs a number of days between 1 and 365, e.g. automonetize quiet on --days 7")
+            return 2
+        argv = argv[:i] + argv[i + 2:]
     _, state, _ = _setup()
     if argv[:1] == ["on"]:
-        set_quiet(state, True, "turned on from the terminal")
-        say(GREEN, "✔ Quiet mode on: no marketing email goes out. Purchases and support replies still do.")
+        set_quiet(state, True, "turned on from the terminal" + (f" for {days:g} day(s)" if days else ""), days=days)
+        q = quiet(state) or {}
+        until = f" until {q['until'][:16].replace('T', ' ')} UTC" if q.get("until") else ""
+        say(GREEN, f"✔ Quiet mode on{until}: no marketing email goes out. Purchases and support replies still do.")
     elif argv[:1] == ["off"]:
         set_quiet(state, False)
         say(GREEN, "✔ Quiet mode off: marketing email goes out again, within the usual limits.")
     else:
         q = quiet(state)
-        print(f"Quiet mode is {'on since ' + q['since'][:16] if q else 'off'}. Use: automonetize quiet on | off")
+        until = f" until {q['until'][:16].replace('T', ' ')} UTC" if q and q.get("until") else ""
+        print(f"Quiet mode is {'on since ' + q['since'][:16] + until if q else 'off'}. "
+              "Use: automonetize quiet on [--days N] | off")
     return 0
 
 

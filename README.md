@@ -1553,6 +1553,26 @@ Two changes elsewhere:
 * **Phase 109, grouped errors:** the daily report lists each distinct problem once, with a count
   (`task:build_site (×5): …`), instead of repeating the same error.
 
+## Owner experience (Phases 110-114)
+
+* **Phase 110, HTML report:** the daily report email now also has a tidy HTML version, with
+  headings, lists and clickable links. It loads no images and has no tracking. Plain text is still
+  sent alongside it.
+* **Phase 111, phone summary:** with `ntfy_topic` set, each report also sends one line to your phone,
+  e.g. "Yesterday $19.00 · 7 days $57.00 · 0 alert(s) · 1 thing(s) only you can do". Turn it off with
+  `digest_push = false`.
+* **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
+  week, then lets it go out again by itself.
+* **Phase 113, task timings:** `automonetize timings [--days N]` shows how long each task takes.
+  Monday's report names the three slowest.
+* **Phase 114, milestones:** you get one email (and a phone buzz) for each milestone, sent once:
+  * your first sale;
+  * the first day at or above the daily goal;
+  * $100 total net;
+  * $1,000 total net.
+
+  An existing install doesn't celebrate past milestones.
+
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
 The agent can diagnose code-level bottlenecks in its own telemetry and patch its heuristics to

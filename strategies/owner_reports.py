@@ -14,7 +14,10 @@ also buzzes your phone (``tools/notify.py``, ``automonetize phone``).
   yesterday's and the week's revenue against the $10/day goal, MRR, what's on sale (with links),
   free leads, outreach drafts waiting for you, and problems in the last 24 hours (one line per
   distinct problem with a count, Phase 109). On Mondays it
-  also carries the week's share kit (ready-to-paste posts, ``strategies/share_kit.py``).
+  also carries the week's share kit (ready-to-paste posts, ``strategies/share_kit.py``) and the
+  slowest tasks (``tools/timings.py``). It has an HTML version (Phase 110) and, with
+  ``ntfy_topic`` set, a one-line summary on your phone (Phase 111, ``digest_push``).
+* **Milestones** (Phase 114, ``strategies/milestones.py``): first sale, first goal day, $100 and $1,000.
 
 Pointers only advance after a send succeeds, so a failed email is retried next cycle. In dry run
 the emails are only written to the audit log.
@@ -81,7 +84,10 @@ class OwnerReports(Strategy):
             state.set("owner_last_alert_id", _max_id(state, "errors", "WHERE kind = 'alert'"))
             state.set("owner_report_started", state.now())
         sent = []
-        for name, step in (("sales", self.sales), ("alerts", self.alerts), ("whats_new", self.whats_new), ("digest", self.digest)):
+        from strategies.milestones import announce
+
+        for name, step in (("sales", self.sales), ("alerts", self.alerts), ("milestones", announce), ("whats_new", self.whats_new),
+                           ("digest", self.digest)):
             try:
                 if step(tools, to):
                     sent.append(name)
@@ -183,10 +189,32 @@ class OwnerReports(Strategy):
         if cfg.owner_digest == "off" or (cfg.owner_digest == "weekly" and local.weekday() != 0):
             return False
         body = self.digest_body(tools, local)
-        tools.dispatcher.send_transactional(Email(to=to, subject=f"📊 AutoMonetize daily report: {local:%a %d %b}", body=body,
-                                                  kind="delivery"), audit_key=f"owner:digest:{day}")
+        subject = f"📊 AutoMonetize daily report: {local:%a %d %b}"
+        from tools.report_html import text_to_html
+
+        tools.dispatcher.send_transactional(Email(to=to, subject=subject, body=body, kind="delivery",
+                                                  html=text_to_html(body, subject[2:])), audit_key=f"owner:digest:{day}")
         state.set("owner_digest_date", day)
+        if cfg.digest_push:
+            from tools.notify import push
+
+            push(tools.http, cfg, "AutoMonetize daily", self.push_line(tools), tags="bar_chart")
         return True
+
+    @staticmethod
+    def push_line(tools: Any) -> str:
+        """Phase 111: the report in one line for the phone."""
+        state = tools.state
+        history = tools.revenue.history(7)
+        yesterday = int(history[-2]["net_cents"]) if len(history) > 1 else 0
+        week = sum(int(d.get("net_cents", 0)) for d in history)
+        since = (state.clock() - timedelta(hours=24)).isoformat(timespec="seconds")
+        alerts = int(state._one("SELECT COUNT(*) AS n FROM errors WHERE kind = 'alert' AND created_at >= ?", (since,))["n"])
+        from strategies.owner_todo import todo
+
+        todos = len(todo(state, tools.config))
+        return (f"Yesterday {money(yesterday)} · 7 days {money(week)} · "
+                f"{alerts} alert(s) · {todos} thing(s) only you can do")
 
     @staticmethod
     def digest_body(tools: Any, local: datetime) -> str:
@@ -261,6 +289,12 @@ class OwnerReports(Strategy):
             asks = request_summary(state)
             if asks:
                 lines += ["", asks]
+            from tools.timings import describe as describe_timings
+            from tools.timings import timings
+
+            slow = describe_timings(timings(state))
+            if slow:
+                lines += ["", slow]
             from tools.customers import describe as describe_customers
             from tools.customers import report as customer_report
 
