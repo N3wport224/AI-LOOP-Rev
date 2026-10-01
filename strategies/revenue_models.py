@@ -354,7 +354,23 @@ def fulfil_gift(tools: Any, order: dict[str, Any]) -> str:
                  "entered at checkout (\"Add promotion code\").")
 
 
-# ------------------------------------------------------------------ site page
+# ------------------------------------------------------------------ site pages
+def thanks_offers_html(state: Any) -> str:
+    """Phase 163: on the thank-you page, the two offers a fresh buyer is most likely to want."""
+    import html
+
+    items = []
+    for kind in ("lifetime", "custom_request"):
+        aid = offers(state).get(kind)
+        a = state.get_asset(int(aid)) if aid else None
+        if a and a.get("status") == "published" and a.get("checkout_url"):
+            _, title, price, summary = KINDS[kind]
+            items.append(f'<li><b>{html.escape(title)}</b> (${price / 100:.0f}): {html.escape(summary)} '
+                         f'<a href="{html.escape(a["checkout_url"])}" rel="noopener">Get it</a></li>')
+    return f"<h2>Want more?</h2><ul>{''.join(items)}</ul>" if items else ""
+
+
+
 def more_page(state: Any, shell: Any) -> str:
     import html
 

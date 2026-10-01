@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-PROMO = {"release", "refresh", "winback", "upgrade", "sample", "sale"}
+PROMO = {"release", "refresh", "winback", "upgrade", "sample", "sale", "related"}
 RELATIONSHIP = {"followup"}
 PAUSE_KEY = "promo_pause"
 LEGACY_LAST_SENT = "release_last_sent"  # per-person dates written before the contact log existed

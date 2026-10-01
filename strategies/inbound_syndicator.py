@@ -118,6 +118,9 @@ def site_pages(tools) -> list[ProductPage]:
     from tools.site_extras import popular_niche
 
     popular = popular_niche(tools.state)
+    from strategies.upsells import Index, bought_together_html
+
+    index = Index(tools.state, cfg)
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
@@ -149,6 +152,7 @@ def site_pages(tools) -> list[ProductPage]:
 
         page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
         page.refund_days = int(cfg.refund_policy_days or 0)
+        page.related_html = bought_together_html(index, asset) if kind in ("dataset", "micro") else ""
         page.popular = kind == "dataset" and niche == popular
         if kind == "dataset":
             from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for
@@ -304,8 +308,12 @@ class InboundSyndicator(Strategy):
 
         extra = {"more/index.html": more_page(tools.state, lambda title, body, desc: _shell(
             title, body, tools.config.site_title, description=desc))}
+        from strategies.revenue_models import thanks_offers_html
+        from strategies.upsells import best_sellers_html
+
         out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key, extra=extra,
-                            sponsor=sponsor_html(tools.state))
+                            sponsor=sponsor_html(tools.state), thanks_extra=thanks_offers_html(tools.state),
+                            best_sellers=best_sellers_html(tools.state, pages))
         from tools.site_audit import audit_site, record
 
         audit = audit_site(out, cfg.pages_base_url)

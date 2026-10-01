@@ -43,7 +43,7 @@ def _a(url: str, text: str) -> str:
     return f'<a class="cta" data-checkout href="{html.escape(url)}" rel="noopener">{html.escape(text)}</a>'
 
 
-def render_thanks(pages: list[Any], site_title: str) -> str:
+def render_thanks(pages: list[Any], site_title: str, extra: str = "") -> str:
     datasets = [p for p in pages if p.kind == "dataset"]
     bundle = next((p for p in pages if p.kind == "bundle" and p.checkout_url), None)
     offers = []
@@ -60,6 +60,7 @@ def render_thanks(pages: list[Any], site_title: str) -> str:
             "within a minute; check spam if you don't see it). Reply to that email if anything is missing.</p>")
     if offers:
         body += "<h2>While you're here</h2><ul>" + "".join(offers[:6]) + "</ul>"
+    body += extra  # Phase 163: lifetime pass and custom datasets
     return _shell("Thank you", body, site_title, noindex=True)
 
 

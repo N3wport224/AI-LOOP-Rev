@@ -1712,7 +1712,8 @@ The agent no longer builds one product per niche and stops: it keeps making new 
   Stripe account's standing, so a product needs:
   * at least `factory_min_rows` (20) postings from `factory_min_companies` (8) companies, posted in
     the last `factory_max_age_days` (60);
-  * to be mostly new: a slice that is 85% the same postings as an existing product is skipped.
+  * to be distinct: a slice whose postings are 85% the same as an existing product's (counted over
+    both together) is skipped, while a narrower slice such as "Rust in Europe" next to "Rust" is fine.
 
   Two more limits keep the catalog worth browsing:
   * at most `factory_max_live` (500) factory products are on sale at once;
@@ -1765,6 +1766,22 @@ site's `more/` page lists them.
 
 Storefront health now checks a rotating window of 40 products per run, so a large catalog doesn't
 use up the API budget.
+
+## Upsells (Phases 160-164)
+
+* **Phase 160, related datasets email** (`related_offers`): 5-12 days after an order, one email
+  listing up to 3 live products about the same technology that the buyer doesn't own.
+  * It's a marketing email: the contact rules apply (one offer per person per 14 days, quiet mode,
+    unsubscribes).
+  * It carries the unsubscribe line and your postal address.
+* **Phase 161, often bought together:** each product page lists up to 3 related products, the
+  starter pack first when there is one.
+* **Phase 162, more of what sells:** the factory ranks ideas about technologies that sold in the
+  last 30 days higher, so new products follow demand.
+* **Phase 163, thank-you page:** after paying, buyers also see the lifetime pass and the custom
+  dataset offer.
+* **Phase 164, best sellers:** the home page lists the products with the most kept orders this
+  month.
 
 ## Safety and consistency (Phases 140-144)
 
@@ -1867,6 +1884,7 @@ and shows its last runs.
 | 63 | `reward_referrals` | Send a free update to buyers whose link sold. |
 | 64 | `win_back` | Invite cancelled subscribers back, once. |
 | 65 | `offer_bundle_upgrade` | Offer buyers the bundle with what they paid counted. |
+| 65 | `offer_related` | Email buyers up to 3 related datasets 5-12 days after an order (contact rules apply). |
 | 66 | `offer_sample_upgrade` | Offer free-sample subscribers the full dataset. |
 | 67 | `run_sale` | Run the quarterly sale. |
 | 68 | `tune_offers` | Adjust discounts by what they sold. |

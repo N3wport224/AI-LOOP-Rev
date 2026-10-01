@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-MARKETING = ("followup", "release", "refresh", "upgrade", "winback", "sale", "sample_offer")
+MARKETING = ("followup", "release", "refresh", "upgrade", "winback", "sale", "sample_offer", "related")
 PLACEHOLDER = re.compile(r"\{[a-z_][a-z0-9_]*\}|\bNone\b|\bnan\b")
 
 

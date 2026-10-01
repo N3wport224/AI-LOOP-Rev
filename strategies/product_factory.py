@@ -17,8 +17,8 @@ posting from every board, the ``__all__`` pool) into narrower datasets people se
   isn't running (``automonetize run``). ``automonetize factory`` shows the catalog and can make
   one now.
 * **Phase 149, quality floor:** a slice needs ``factory_min_rows`` postings from
-  ``factory_min_companies`` companies, posted in the last ``factory_max_age_days``; one that
-  mostly repeats an existing product (85% the same postings) is skipped; at most
+  ``factory_min_companies`` companies, posted in the last ``factory_max_age_days``; one that is
+  nearly the same as an existing product (85% Jaccard overlap of postings) is skipped; at most
   ``factory_max_live`` products are on sale; a product with no sale after ``factory_retire_days``
   is retired (link deactivated, page removed) to keep the catalog worth browsing. When no slice
   qualifies the factory simply waits for more data: it never pads.
@@ -128,6 +128,9 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
     tagged = [(lead, facets(lead)) for lead in leads]
     tech_counts = Counter(t for _, f in tagged for t in f["techs"])
     asked = _asked(state)
+    from strategies.upsells import selling_techs
+
+    selling = selling_techs(state, cfg)  # Phase 162: technologies that sell get more products
     out = []
     for tech, n in tech_counts.items():
         if n < int(cfg.factory_min_rows):
@@ -139,7 +142,8 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
                 companies = {str(r.get("company") or "").strip().lower() for r in rows if r.get("company")}
                 if len(rows) < int(cfg.factory_min_rows) or len(companies) < int(cfg.factory_min_companies):
                     continue
-                score = len(companies) + (50 if tech in asked else 0) - (5 if level else 0) - (3 if region else 0)
+                score = (len(companies) + (50 if tech in asked else 0) + 20 * selling.get(tech, 0)
+                         - (5 if level else 0) - (3 if region else 0))
                 out.append({**spec, "rows": rows, "companies": len(companies), "score": score})
     return sorted(out, key=lambda c: (-c["score"], c["slug"]))
 
@@ -161,7 +165,9 @@ def overlaps(keys: set[str], made: list[dict[str, Any]]) -> str | None:
         if m["status"] == "retired":
             continue
         other = set(json.loads(m["keys_sample"]))
-        if other and keys and len(keys & other) / min(len(keys), len(other)) >= OVERLAP_MAX:
+        # Jaccard: near-identical sets only. A sub-slice ("Rust in Europe" inside "Rust") is a
+        # different product for a different buyer, so containment alone doesn't count.
+        if other and keys and len(keys & other) / len(keys | other) >= OVERLAP_MAX:
             return m["slug"]
     return None
 

@@ -219,3 +219,9 @@ def test_a_product_that_sold_before_a_refresh_is_not_retired(kit, state, config,
     refresh_due(kit)
     clock.advance(days=config.factory_retire_days)
     assert pf.retire_unsold(kit) == []
+
+
+def test_a_narrower_slice_is_not_a_duplicate_of_its_parent():
+    parent = [{"slug": "hiring-rust", "status": "live", "keys_sample": json.dumps([str(i) for i in range(90)])}]
+    assert pf.overlaps({str(i) for i in range(30)}, parent) is None          # Rust in Europe: a third of Rust
+    assert pf.overlaps({str(i) for i in range(88)}, parent) == "hiring-rust"  # nearly the same postings

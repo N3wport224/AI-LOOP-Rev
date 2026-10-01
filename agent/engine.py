@@ -87,6 +87,7 @@ PLAN: list[tuple[str, int]] = [
     ("reward_referrals", 63),
     ("win_back", 64),
     ("offer_bundle_upgrade", 65),
+    ("offer_related", 65),
     ("offer_sample_upgrade", 66),
     ("run_sale", 67),
     ("check_storefront", 61),
