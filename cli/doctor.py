@@ -180,6 +180,15 @@ class Doctor:
             out.append(Finding("Heartbeat", "ok" if fresh else "warn",
                                f"last ping {beat[:16]}" if beat else "no ping sent yet",
                                "" if fresh else "check the URL with: automonetize heartbeat <url>"))
+        sec = state.get("security_audit") or {}
+        for f in sec.get("findings", []):
+            out.append(Finding(f"Security: {f['name']}", "fail" if f["status"] == "fail" else "warn", f["detail"], f["fix"]))
+        from tools.contact_policy import paused
+
+        pause = paused(state)
+        if pause:
+            out.append(Finding("Marketing email", "warn", f"paused until {pause['until'][:16]}: {pause['reason']}",
+                               "it resumes by itself; bounced addresses are already suppressed"))
         from agent.self_update import info as update_info
 
         upd = update_info(state)

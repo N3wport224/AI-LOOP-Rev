@@ -87,6 +87,9 @@ PLAN: list[tuple[str, int]] = [
     ("monthly_books", 96),
     ("backup_data", 97),
     ("send_heartbeat", 94),
+    ("audit_security", 93),
+    ("tune_offers", 68),
+    ("process_bounces", 44),
     ("report_owner", 98),
     ("self_update", 100),  # after evolution: an installed update reloads the process too
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over
@@ -159,6 +162,9 @@ class Engine:
             from agent.self_update import SelfUpdate
 
             self.handlers["self_update"] = SelfUpdate()
+            from agent.security_audit import SecurityAudit
+
+            self.handlers["audit_security"] = SecurityAudit()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online

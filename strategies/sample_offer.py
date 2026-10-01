@@ -19,6 +19,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from strategies.offer_tuner import offer_pct
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 DONE = "sample_offer_sent"
@@ -94,13 +96,15 @@ class SampleOffer(Strategy):
                     done.append(sub["id"])
                     seen.add(sub["id"])
                 continue
+            if contact.blocked(state, cfg, sub["email"], "sample"):
+                continue
             expires = int((state.clock() + timedelta(days=CODE_DAYS)).timestamp())
             try:
                 if promos:
                     promo = promos.create(product["product_ref"], code_text("SAMPLE", "", random_suffix=True),
-                                          int(cfg.sample_offer_pct), expires, max_redemptions=1, name="Sample upgrade")
+                                          offer_pct(state, cfg, "sample"), expires, max_redemptions=1, name="Sample upgrade")
                 else:
-                    promo = {"code": "PREVIEW", "percent_off": int(cfg.sample_offer_pct), "expires_at": expires}
+                    promo = {"code": "PREVIEW", "percent_off": offer_pct(state, cfg, "sample"), "expires_at": expires}
                 link = promo_link(checkout_link(product["url"], "leadmagnet", "sample_offer"), promo["code"])
                 tools.dispatcher.send_transactional(
                     offer_email(cfg, sub, product, promo, link, lead_link(cfg, "unsubscribe", sub["token"])),
@@ -110,6 +114,7 @@ class SampleOffer(Strategy):
                 continue
             done.append(sub["id"])
             seen.add(sub["id"])
+            contact.record(state, sub["email"], "sample", str(sub["id"]))
             sent += 1
         state.set(DONE, done[-10000:])
         return TaskResult(True, f"sample offers: {sent} sent", {"sent": sent})

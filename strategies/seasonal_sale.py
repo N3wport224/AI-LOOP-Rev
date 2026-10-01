@@ -20,6 +20,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from strategies.offer_tuner import offer_pct
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 KEY = "sale"
@@ -109,28 +111,24 @@ class SeasonalSale(Strategy):
         expires = int((now + timedelta(days=int(cfg.sale_days))).timestamp())
         try:
             rec = Promos(tools.http, cfg.stripe_secret_key).create_for_links(
-                [p["product_ref"] for p in products], code, int(cfg.sale_pct), expires, name=f"Sale {now:%b %Y}")
+                [p["product_ref"] for p in products], code, offer_pct(state, cfg, "sale"), expires, name=f"Sale {now:%b %Y}")
         except Exception as exc:  # noqa: BLE001 - retried next cycle
             state.log_error("seasonal_sale", f"couldn't start the sale: {exc!r}")
             return None
         sale = {**rec, "started_at": state.now(), "urls": [p["url"] for p in products]}
         state.set(KEY, sale)
         state.log_action(int(state.get("iteration", 0)), None, "sale", "ok",
-                         f"{code}: {cfg.sale_pct}% off {len(products)} product(s) for {cfg.sale_days} days")
+                         f"{code}: {offer_pct(state, cfg, 'sale')}% off {len(products)} product(s) for {cfg.sale_days} days")
         return sale
 
     def announce(self, tools: Any, sale: dict[str, Any]) -> int:
         from strategies.bundle_upgrade import owners
-        from strategies.release_announcer import LAST_SENT
 
         cfg, state = tools.config, tools.state
         if not cfg.sender_postal_address.strip():
             return 0
         sent_key = f"sale_sent:{sale['code']}"
         done = set(state.get(sent_key) or [])
-        last_sent: dict[str, str] = dict(state.get(LAST_SENT) or {})
-        gap = timedelta(days=float(cfg.announce_min_gap_days))
-        now = state.clock()
         products = [p for p in sale_products(state) if p["url"] in set(sale.get("urls") or [])]
         bought = {}
         for o in state._all("SELECT email, asset_id FROM orders WHERE status = 'delivered' AND email IS NOT NULL"):
@@ -142,7 +140,7 @@ class SeasonalSale(Strategy):
                 break
             if email in done or state.is_suppressed(email):
                 continue
-            if email in last_sent and now - datetime.fromisoformat(last_sent[email]) < gap:
+            if contact.blocked(state, cfg, email, "sale"):
                 continue
             offer = [p for p in products if p["url"] not in bought.get(email, set())]
             if not offer:
@@ -153,8 +151,7 @@ class SeasonalSale(Strategy):
                 state.log_error("seasonal_sale", f"sale email to {email} failed: {exc!r}")
                 continue
             done.add(email)
-            last_sent[email] = state.now()
+            contact.record(state, email, "sale", sale["code"])
             sent += 1
         state.set(sent_key, sorted(done))
-        state.set(LAST_SENT, last_sent)
         return sent

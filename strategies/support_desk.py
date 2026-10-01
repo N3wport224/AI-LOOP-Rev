@@ -11,6 +11,8 @@ SMTP works; ``tools.inbox.imap_settings``). It's deliberately narrow:
 * **Refunds, cancellations, disputes, complaints** → never answered automatically: you get an
   alert email (through the owner reports) with the customer, subject and first lines. Money
   decisions stay yours.
+* **"Delete my data" / GDPR / CCPA** → recorded as a privacy request and passed to you with the
+  exact commands (``tools/privacy.py``); erasing is your decision.
 * **"OK to quote"** → the reply becomes a pending testimonial (``strategies/testimonials.py``),
   published on the product page only after you approve it.
 * **"Unsubscribe"** → the address goes on the suppression list (no more follow-ups or updates).
@@ -81,6 +83,7 @@ class SupportDesk(Strategy):
         handled = list(state.get(SEEN_KEY) or [])
         seen = set(handled)
         from strategies.testimonials import add_pending, niche_for_customer
+        from tools.privacy import PRIVACY_RE, note_request
         from strategies.testimonials import extract as extract_quote
 
         resent = alerted = processed = unsubscribed = quotes = 0
@@ -90,6 +93,15 @@ class SupportDesk(Strategy):
                 continue
             processed += 1
             wants_resend, money = classify(m["subject"], m["body"])
+            if PRIVACY_RE.search(fresh_text(m["subject"], m["body"])):
+                if note_request(state, m["sender"], m["subject"]):
+                    state.log_error("support_desk", f"Privacy request from {m['sender']}: \"{m['subject'][:120]}\". See what's stored "
+                                                    f"with `automonetize privacy export {m['sender']}`; erase it with "
+                                                    f"`automonetize privacy forget {m['sender']}`. Answer within 30 days.", kind="alert")
+                    alerted += 1
+                handled.append(m["message_id"])
+                seen.add(m["message_id"])
+                continue
             quote = None if money else extract_quote(m["subject"], m["body"])
             if quote:
                 add_pending(state, m["sender"], niche_for_customer(state, m["sender"]), quote)

@@ -20,6 +20,7 @@ from datetime import timedelta
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 DONE_KEY = "buyer_followup_done"
@@ -86,6 +87,8 @@ class BuyerFollowup(Strategy):
                 done.append(order["id"])
                 seen.add(order["id"])
                 continue
+            if contact.blocked(state, cfg, email, "followup"):  # paused or the daily cap: try again next cycle
+                continue
             asset = state.get_asset(order["asset_id"]) if order.get("asset_id") else None
             try:
                 from strategies.referrals import referral_link
@@ -100,6 +103,7 @@ class BuyerFollowup(Strategy):
             done.append(order["id"])
             seen.add(order["id"])
             emailed.add(email)
+            contact.record(state, email, "followup", str(order["id"]))
             sent += 1
         state.set(DONE_KEY, done[-5000:])
         return TaskResult(True, f"buyer follow-up: {sent} sent", {"sent": sent})

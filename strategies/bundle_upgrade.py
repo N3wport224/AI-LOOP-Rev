@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 DONE = "bundle_upgrade_offered"   # [f"{bundle url}|{email}"]
@@ -85,7 +86,6 @@ class BundleUpgrade(Strategy):
     tasks = ("offer_bundle_upgrade",)
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
-        from strategies.release_announcer import LAST_SENT
         from tools.attribution import checkout_link
         from tools.promo import Promos, code_text, promo_link
 
@@ -104,8 +104,6 @@ class BundleUpgrade(Strategy):
         total = len(bundle_niches(state))
         done = list(state.get(DONE) or [])
         seen = set(done)
-        last_sent: dict[str, str] = dict(state.get(LAST_SENT) or {})
-        gap = timedelta(days=float(cfg.announce_min_gap_days))
         now = state.clock()
         promos = Promos(tools.http, cfg.stripe_secret_key) if live else None
         sent = 0
@@ -116,7 +114,7 @@ class BundleUpgrade(Strategy):
                 break
             if key in seen or owned >= total or state.is_suppressed(email):
                 continue
-            if email in last_sent and now - datetime.fromisoformat(last_sent[email]) < gap:
+            if contact.blocked(state, cfg, email, "upgrade"):
                 continue
             credit = min(int(rec["paid_cents"]), int(bundle["price_cents"]) - 100)
             if credit < 100:
@@ -136,8 +134,7 @@ class BundleUpgrade(Strategy):
                 continue
             done.append(key)
             seen.add(key)
-            last_sent[email] = state.now()
+            contact.record(state, email, "upgrade", bundle["url"])
             sent += 1
         state.set(DONE, done[-5000:])
-        state.set(LAST_SENT, last_sent)
         return TaskResult(True, f"bundle upgrade offers: {sent} sent", {"sent": sent})

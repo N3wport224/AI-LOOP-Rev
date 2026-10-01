@@ -1,4 +1,4 @@
-"""`automonetize share`, `pace`, `books [YYYY-MM]` and `heartbeat [URL]`."""
+"""`automonetize share`, `pace`, `todo`, `offers`, `books [YYYY-MM]`, `heartbeat [URL]` and `privacy`."""
 
 from __future__ import annotations
 
@@ -54,6 +54,17 @@ def todo_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def offers_main(argv: list[str] | None = None) -> int:
+    from strategies.offer_tuner import report
+
+    config, state, _ = _setup()
+    say(BOLD, "Offer      discount  emails  sales  rate    since")
+    for r in report(state, config):
+        rate = f"{r['rate'] * 100:.1f}%" if r["rate"] is not None else "-"
+        print(f"{r['kind']:<10} {r['pct']:>6}%  {r['sent']:>6}  {r['sold']:>5}  {rate:<6}  {r['since'][:10]}")
+    return 0
+
+
 def books_main(argv: list[str] | None = None) -> int:
     from strategies.bookkeeping import previous_month, save_books, tz_of
 
@@ -102,4 +113,33 @@ def heartbeat_main(argv: list[str] | None = None, transport=None) -> int:
     update_env_file(ROOT / ".env", {"HEALTHCHECK_URL": url})
     say(GREEN, "✔ Ping received and saved. You'll get an email from healthchecks.io if the agent goes quiet.")
     restart(load_env_into(ROOT / ".env"))
+    return 0
+
+
+def privacy_main(argv: list[str], confirm=input) -> int:
+    """`automonetize privacy export EMAIL` | `automonetize privacy forget EMAIL [--yes]`."""
+    import json
+
+    from tools.privacy import export, forget, placeholder
+
+    if len(argv) < 2 or argv[0] not in ("export", "forget") or "@" not in argv[1]:
+        say(RED, "Use: automonetize privacy export someone@example.com  (or: forget someone@example.com)")
+        return 1
+    config, state, files = _setup()
+    email = argv[1].strip().lower()
+    if argv[0] == "export":
+        data = export(state, config, email)
+        path = files.write_text(f"exports/privacy/{placeholder(email)[8:20]}.json", json.dumps(data, indent=2, default=str))
+        say(GREEN, f"✔ Everything stored about {email}: {path}")
+        print("  Send that file to them if they asked for a copy.")
+        return 0
+    say(BOLD, f"This erases {email} from the agent's data (sales records stay, anonymised). It can't be undone.")
+    if "--yes" not in argv and confirm("Type FORGET to continue: ").strip() != "FORGET":
+        say(YELLOW, "Cancelled. Nothing was changed.")
+        return 1
+    done = forget(state, config, email)
+    say(GREEN, f"✔ Erased {email}. They will never be emailed again.")
+    for what, n in done.items():
+        print(f"  {what}: {n}")
+    print("  Backups still hold the old data until they age out (14 days).")
     return 0

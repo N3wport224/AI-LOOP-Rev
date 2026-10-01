@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from strategies.offer_tuner import offer_pct
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 DONE = "winback_offered"
@@ -91,14 +93,16 @@ class WinBack(Strategy):
                 done.append(sub["id"])
                 seen.add(sub["id"])
                 continue
+            if contact.blocked(state, cfg, sub["email"], "winback"):
+                continue
             expires = int((state.clock() + timedelta(days=CODE_DAYS)).timestamp())
             code = code_text("BACK", sub["niche"][:4], random_suffix=True)
             try:
                 if promos:
-                    promo = promos.create(product["product_ref"], code, int(cfg.winback_discount_pct), expires,
+                    promo = promos.create(product["product_ref"], code, offer_pct(state, cfg, "winback"), expires,
                                           max_redemptions=1, name=f"Win-back {sub['id']}")
                 else:
-                    promo = {"code": "PREVIEW", "percent_off": int(cfg.winback_discount_pct), "expires_at": expires}
+                    promo = {"code": "PREVIEW", "percent_off": offer_pct(state, cfg, "winback"), "expires_at": expires}
                 link = promo_link(checkout_link(product["checkout_url"], "winback", "winback"), promo["code"])
                 tools.dispatcher.send_transactional(
                     winback_email(cfg, sub, product, promo, link,
@@ -109,6 +113,7 @@ class WinBack(Strategy):
                 continue
             done.append(sub["id"])
             seen.add(sub["id"])
+            contact.record(state, sub["email"], "winback", str(sub["id"]))
             sent += 1
         state.set(DONE, done[-5000:])
         return TaskResult(True, f"win-back: {sent} sent", {"sent": sent})

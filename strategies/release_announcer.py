@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 RELEASES = "release_families"       # {niche: first seen on sale}
@@ -104,14 +105,11 @@ class ReleaseAnnouncer(Strategy):
         tools, cfg, state = ctx.tools, ctx.tools.config, ctx.tools.state
         if not cfg.release_announcements:
             return TaskResult(True, "release announcements off", {"sent": 0})
-        now = state.clock()
         fresh = new_releases(state)
         if not fresh:
             return TaskResult(True, "no new releases to announce", {"sent": 0})
         if tools.dispatcher.live and not cfg.sender_postal_address.strip():
             return TaskResult(True, "release emails wait for sender_postal_address (CAN-SPAM)", {"sent": 0})
-        last_sent: dict[str, str] = dict(state.get(LAST_SENT) or {})
-        gap = timedelta(days=float(cfg.announce_min_gap_days))
         from strategies.launch_promos import active_code
 
         sent = 0
@@ -123,7 +121,7 @@ class ReleaseAnnouncer(Strategy):
                     break
                 if niche in owned or email in done or state.is_suppressed(email):
                     continue
-                if email in last_sent and now - datetime.fromisoformat(last_sent[email]) < gap:
+                if contact.blocked(state, cfg, email, "release"):
                     continue
                 try:
                     tools.dispatcher.send_transactional(announcement(cfg, product, email, active_code(state, niche)),
@@ -132,8 +130,7 @@ class ReleaseAnnouncer(Strategy):
                     state.log_error("release_announcer", f"announcement to {email} failed: {exc!r}")
                     continue
                 done.add(email)
-                last_sent[email] = state.now()
+                contact.record(state, email, "release", niche)
                 sent += 1
             state.set(SENT_PREFIX + niche, sorted(done))
-        state.set(LAST_SENT, last_sent)
         return TaskResult(True, f"release announcements: {sent} sent", {"sent": sent})

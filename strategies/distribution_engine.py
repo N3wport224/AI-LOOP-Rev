@@ -199,6 +199,11 @@ class DistributionEngine(Strategy):
             from tools.inbox import poll_unsubscribes
 
             unsubscribed = poll_unsubscribes(tools.state, cfg.imap_host, cfg.imap_username, cfg.imap_password)
+        from tools.contact_policy import paused
+
+        pause = paused(tools.state)
+        if pause:  # the bounce guard paused marketing email: approved drafts wait, nothing is lost
+            return TaskResult(True, f"outreach paused until {pause['until'][:16]} ({pause['reason']})", {"sent": 0, "paused": True})
         report = tools.dispatcher.dispatch_approved()
         if report.reasons and not (report.sent or report.dry_run) and tools.dispatcher.live:
             tools.state.log_error("dispatcher", "; ".join(report.reasons[:5]), kind="compliance")

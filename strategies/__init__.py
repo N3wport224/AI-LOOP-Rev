@@ -23,6 +23,8 @@ from strategies.winback import WinBack
 from strategies.bundle_upgrade import BundleUpgrade
 from strategies.sample_offer import SampleOffer
 from strategies.seasonal_sale import SeasonalSale
+from strategies.bounce_guard import BounceGuard
+from strategies.offer_tuner import OfferTuner
 from strategies.owner_reports import OwnerReports
 from strategies.support_desk import SupportDesk
 from strategies.retention_engine import RetentionEngine
@@ -43,11 +45,11 @@ def default_strategies() -> list[Strategy]:
         SourceDiscovery(), SatelliteOrchestrator(), DossierEngine(), RetentionEngine(), OwnerReports(), Finance(), SupportDesk(), BundleEngine(), Refunds(),
         ShareKit(), BuyerFollowup(), Bookkeeping(), StorefrontHealth(), ReleaseAnnouncer(), GoalPacing(), FreshnessGuard(),
         LaunchPromos(), RefreshOffers(), Referrals(), WinBack(),
-        BundleUpgrade(), SampleOffer(), SeasonalSale(),
+        BundleUpgrade(), SampleOffer(), SeasonalSale(), BounceGuard(), OfferTuner(),
     ]
 
 
 __all__ = [
-    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
+    "DigitalAssetPackager", "DistributionEngine", "InboundSyndicator", "LeadAggregator", "LeadMagnet", "SatelliteOrchestrator", "DossierEngine", "RetentionEngine", "OwnerReports", "Finance", "SupportDesk", "BundleEngine", "Refunds", "ShareKit", "BuyerFollowup", "Bookkeeping", "StorefrontHealth", "ReleaseAnnouncer", "GoalPacing", "FreshnessGuard", "LaunchPromos", "RefreshOffers", "Referrals", "WinBack", "BundleUpgrade", "SampleOffer", "SeasonalSale", "BounceGuard", "OfferTuner", "OutreachStager", "Strategy", "SubscriptionEngine", "TaskContext",
     "TaskResult", "TechStackIntel", "default_strategies",
 ]

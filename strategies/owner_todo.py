@@ -62,6 +62,14 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
     if quotes:
         add(6, f"Approve {quotes} customer quote(s)", "real quotes on the product page help visitors decide; none is shown without your OK",
             2, "control panel → Share → Customer quotes")
+    privacy = state.get("privacy_requests") or {}
+    if privacy:
+        first = sorted(privacy.items(), key=lambda kv: kv[1]["at"])[0]
+        add(2, f"Answer {len(privacy)} privacy request(s)", f"the law gives you 30 days (oldest: {first[1]['at'][:10]})", 5,
+            f"automonetize privacy export {first[0]}, then automonetize privacy forget {first[0]}")
+    for f in (state.get("security_audit") or {}).get("findings", []):
+        if f["status"] == "fail" or f["name"] == "Stripe key type":
+            add(2 if f["status"] == "fail" else 9, f"Security: {f['name']}", f["detail"], 10, f["fix"])
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

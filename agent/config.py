@@ -291,6 +291,11 @@ class Config:
     sale_every_days: int = 90
     sale_min_store_age_days: int = 30
 
+    # Contact policy, bounces, offer tuning, privacy (Phases 40-44)
+    promo_daily_cap: int = 150               # marketing emails per day in total (tools/contact_policy.py)
+    bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
+    offer_tuning: bool = True                # adjust offer discounts from their measured sales
+
     # Heartbeat, release gate, refresh offers, launch codes (Phases 28-31)
     heartbeat_url: str = ""                  # e.g. https://hc-ping.com/<uuid>: emails you if the agent goes quiet
     release_gate_max_drop: float = 0.5       # hold a new version that lost more than this share of rows

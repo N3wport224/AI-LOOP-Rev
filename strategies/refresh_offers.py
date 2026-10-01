@@ -23,6 +23,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from strategies.base import Strategy, TaskContext, TaskResult
+from strategies.offer_tuner import offer_pct
+from tools import contact_policy as contact
 from tools.dispatcher import Email
 
 DONE_KEY = "refresh_offered"
@@ -90,7 +92,6 @@ class RefreshOffers(Strategy):
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         from strategies.freshness_guard import niche_of
-        from strategies.release_announcer import LAST_SENT
         from tools.attribution import checkout_link
         from tools.promo import Promos, code_text, promo_link
 
@@ -104,8 +105,6 @@ class RefreshOffers(Strategy):
             return TaskResult(True, "refresh offers need the Stripe key", {"sent": 0})
         done = list(state.get(DONE_KEY) or [])
         seen = set(done)
-        last_sent: dict[str, str] = dict(state.get(LAST_SENT) or {})
-        gap = timedelta(days=float(cfg.announce_min_gap_days))
         now = state.clock()
         promos = Promos(tools.http, cfg.stripe_secret_key) if live else None
         sent = 0
@@ -119,16 +118,16 @@ class RefreshOffers(Strategy):
                 done.append(order["id"])
                 seen.add(order["id"])
                 continue
-            if email in last_sent and now - datetime.fromisoformat(last_sent[email]) < gap:
+            if contact.blocked(state, cfg, email, "refresh"):
                 continue
             expires = int((now + timedelta(days=CODE_DAYS)).timestamp())
             code = code_text("UPDATE", niche_of(state, bought)[:4], random_suffix=True)
             try:
                 if promos:
-                    promo = promos.create(str(product["product_ref"]), code, int(cfg.refresh_discount_pct), expires,
+                    promo = promos.create(str(product["product_ref"]), code, offer_pct(state, cfg, "refresh"), expires,
                                           max_redemptions=1, name=f"Refresh order {order['id']}")
                 else:
-                    promo = {"code": "PREVIEW", "percent_off": int(cfg.refresh_discount_pct), "expires_at": expires}
+                    promo = {"code": "PREVIEW", "percent_off": offer_pct(state, cfg, "refresh"), "expires_at": expires}
                 link = promo_link(checkout_link(product["url"], "refresh", "refresh_offer"), promo["code"])
                 tools.dispatcher.send_transactional(offer_email(cfg, order, bought, product, promo, link),
                                                     audit_key=f"refresh:{order['id']}")
@@ -137,8 +136,7 @@ class RefreshOffers(Strategy):
                 continue
             done.append(order["id"])
             seen.add(order["id"])
-            last_sent[email] = state.now()
+            contact.record(state, email, "refresh", str(order["id"]))
             sent += 1
         state.set(DONE_KEY, done[-5000:])
-        state.set(LAST_SENT, last_sent)
         return TaskResult(True, f"refresh offers: {sent} sent", {"sent": sent})

@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 750 tests, ~40 s, no network
+pytest                     # 766 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 47 tasks now (Phases 20-39 added seventeen). An old `automonetize.toml` that pins
+The plan has 50 tasks now (Phases 20-44 added twenty). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -980,7 +980,9 @@ cut short.
 * On the 1st of each month (in `subscription_timezone`) the agent writes last month's verified
   revenue (sales, subscription payments, refunds, disputes and fees) to
   `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
-* `automonetize todo                                    # the few things only you can do, most valuable first
+* `automonetize offers                                  # each offer's discount, emails sent and sales
+automonetize privacy export|forget EMAIL             # a customer's data: copy it, or erase it
+automonetize todo                                    # the few things only you can do, most valuable first
 automonetize heartbeat [URL]                         # get an email if the agent stops (healthchecks.io)
 automonetize pace                                    # 7-day pace vs the daily goal, and the next step
 automonetize books [YYYY-MM]` builds any month by hand.
@@ -1151,6 +1153,55 @@ They never go to suppressed addresses. In dry run nothing is created in Stripe.
 * Past buyers get one email listing only what they don't own, and the share kit shows the code on
   every product.
 * The daily report mentions the sale. Live mode only.
+
+## Trust: reputation, privacy and security (Phases 40-44)
+
+**Phase 40: contact policy** (`tools/contact_policy.py`). Every marketing email (follow-ups, new
+releases, refresh, win-back, bundle upgrade, free-sample offer, sale) goes through one gate and is
+logged in the table `contact_log`:
+* never to suppressed addresses;
+* nothing while the bounce guard has paused marketing email;
+* at most one *offer* per person per `announce_min_gap_days` (14), whatever the offer type (a
+  follow-up after a purchase doesn't count);
+* at most `promo_daily_cap` (150) marketing emails a day in total, well under Gmail's limit.
+
+Purchases, receipts, support replies and referral rewards are not marketing and are never held.
+
+**Phase 41: bounce guard** (`strategies/bounce_guard.py`, task `process_bounces`).
+* Reads bounce notices (only from `mailer-daemon@` / `postmaster@`, read-only) and suppresses
+  hard-bounced addresses for good. Temporary failures, such as a full mailbox, are ignored.
+* If more than `bounce_pause_rate` (5%) of the last 7 days' emails bounced (with at least 20
+  sent), all marketing email, including approved sales emails, pauses for 7 days and you get an
+  alert. Purchases and support replies still go out.
+
+**Phase 42: offer tuner** (`strategies/offer_tuner.py`, task `tune_offers`).
+* Weekly, per offer type (refresh, win-back, free-sample, sale), it compares emails sent with the
+  sales they brought, counting since the discount last changed:
+  * 30 or more emails and no sale → the discount goes up 10 points;
+  * 15% or more converting → it comes down 5 points.
+* Bounded per offer (e.g. refresh 20-60%). `automonetize offers` shows the table. Off with
+  `offer_tuning = false`.
+
+**Phase 43: privacy requests** (`tools/privacy.py`).
+* The support desk recognises "delete my data" / GDPR / CCPA emails and alerts you with the exact
+  commands. The request also stays on the to-do list (the law gives you 30 days).
+* `automonetize privacy export <email>` writes everything stored about the person to a JSON file.
+* `automonetize privacy forget <email>` (asks you to type FORGET):
+  * deletes their drafts, contact log, quotes, referral link, free signup and email-log lines;
+  * anonymises orders and subscriptions, keeping amounts for your books;
+  * redacts logs;
+  * keeps a suppression entry, so they're never emailed again.
+
+**Phase 44: security self-audit** (`agent/security_audit.py`, task `audit_security`, daily).
+* **Fixes by itself:** `.env` and data permissions, and `.env` missing from `.gitignore`.
+* **Reports** (alert, doctor and to-do):
+  * `.env` committed to git;
+  * secrets in `automonetize.toml`;
+  * the control panel reachable from other machines;
+  * live payments without a webhook secret;
+  * a full `sk_live_` key. The fix lists the exact permissions for a *restricted* key, which
+    limits the damage if a key ever leaks.
+* In sandboxes (tests, simulator, evolution checks) it only reports.
 
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
@@ -1451,6 +1502,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `bundle_upgrade` / `bundle_upgrade_after_days` | `true` / `10` | Bundle offer with what the buyer paid counted |
 | `sample_offer` / `sample_offer_after_days` / `sample_offer_pct` | `true` / `14` / `25` | One discount for free-sample signups |
 | `seasonal_sale` / `sale_pct` / `sale_days` / `sale_every_days` / `sale_min_store_age_days` | `true` / `25` / `3` / `90` / `30` | Quarterly store-wide sale |
+| `promo_daily_cap` | `150` | Marketing emails per day in total |
+| `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
+| `offer_tuning` | `true` | Adjust offer discounts from measured sales |
 | `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
 | `release_gate_max_drop` / `release_gate_hold_days` | `0.5` / `3` | Hold a new version that lost rows |
 | `refresh_offers` / `refresh_after_days` / `refresh_min_new_rows` / `refresh_discount_pct` | `true` / `30` / `25` / `50` | Discounted update offers to past buyers |
@@ -1522,7 +1576,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 750 tests, ~40 s, no network
+pytest     # 766 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
