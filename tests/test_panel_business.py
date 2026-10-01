@@ -4,7 +4,7 @@ from agent.owner_commands import execute
 from strategies import marketing_engine as me
 from strategies import revenue_models as rm
 from tests import test_business_ops, test_gui
-from tests.test_product_factory import postings, unique_links
+from tests.test_product_factory import postings
 
 gui = test_gui.gui  # the control-panel fixture
 kit = test_business_ops.kit  # the same live-mode toolkit fixture
