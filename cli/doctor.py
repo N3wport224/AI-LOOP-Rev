@@ -211,6 +211,10 @@ class Doctor:
         for name, secs in (scale.get("slow") or {}).items():
             out.append(Finding(f"Task {name}", "warn", f"slow: over {secs / 60:.0f} min on each of its last runs",
                                "it still runs; everything after it waits"))
+        from strategies.refund_guard import describe as describe_holds
+
+        for line in describe_holds(state):  # Phase 374
+            out.append(Finding("Not promoted (returns)", "warn", line, "automonetize product <slug> release|retire"))
         from tools.abuse_guard import today as abuse_today
 
         turned = abuse_today(state)  # Phase 349

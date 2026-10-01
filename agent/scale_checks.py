@@ -131,4 +131,9 @@ def check(state: Any, cfg: Any, daily: Any) -> tuple[dict[str, Any], list[str]]:
             state.log_error("ops_checks", f"Task {name} took over {SLOW_SECONDS // 60} minutes on each of its last "
                                           f"{SLOW_RUNS} runs (up to {secs / 60:.0f} min), delaying everything after it.{hint}",
                             kind="alert")
+    from strategies.refund_guard import evaluate as refund_check
+
+    returns = refund_check(state)  # Phases 371, 373
+    if returns["held"]:
+        notes.append(f"{len(returns['held'])} product(s) held back: buyers returned them")
     return {"factory": factory, "db": db, "slow": slow}, notes

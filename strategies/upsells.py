@@ -173,8 +173,11 @@ def best_sellers(state: Any, days: int = 30, limit: int = 5) -> list[dict[str, A
 def best_sellers_html(state: Any, pages: list[Any]) -> str:
     import html
 
+    from strategies.refund_guard import held
+
     by = {p.niche: p for p in pages}
-    picks = [(by[b["niche"]], b["orders"]) for b in best_sellers(state) if b["niche"] in by]
+    returned = held(state)  # Phase 372
+    picks = [(by[b["niche"]], b["orders"]) for b in best_sellers(state) if b["niche"] in by and b["niche"] not in returned]
     if not picks:
         return ""
     items = "".join(f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a> (${p.price_cents / 100:.2f})</li>'

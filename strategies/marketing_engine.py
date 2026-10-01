@@ -61,7 +61,10 @@ def featured(state: Any, cfg: Any, n: int = 3) -> list[dict[str, Any]]:
     from strategies.revenue_models import live_products
     from strategies.upsells import best_sellers
 
-    live = [a for a in live_products(state) if a.get("checkout_url")]
+    from strategies.refund_guard import held
+
+    returned = held(state)  # Phase 372
+    live = [a for a in live_products(state) if a.get("checkout_url") and a.get("niche") not in returned]
     best = [b["niche"] for b in best_sellers(state, limit=n)]
     ranked = [a for niche in best for a in live if a.get("niche") == niche]
     ranked += sorted((a for a in live if a not in ranked), key=lambda a: a["created_at"], reverse=True)

@@ -1566,7 +1566,7 @@ Two changes elsewhere:
 * **Phase 113, task timings:** `automonetize marketplace-export          # listing kits to upload to Gumroad / Lemon Squeezy / data marketplaces
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
-automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one product, by hand
+automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild|release  # one product, by hand
 automonetize optout [approve ID|reject ID]  # companies asking to be left out of the datasets
 automonetize sources                      # what each job board brought, its speed, any back-off
 automonetize chat WEBHOOK-URL|test         # sales and alerts in Slack or Discord
@@ -2599,6 +2599,22 @@ Fixed:
 * **Factory speed:** technology slices now only scan their own technology's postings, and
   company-name matching is cached. A product now takes 0.83 seconds on average at 5,000 postings
   (1.14 seconds before; slowest 1.12 seconds, down from 1.54).
+
+## Products people return (Phases 370-374)
+
+From `strategies/refund_guard.py`, run inside `ops_checks`:
+
+* **Phase 370, per product:** orders, refunds and disputes in the last 90 days, all versions of a
+  product counted together.
+* **Phase 371, the hold:** a product with at least 3 refunds or disputes, making up 20% or more of
+  its orders, is held: the agent stops promoting it and you get one alert.
+  * It stays on sale.
+  * Nothing is refunded, contested or taken down automatically; those stay your decisions.
+* **Phase 372, everywhere it's promoted:** held products are left out of the share kit, release and
+  offer emails, marketing plays and the best-seller list.
+* **Phase 373, released again:** the hold lifts by itself when returns fall below 10%.
+  `automonetize product SLUG release` lifts it at once.
+* **Phase 374, visible:** doctor lists held products, and Monday's report has one line about them.
 
 ## Safety and consistency (Phases 140-144)
 

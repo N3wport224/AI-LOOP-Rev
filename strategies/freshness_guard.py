@@ -36,11 +36,21 @@ def is_stale(state: Any, asset_id: int) -> bool:
 
 
 def promotable(state: Any) -> list[dict[str, Any]]:
-    """Products on sale that the agent may advertise: everything except stale datasets."""
+    """Products on sale that the agent may advertise: everything except stale datasets and products
+    buyers keep returning (Phase 372)."""
+    from strategies.refund_guard import held
     from tools.catalog import live_products
 
     marks = state.get(KEY) or {}
-    return [p for p in live_products(state) if str(p["id"]) not in marks]
+    returned = held(state)
+    out = []
+    for p in live_products(state):
+        if str(p["id"]) in marks:
+            continue
+        if returned and (state.get_asset(int(p["id"])) or {}).get("niche") in returned:
+            continue
+        out.append(p)
+    return out
 
 
 def _age_days(state: Any, when: str | None) -> float | None:

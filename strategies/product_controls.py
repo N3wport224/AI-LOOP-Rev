@@ -9,6 +9,7 @@
   shows in the price history. Between $1 and $500.
 * **Phase 283, hide / show:** hide takes the product off the site (pages, catalog, search) but keeps
   its checkout working, for links you've already shared. Show brings it back.
+* **Phase 373, release:** promote a product the refund guard held back (``strategies/refund_guard.py``).
 * **Phase 284, rebuild:** rebuild the download from the latest postings now instead of waiting for
   the weekly refresh.
 """
@@ -19,7 +20,7 @@ from typing import Any
 
 PINS = "product_pins"
 HIDDEN = "product_hidden"
-ACTIONS = ("pin", "unpin", "retire", "price", "hide", "show", "rebuild")
+ACTIONS = ("pin", "unpin", "retire", "price", "hide", "show", "rebuild", "release")
 MIN_PRICE, MAX_PRICE = 100, 50000
 
 
@@ -60,6 +61,11 @@ def apply(tools: Any, slug: str, action: str, value: str = "") -> str:
                 "unpin": f"Unpinned {row['title']}.",
                 "hide": f"Hidden {row['title']} from the site (after the next build); its checkout still works.",
                 "show": f"{row['title']} is back on the site (after the next build)."}[action]
+    if action == "release":  # Phase 373
+        from strategies.refund_guard import release
+
+        return (f"{row['title']} is promoted again." if release(state, slug)
+                else f"{row['title']} wasn't held back.")
     if row["status"] != "live":
         raise ValueError(f"{row['title']} isn't on sale ({row['status']})")
     if action == "retire":
