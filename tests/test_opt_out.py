@@ -28,7 +28,8 @@ def serve(kit, scenario):
     asyncio.run(go())
 
 
-def test_the_form_and_the_endpoint(kit, state, config):
+def test_the_form_and_the_endpoint(kit, state, config, monkeypatch):
+    monkeypatch.setattr(oo, "REQUESTS_PER_IP_HOUR", 5)
     config.public_webhook_url = "https://hooks.example.com/webhook"
     assert 'action="https://hooks.example.com/v1/optout"' in oo.remove_page(config, lambda t, b, d: b)
 
@@ -38,7 +39,8 @@ def test_the_form_and_the_endpoint(kit, state, config):
         assert (await client.post("/v1/optout", data={"company": "x", "email": "a@b.example"})).status == 400
         assert (await client.post("/v1/optout", data={"company": "Acme", "email": "nope"})).status == 400
         assert (await client.post("/v1/optout", data=b"[1]", headers={"Content-Type": "application/json"})).status == 400
-        assert (await client.post("/v1/optout", data={"company": "Acme", "email": "a@acme.example"})).status == 429
+        assert (await client.post("/v1/optout", data={"company": "Acme", "email": "a@acme.example"})).status == 202
+        assert (await client.post("/v1/optout", data={"company": "Beta", "email": "a@beta.example"})).status == 429
 
     serve(kit, scenario)
     req = oo.pending(state)[0]
