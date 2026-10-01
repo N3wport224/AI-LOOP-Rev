@@ -355,6 +355,9 @@ class InboundSyndicator(Strategy):
         shell = lambda title, body, desc: _shell(title, body, tools.config.site_title, description=desc)  # noqa: E731
         extra = {"more/index.html": more_page(tools.state, shell), "affiliates/index.html": affiliates_page(tools.config, shell)}
         extra.update(seo_extra(tools, pages, matrix))
+        from strategies.job_sources import sources_page
+
+        extra["sources/index.html"] = sources_page(cfg, shell)
         from strategies.content_engine import PRODUCTS_FEED, blog_pages, products_feed
 
         extra.update(blog_pages(tools.state, lambda title, body, desc, depth=1: _shell(

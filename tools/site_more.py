@@ -67,7 +67,7 @@ def sitemap_extra(out: dict[str, Any]) -> list[str]:
     for rel in sorted(out):
         if not rel.endswith("index.html") or rel == "index.html" or rel.startswith(("thanks/", "intel/")):
             continue
-        if rel.count("/") == 1 and not rel.startswith(("pricing/", "compare/", "contact/", "hiring/", "more/", "affiliates/", "blog/", "embed/")):
+        if rel.count("/") == 1 and not rel.startswith(("pricing/", "compare/", "contact/", "hiring/", "more/", "affiliates/", "blog/", "embed/", "sources/")):
             continue  # product pages are already listed
         keep.append(rel[: -len("index.html")])
     return keep

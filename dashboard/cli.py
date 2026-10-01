@@ -40,7 +40,7 @@ max_consecutive_errors = 5
 http_rate_per_minute = 20
 respect_robots_txt = true
 min_leads_for_asset = 10
-lead_sources = ["remoteok", "arbeitnow", "hn_hiring"]
+lead_sources = ["remoteok", "arbeitnow", "hn_hiring", "remotive", "jobicy", "himalayas", "weworkremotely"]
 
 # Storefront: "auto" = Stripe if configured, else Lemon Squeezy, else Gumroad staging.
 storefront_provider = "auto"

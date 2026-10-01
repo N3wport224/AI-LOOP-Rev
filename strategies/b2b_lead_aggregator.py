@@ -357,6 +357,9 @@ FETCHERS: dict[str, Callable[[Any], list[Lead]]] = {
     "arbeitnow": fetch_arbeitnow,
     "hn_hiring": fetch_hn_hiring,
 }
+from strategies.job_sources import EXTRA_FETCHERS  # noqa: E402 - needs Lead and the helpers above
+
+FETCHERS.update(EXTRA_FETCHERS)  # Phases 195-198
 
 
 class LeadAggregator(Strategy):
@@ -368,7 +371,10 @@ class LeadAggregator(Strategy):
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
         tools = ctx.tools
-        sources = [s for s in tools.config.lead_sources if s in self.fetchers]
+        from strategies.job_sources import due, fetched
+
+        # Phase 199: some boards ask for a few requests a day; those wait their turn (not a failure).
+        sources = [s for s in tools.config.lead_sources if s in self.fetchers and due(tools.state, s)]
         if ctx.degraded and len(sources) > 1:
             # On retry, drop sources that failed last attempt to reduce the blast radius.
             failed = set(ctx.payload.get("failed_sources", []))
@@ -383,6 +389,7 @@ class LeadAggregator(Strategy):
                 fetch = self.fetchers[source]
                 got = fetch(tools.http, depth=depth) if depth > 1 else fetch(tools.http)
                 raw.extend(got)
+                fetched(tools.state, source)
                 record_parse(tools.state, source, len(got), LAST_SHAPE.pop(source, None))
             except CircuitOpenError:
                 raise  # budget exhausted: stop the whole task, don't blame the source

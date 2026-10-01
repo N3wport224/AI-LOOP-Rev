@@ -1925,6 +1925,23 @@ Fixed:
 * The duplicate check re-read every existing product for each candidate, which would have slowed
   each tick to minutes at a few hundred products. It now reads each product once per tick.
 
+## More job sources (Phases 195-199)
+
+The factory can only make as many distinct products as the data allows, so the intake is wider now.
+Four more public job feeds are on by default:
+* **Phase 195:** Remotive (`remotive`), its public remote-jobs API.
+* **Phase 196:** Jobicy (`jobicy`), its public API, with yearly salaries.
+* **Phase 197:** Himalayas (`himalayas`), its public jobs API.
+* **Phase 198:** We Work Remotely (`weworkremotely`), its programming-jobs RSS feed.
+* **Phase 199, polite and credited:**
+  * Each of these boards is fetched at most every 6 hours (Remotive asks for about 4 requests a
+    day). A board waiting its turn isn't counted as a failure.
+  * `robots.txt` is respected, as for every source.
+  * The site's `sources/` page credits every board in use, with a link.
+
+Remove a board from `lead_sources` to stop using it. An existing `automonetize.toml` that lists
+`lead_sources` keeps its own list: add the new names there to use them.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

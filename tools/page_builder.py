@@ -637,7 +637,7 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 
 def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "", sponsor: str = "",
                  more: bool = False, best: str = "", hubs: bool = False, blog: bool = False, products_feed: bool = False,
-                 heatmap: bool = False, embed: bool = False) -> str:
+                 heatmap: bool = False, embed: bool = False, sources: bool = False) -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
         f'{html.escape(p.summary[:160])} '
@@ -657,7 +657,7 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="sources/">Data sources</a> ·' if sources else ""}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -771,7 +771,8 @@ class SiteBuilder:
                                          hubs="hiring/index.html" in (extra or {}), blog="blog/index.html" in (extra or {}),
                                          products_feed="feeds/products.xml" in (extra or {}),
                                          heatmap="tools/hiring-heatmap/index.html" in (extra or {}),
-                                         embed="embed/index.html" in (extra or {}))
+                                         embed="embed/index.html" in (extra or {}),
+                                         sources="sources/index.html" in (extra or {}))
         out.update(extra or {})  # e.g. more/ (strategies/revenue_models.py)
         out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
             title, body, cfg.site_title, description=desc))

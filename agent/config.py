@@ -57,7 +57,8 @@ class Config:
     platform_fee_fixed_cents: int = 50   # marketplace fixed fee per sale (cents)
 
     # Strategies
-    lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring"])
+    lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring", "remotive", "jobicy",
+                                                             "himalayas", "weworkremotely"])
     niches: list[dict[str, Any]] = field(default_factory=lambda: [dict(n) for n in DEFAULT_NICHES])
     min_leads_for_asset: int = 10
     asset_price_cents: int = 900  # legacy (Phase 1); starting prices now come from price_tiers. Kept so old configs still load.
