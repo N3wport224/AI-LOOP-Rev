@@ -409,8 +409,10 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     published = [r["slug"] for r in state._all("SELECT slug FROM factory_products WHERE status = 'staged'")
                  if publish(tools, r["slug"]) == "live"]
     retired = retire_unsold(tools)
+    from strategies.catalog_reliability import check_integrity, too_many_waiting
     from strategies.product_types import refresh_due
 
+    check_integrity(tools)  # Phase 243: a missing download is rebuilt by the refresh just below
     refreshed = refresh_due(tools)
     last = state.get(LAST)
     if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
@@ -419,6 +421,10 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
 
     if builds_paused(state):
         return {"made": None, "why": "disk almost full", "published": published, "retired": retired, "refreshed": refreshed}
+    waiting = too_many_waiting(state)
+    if waiting:  # Phase 242
+        return {"made": None, "why": f"{waiting} products are waiting for a checkout (payments not set up, or Stripe refusing)",
+                "published": published, "retired": retired, "refreshed": refreshed}
     cand = next_candidate(state, cfg)
     if cand is None:
         state.set(LAST, state.now())

@@ -359,6 +359,35 @@ def site(loop: Loop) -> str:
     return f"{res.metrics['pages']} lander + {len(intel_pages)} matrix pages, JSON-LD valid, sitemap lists {len(locs)} URLs"
 
 
+def factory(loop: Loop) -> str:
+    """Phase 244: the product factory makes a product from the pooled postings and it goes on sale."""
+    from datetime import timedelta
+
+    from strategies import product_factory as pf
+    from strategies.b2b_lead_aggregator import POOL_NICHE
+    from strategies.base import TaskContext
+    from strategies.inbound_syndicator import InboundSyndicator
+
+    tools = loop.tools
+    state = tools.state
+    when = (state.clock() - timedelta(days=2)).isoformat(timespec="seconds")
+    for i in range(24):
+        state.upsert_lead(f"factory-loop-{i}", POOL_NICHE, {
+            "company": f"Rustacean Co {i % 9}", "title": "Senior Rust Engineer", "location": "Berlin, Germany", "remote": False,
+            "stack": ["rust", "aws"], "seniority": "senior", "url": f"https://jobs.example/rust/{i}", "posted_at": when,
+            "source": "remoteok"})
+    tools.config.product_factory = True
+    out = pf.tick(tools, force=True)
+    made = out.get("made")
+    assert made and out.get("status") == "live", out.get("why") or out.get("status")
+    InboundSyndicator().run("build_site", TaskContext(tools, loop.niche_hyp, {}))
+    page = tools.files.read_text(f"site/{made['slug']}/index.html")
+    asset = state.get_asset(made["asset_id"])
+    assert asset["checkout_url"] and asset["checkout_url"] in page, "the product page has no checkout"
+    assert tools.files.exists("site/catalog/index.html") and made["slug"] in tools.files.read_text("site/search.json")
+    return f"{made['title']}: {made['rows']} rows, ${made['price_cents'] / 100:.2f}, on the site with a checkout"
+
+
 def buy_dataset(loop: Loop) -> str:
     ds = loop.facts["dataset"]
     loop.webhook("checkout.session.completed", loop.session(payment_link=ds["product_ref"], amount_total=1400,
@@ -480,6 +509,7 @@ STEPS: list[tuple[str, Callable[[Loop], str]]] = [
     ("Package the Executive Tech Radar", package),
     ("Publish checkouts (dataset, subscription, API, dossier)", publish),
     ("Build landers and matrix pages, validate schema", site),
+    ("Product factory makes a product and lists it", factory),
     ("$14 dataset purchase → zip delivered", buy_dataset),
     ("$10/month subscription → Monday digest staged", subscribe),
     ("$29/month API → key issued, live curl query", api_tier),

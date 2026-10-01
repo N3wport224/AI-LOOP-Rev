@@ -787,7 +787,14 @@ class StateStore:
             return self.get_asset(exp["asset_id"]) if exp else None
         if len({r["hypothesis_id"] for r in rows}) > 1:
             return None
-        return rows[0]
+        row = rows[0]
+        if row["kind"] == "micro" and row["status"] == "superseded" and row.get("niche"):
+            # Phase 240: an order on a factory product's previous checkout (a price rise closed it
+            # mid-purchase) gets the current version, not the one that was replaced.
+            current = self._one("SELECT * FROM assets WHERE niche = ? AND kind = 'micro' AND status = 'published' "
+                                "ORDER BY id DESC LIMIT 1", (row["niche"],))
+            return current or row
+        return row
 
     def all_product_refs(self) -> list[str]:
         refs = {r["product_ref"] for r in self._all("SELECT product_ref FROM assets WHERE product_ref IS NOT NULL")}

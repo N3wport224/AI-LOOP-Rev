@@ -2111,6 +2111,27 @@ What the factory is making, and what of it sells (`strategies/catalog_insight.py
   * Leave one out to stop making it.
   * What's already on sale stays on sale and keeps refreshing.
 
+## Catalog reliability (Phases 240-244)
+
+A catalog that runs for months without surprises (`strategies/catalog_reliability.py`).
+
+* **Phase 240, current version after a price change:** if a price rise closes a checkout while
+  someone is paying, their order still gets the current version of the dataset.
+* **Phase 241, no dead ends for old links:** for 90 days after a product is retired, its address
+  shows a short "no longer on sale" page.
+  * Search engines are asked not to index it.
+  * It links the same technology's current products and the catalog.
+* **Phase 242, no pile-up without a checkout:** when 25 products are already waiting for a
+  checkout, the factory stops making more until they go on sale. This happens when payments aren't
+  set up yet or Stripe refuses. Doctor shows why.
+* **Phase 243, catalog integrity:** once an hour the factory checks that every product on sale
+  still has its download file.
+  * A missing file (after a disk restore or a deleted folder) is rebuilt at once, behind the same
+    checkout.
+  * You get one alert a day while it happens.
+* **Phase 244, rehearsed end to end:** `automonetize test-full-loop` now also has the factory make a
+  product and checks it reaches the site, the catalog and search with a checkout.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

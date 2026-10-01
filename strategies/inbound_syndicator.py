@@ -398,6 +398,11 @@ class InboundSyndicator(Strategy):
         out = builder.build(pages, items, tools.state.clock(), matrix=matrix, indexnow_key=key, extra=extra,
                             sponsor=sponsor_html(tools.state), thanks_extra=thanks_offers_html(tools.state),
                             best_sellers=best_sellers_html(tools.state, pages))
+        from strategies.catalog_reliability import retired_stubs
+
+        for rel, stub in retired_stubs(tools.state, set(out), shell).items():  # Phase 241: old links still land somewhere
+            out[rel] = stub
+            tools.files.write_text(f"site/{rel}", stub)
         from tools.site_audit import audit_site, record
 
         audit = audit_site(out, cfg.pages_base_url)
