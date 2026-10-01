@@ -8,7 +8,8 @@ Every cycle (the ``report_owner`` task), to ``owner_email`` (default: the sender
   delivery it couldn't make), at most one email per cycle.
 * **Daily digest**, once a day after ``owner_digest_hour`` (in ``subscription_timezone``):
   yesterday's and the week's revenue against the $10/day goal, MRR, what's on sale (with links),
-  free leads, outreach drafts waiting for you, and problems in the last 24 hours.
+  free leads, outreach drafts waiting for you, and problems in the last 24 hours. On Mondays it
+  also carries the week's share kit (ready-to-paste posts, ``strategies/share_kit.py``).
 
 Pointers only advance after a send succeeds, so a failed email is retried next cycle. In dry run
 the emails are only written to the audit log.
@@ -160,5 +161,12 @@ class OwnerReports(Strategy):
             lines += ["", "Problems in the last 24 hours:", *[f"- {p['source']}: {p['message'][:200]}" for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):
             lines += ["", "Tip: `automonetize connect-marketing` puts your products on a public website and turns on articles."]
-        lines += ["", "Share your links: every visitor is a chance at a sale.", "", "AutoMonetize"]
+        kit = state.get("share_kit")
+        if local.weekday() == 0 and kit and kit.get("posts"):
+            from strategies.share_kit import as_text
+
+            lines += ["", "This week's share kit: copy, paste, post (each link tracks which channel sold):", "", as_text(kit)]
+        else:
+            lines += ["", "Share your links: every visitor is a chance at a sale (ready-made posts: control panel → Share)."]
+        lines += ["", "AutoMonetize"]
         return "\n".join(lines)

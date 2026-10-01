@@ -151,7 +151,7 @@ def test_support_resends_and_escalates(kit, state):
 
     res = SupportDesk(scan=scan).run("answer_support", ctx(kit))
     assert seen_filter == [("imap.gmail.com", True, False)]  # only customers' mail is ever opened
-    assert res.metrics == {"handled": 2, "resent": 1, "alerted": 1}
+    assert res.metrics == {"handled": 2, "resent": 1, "alerted": 1, "unsubscribed": 0}
     assert FakeSMTP.sent[-1]["To"] == "buyer@co.example" and FakeSMTP.sent[-1]["Subject"].startswith("Your purchases")
     alert = state.recent_errors(1, kind="alert")[0]
     assert "refund" in alert["message"] and "buyer@co.example" in alert["message"]

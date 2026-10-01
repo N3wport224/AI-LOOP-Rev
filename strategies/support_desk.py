@@ -11,6 +11,7 @@ SMTP works; ``tools.inbox.imap_settings``). It's deliberately narrow:
 * **Refunds, cancellations, disputes, complaints** → never answered automatically: you get an
   alert email (through the owner reports) with the customer, subject and first lines. Money
   decisions stay yours.
+* **"Unsubscribe"** → the address goes on the suppression list (no more follow-ups or updates).
 * **Anything else from a customer** → the same alert, once, so a real question is never missed.
 """
 
@@ -59,7 +60,7 @@ class SupportDesk(Strategy):
         self._scan = scan  # injectable for tests
 
     def run(self, task: str, ctx: TaskContext) -> TaskResult:
-        from tools.inbox import imap_settings, scan_mail
+        from tools.inbox import imap_settings, is_unsubscribe, scan_mail
         from tools.storefront.recovery_endpoint import RecoveryService
 
         tools, cfg, state = ctx.tools, ctx.tools.config, ctx.tools.state
@@ -77,13 +78,20 @@ class SupportDesk(Strategy):
             return TaskResult(True, f"inbox unreadable: {exc!r}"[:200], {"handled": 0})
         handled = list(state.get(SEEN_KEY) or [])
         seen = set(handled)
-        resent = alerted = processed = 0
+        resent = alerted = processed = unsubscribed = 0
         recovery = RecoveryService(tools)
         for m in messages:
             if m["message_id"] in seen:
                 continue
             processed += 1
             wants_resend, money = classify(m["subject"], m["body"])
+            if is_unsubscribe(m["subject"], m["body"]):
+                state.suppress(m["sender"], "replied unsubscribe")
+                unsubscribed += 1
+                if not (money or wants_resend):  # a plain opt-out needs nothing from you
+                    handled.append(m["message_id"])
+                    seen.add(m["message_id"])
+                    continue
             if wants_resend:
                 result = recovery.dispatch(m["sender"])
                 resent += int(bool(result.get("sent")))
@@ -98,5 +106,6 @@ class SupportDesk(Strategy):
             handled.append(m["message_id"])
             seen.add(m["message_id"])
         state.set(SEEN_KEY, handled[-3000:])
-        return TaskResult(True, f"support: {processed} new customer email(s), {resent} resent, {alerted} passed to you",
-                          {"handled": processed, "resent": resent, "alerted": alerted})
+        return TaskResult(True, f"support: {processed} new customer email(s), {resent} resent, {alerted} passed to you"
+                          + (f", {unsubscribed} unsubscribed" if unsubscribed else ""),
+                          {"handled": processed, "resent": resent, "alerted": alerted, "unsubscribed": unsubscribed})

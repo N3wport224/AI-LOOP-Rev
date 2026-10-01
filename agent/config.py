@@ -258,6 +258,11 @@ class Config:
     bundle_min_niches: int = 2
     bundle_discount: float = 0.4             # 40% off the sum of the parts
 
+    # Growth & bookkeeping (strategies/buyer_followup.py, strategies/bookkeeping.py)
+    buyer_followup: bool = True              # one "did it arrive?" email per order
+    buyer_followup_days: int = 3             # days after delivery
+    bookkeeping: bool = True                 # monthly revenue CSV emailed to owner_email
+
     # Backups (agent/backup.py)
     backups_enabled: bool = True
     backup_dir: str = ""                     # "" = ~/Library/Application Support/AutoMonetize/backups (macOS)

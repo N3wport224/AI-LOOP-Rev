@@ -783,6 +783,18 @@ def cmd_restore(args: argparse.Namespace, console: Console) -> int:
     return backups(["restore", args.name] + (["--yes"] if args.yes else []))
 
 
+def cmd_share(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import share_main
+
+    return share_main([])
+
+
+def cmd_books(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import books_main
+
+    return books_main([args.month] if args.month else [])
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -956,6 +968,12 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("name")
     rs.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     rs.set_defaults(func=cmd_restore)
+
+    sh = sub.add_parser("share", help="this week's ready-to-paste posts (LinkedIn, X, Reddit, DM) with tracked links")
+    sh.set_defaults(func=cmd_share)
+    bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
+    bo.add_argument("month", nargs="?", help="YYYY-MM")
+    bo.set_defaults(func=cmd_books)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")

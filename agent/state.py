@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS orders (
     product_ref TEXT,
     asset_id INTEGER,
     hypothesis_id INTEGER,
-    status TEXT NOT NULL DEFAULT 'paid',       -- paid | delivered | needs_manual_delivery | refunded
+    status TEXT NOT NULL DEFAULT 'paid',       -- paid | delivered | needs_manual_delivery | refunded | disputed
     delivery_attempts INTEGER NOT NULL DEFAULT 0,
     delivered_at TEXT,
     occurred_at TEXT NOT NULL,
@@ -942,7 +942,7 @@ class StateStore:
     def orders_since(self, hypothesis_id: int, since: datetime) -> int:
         return int(
             self._one(
-                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND occurred_at >= ? AND status != 'refunded'",
+                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND occurred_at >= ? AND status NOT IN ('refunded', 'disputed')",
                 (hypothesis_id, iso(since)),
             )["n"]  # type: ignore[index]
         )
@@ -951,7 +951,7 @@ class StateStore:
         if not refs:
             return 0
         marks = ",".join("?" * len(refs))
-        sql = f"SELECT COUNT(*) AS n FROM orders WHERE product_ref IN ({marks}) AND status != 'refunded'"
+        sql = f"SELECT COUNT(*) AS n FROM orders WHERE product_ref IN ({marks}) AND status NOT IN ('refunded', 'disputed')"
         args: tuple = tuple(refs)
         if since:
             sql += " AND occurred_at >= ?"
@@ -1176,7 +1176,7 @@ class StateStore:
     def purchases_for_hypothesis(self, hypothesis_id: int) -> int:
         return int(
             self._one(
-                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND status != 'refunded'", (hypothesis_id,)
+                "SELECT COUNT(*) AS n FROM orders WHERE hypothesis_id = ? AND status NOT IN ('refunded', 'disputed')", (hypothesis_id,)
             )["n"]  # type: ignore[index]
         )
 

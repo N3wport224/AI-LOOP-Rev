@@ -67,9 +67,13 @@ PLAN: list[tuple[str, int]] = [
     ("collect_metrics", 55),
     ("run_satellites", 58),
     ("optimize_pricing", 60),
+    ("sync_refunds", 46),
     ("sync_finance", 48),
     ("answer_support", 49),
     ("publish_bundle", 59),
+    ("follow_up_buyers", 53),
+    ("refresh_share_kit", 57),
+    ("monthly_books", 96),
     ("backup_data", 97),
     ("report_owner", 98),
     ("evolve_code", 99),  # last: a merge reloads the process once the cycle is over

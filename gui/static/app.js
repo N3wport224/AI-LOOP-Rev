@@ -59,6 +59,7 @@
     if (name === "settings" && !settingsLoaded) loadSettings();
     if (name === "logs") refreshLogs();
     if (name === "outreach") loadOutreach();
+    if (name === "share") loadShare();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -171,6 +172,33 @@
       el("div", { class: "actions" },
         el("button", { class: "primary", "data-outreach": "approve", "data-id": String(r.id), text: "Approve" }),
         el("button", { "data-outreach": "reject", "data-id": String(r.id), text: "Reject" })))));
+  }
+
+  // ------------------------------------------------------------------ share kit
+  let sharePosts = [];
+  async function loadShare() {
+    let d;
+    try { d = await api("/api/share"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    sharePosts = d.posts || [];
+    const list = $("#share-list");
+    if (!sharePosts.length) { list.replaceChildren(el("p", { class: "muted", text: "Nothing to share yet: posts appear once a product is on sale." })); return; }
+    list.replaceChildren(...sharePosts.map((p, i) => el("div", { class: "card draft" },
+      el("b", { text: `${p.label}` }), el("span", { class: "muted", text: `  ·  ${p.product} (${p.price})` }),
+      el("pre", { class: "log", text: p.text }),
+      el("div", { class: "actions" }, el("button", { class: "primary", "data-share": String(i), text: "Copy" })))));
+  }
+
+  async function copyShare(i) {
+    const msg = $("#share-message");
+    try {
+      await navigator.clipboard.writeText(sharePosts[i].text);
+      msg.textContent = `Copied the ${sharePosts[i].label} post. Paste it where you post.`;
+      msg.className = "message ok";
+    } catch (e) {
+      msg.textContent = "Couldn't copy automatically: select the text and copy it by hand.";
+      msg.className = "message bad";
+    }
   }
 
   async function outreachAction(action, ids) {
@@ -372,6 +400,10 @@
     $("#outreach-list").addEventListener("click", (e) => {  // delegated: the list is re-rendered
       const b = e.target.closest("[data-outreach]");
       if (b) outreachAction(b.dataset.outreach, [Number(b.dataset.id)]);
+    });
+    $("#share-list").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-share]");
+      if (b) copyShare(Number(b.dataset.share));
     });
     const picked = () => $$(".outreach-pick").filter((c) => c.checked).map((c) => Number(c.value));
     $("#outreach-approve-selected").addEventListener("click", () => outreachAction("approve", picked()));

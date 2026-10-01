@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 658 tests, ~40 s, no network
+pytest                     # 678 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,8 +942,45 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 30 tasks now. An old `automonetize.toml` that pins `max_actions_per_cycle` lower is
-raised to the plan size + 10 automatically, so no cycle is ever cut short.
+The plan has 34 tasks now (Phases 20-23 added four). An old `automonetize.toml` that pins
+`max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
+cut short.
+
+## Growth & bookkeeping (Phases 20-23)
+
+**Phase 20: weekly share kit** (`strategies/share_kit.py`, task `refresh_share_kit`).
+* The agent never posts as you (that needs your accounts). Instead it writes ready-to-paste posts
+  for each product on sale: LinkedIn, X (under 280 characters), Reddit and a direct message.
+* Posts use only real numbers from the current dataset (companies hiring, open roles, urgent
+  hirers, top signal). A number it doesn't have is left out, never guessed.
+* Every link is tracked (`utm_source` on your product page, or `client_reference_id` on the
+  checkout link), so the analytics show which channel sold.
+* Rebuilt when products or prices change, and weekly. Find it in the Monday daily report, the
+  control panel's **Share** tab (one-click **Copy**) and `automonetize share`.
+
+**Phase 21: refunds and disputes** (`strategies/refunds.py`, task `sync_refunds`).
+* Reads refunds and disputes from Stripe (read-only) every cycle.
+* A refund becomes a negative revenue line, so today's total, the $10/day goal and the reports
+  are net of it. The order is marked `refunded` and no longer counts as a sale for pricing.
+* A dispute (chargeback) records the amount plus Stripe's $15 dispute fee, marks the order
+  `disputed`, and sends you an alert with the reason and the evidence deadline. You answer it in
+  the Stripe dashboard. If you win, the amount comes back as a positive line.
+* Each refund or dispute is counted exactly once. Nothing is refunded or contested automatically.
+
+**Phase 22: buyer follow-up** (`strategies/buyer_followup.py`, task `follow_up_buyers`).
+* Three days after delivery (`buyer_followup_days`), each buyer gets one short email: did it
+  arrive, and what would they want in the next version? Replies come to your inbox, where the
+  support desk re-sends files and passes everything else to you.
+* One email per order, one-off purchases only (never subscriptions, refunds or disputes), never
+  to a suppressed address. It carries your postal address and a reply-"unsubscribe" opt-out, and
+  live sending waits until `CAN_SPAM_POSTAL_ADDRESS` is set.
+* The support desk now honours "unsubscribe" replies by adding the sender to the suppression list.
+
+**Phase 23: monthly bookkeeping** (`strategies/bookkeeping.py`, task `monthly_books`).
+* On the 1st of each month (in `subscription_timezone`) the agent writes last month's verified
+  revenue (sales, subscription payments, refunds, disputes and fees) to
+  `data/exports/books/YYYY-MM.csv` with a totals line, and emails it to you as an attachment.
+* `automonetize books [YYYY-MM]` builds any month by hand.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
@@ -1230,6 +1267,8 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `owner_reports` / `owner_email` (`OWNER_EMAIL`) / `owner_digest_hour` | `true` / sender email / `8` | Sale emails, alerts, daily report |
 | `bundle_min_niches` / `bundle_discount` | `2` / `0.4` | All-datasets bundle |
 | `backups_enabled` / `backup_dir` / `backup_keep_days` | `true` / Application Support / `14` | Daily backups |
+| `buyer_followup` / `buyer_followup_days` | `true` / `3` | One check-in email per order after delivery |
+| `bookkeeping` | `true` | Monthly revenue CSV emailed to `owner_email` |
 | `imap_host` / `imap_username` / `IMAP_PASSWORD` | from the SMTP login for Gmail, Fastmail, Outlook, iCloud | Support inbox (read-only) |
 | `dry_run` | `true` | Master switch for all email |
 | `warmup_start_per_day` / `warmup_step_per_week` / `dispatch_max_per_day` | `5` / `5` / `30` | Cold email warm-up |
@@ -1245,6 +1284,8 @@ automonetize connect-marketing                      # public GitHub Pages site +
 automonetize doctor [--fix]                         # plain-words health check; safe fixes
 automonetize autostart                              # macOS: start at login, restart if stopped
 automonetize backup [list] | restore NAME [--yes]   # daily backups happen by themselves
+automonetize share                                   # this week's ready-to-paste posts with tracked links
+automonetize books [YYYY-MM]                         # revenue spreadsheet for a month (default: last month)
 automonetize test-full-loop [--keep] [--no-curl] [--json] [--no-color]   # sandboxed end-to-end rehearsal
 automonetize evolution [status|log|show ID [--output]|diagnose [--diff]|resume]   # self-evolution audit
 automonetize gui [--port P] [--no-browser]          # local control panel on 127.0.0.1
@@ -1295,7 +1336,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 658 tests, ~40 s, no network
+pytest     # 678 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.
