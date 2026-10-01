@@ -81,6 +81,7 @@ class ProductPage:
     copy_version: int = 0
     copy_targets: dict[str, str] = field(default_factory=dict)   # cta variant -> href
     telemetry_url: str = ""
+    testimonials: list[str] = field(default_factory=list)  # approved customer quotes (strategies/testimonials.py)
 
     @property
     def slug(self) -> str:
@@ -153,7 +154,7 @@ h1{font-size:1.9rem;margin-bottom:.3rem}.lede{color:#444;font-size:1.1rem}
 .kpi b{display:block;font-size:1.4rem}.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}
 td,th{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-align:top}th{text-transform:capitalize}
 .cta{display:inline-block;background:#111;color:#fff;padding:.8rem 1.2rem;border-radius:8px;text-decoration:none;font-weight:600;margin:1rem 0}
-.muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.cta.alt{background:#2e7d32}
+.muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.quote{border-left:3px solid #2e7d32;margin:.6rem 0;padding:.2rem .8rem}.cta.alt{background:#2e7d32}
 .lead{border:1px solid #e3e3e3;border-radius:8px;padding:1rem;margin:1.2rem 0;max-width:34rem}.lead label{font-weight:600;display:block;margin-bottom:.4rem}
 .lead input[type=email]{padding:.6rem;border:1px solid #bbb;border-radius:6px;width:100%;max-width:20rem;font-size:1rem}.lead button{padding:.62rem 1rem;border:0;border-radius:6px;background:#2e7d32;color:#fff;font-weight:600;cursor:pointer}
 .hero{font-size:1.25rem;font-weight:600;margin:.2rem 0 .6rem}.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.tag{display:inline-block;background:#fff3e0;color:#8a4b00;border-radius:4px;padding:0 .35rem;font-size:.85rem}
@@ -274,6 +275,9 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
     if page.purchases_7d:
         proof.append(f"{page.purchases_7d} purchase{'s' if page.purchases_7d != 1 else ''} in the last 7 days")
     proof_html = f'<p class="proof">{" · ".join(proof)}</p>' if proof else ""
+    if page.testimonials:
+        proof_html += "".join(f'<blockquote class="quote">“{html.escape(q)}”<br><span class="muted">— Verified buyer</span></blockquote>'
+                              for q in page.testimonials)
     og_image = f"{url}og.png" if url.startswith("http") else "og.png"
     canonical = f'<link rel="canonical" href="{html.escape(url)}">' if url.startswith("http") else ""
     feed_href = f"{base_url.rstrip('/')}/{FEED_PATH}" if base_url else f"../{FEED_PATH}"

@@ -36,6 +36,9 @@ def followup_email(cfg: Any, order: dict[str, Any], title: str, ref_link: str = 
         "",
         "If anything is missing, just reply \"resend\" and it goes out again right away.",
         "And if there's a company, field or niche you'd like in the next version, reply and tell me: I read every answer.",
+        "",
+        "If it's been useful, a one-line reply about how you use it would help others decide. Add \"OK to quote\" and I may "
+        "show it on the product page as \"Verified buyer\" (never your name or email).",
     ]
     if ref_link:
         lines += ["", "Know someone who'd use it? Here's your personal link. When they buy through it, you get the next "

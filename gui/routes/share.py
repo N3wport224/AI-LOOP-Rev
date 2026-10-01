@@ -28,5 +28,32 @@ async def get_share(request: web.Request) -> web.Response:
     return web.json_response(data, headers={"Cache-Control": "no-store"})
 
 
+async def get_testimonials(request: web.Request) -> web.Response:
+    from strategies.testimonials import listing
+
+    gctx = ctx(request)
+    rows = [{k: i[k] for k in ("id", "niche", "text", "status", "at")} for i in listing(gctx.state)]
+    return web.json_response({"testimonials": rows[::-1]}, headers={"Cache-Control": "no-store"})
+
+
+async def post_testimonials(request: web.Request) -> web.Response:
+    from strategies.testimonials import set_status
+
+    gctx = ctx(request)
+    try:
+        body = await request.json()
+    except ValueError:
+        return web.json_response({"ok": False, "message": "invalid JSON"}, status=400)
+    action, ids = str((body or {}).get("action", "")), (body or {}).get("ids")
+    status = {"approve": "approved", "reject": "rejected"}.get(action)
+    if not status or not isinstance(ids, list) or not ids or len(ids) > 200 \
+            or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+        return web.json_response({"ok": False, "message": "send {action: approve|reject, ids: [numbers]}"}, status=400)
+    changed = await asyncio.get_running_loop().run_in_executor(None, set_status, gctx.state, ids, status)
+    note = " They appear on the product page with the next site rebuild." if status == "approved" and changed else ""
+    return web.json_response({"ok": True, "changed": changed, "message": f"{changed} quote(s) {status}.{note}"})
+
+
 def routes() -> list[web.RouteDef]:
-    return [web.get("/api/share", get_share)]
+    return [web.get("/api/share", get_share), web.get("/api/testimonials", get_testimonials),
+            web.post("/api/testimonials", post_testimonials)]

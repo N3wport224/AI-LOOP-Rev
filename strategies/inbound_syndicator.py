@@ -138,6 +138,9 @@ def site_pages(tools) -> list[ProductPage]:
             )
         )
         page = pages[-1]
+        from strategies.testimonials import approved_for
+
+        page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
         if bandit and kind == "dataset":
             facts = {"label": niche_title(niche).replace(" Remote", ""), "companies": metrics.get("companies") or 0,
                      "hot": metrics.get("high_intent") or metrics.get("high_urgency") or 0,

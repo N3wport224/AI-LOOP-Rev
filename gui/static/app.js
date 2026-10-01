@@ -59,7 +59,7 @@
     if (name === "settings" && !settingsLoaded) loadSettings();
     if (name === "logs") refreshLogs();
     if (name === "outreach") loadOutreach();
-    if (name === "share") loadShare();
+    if (name === "share") { loadShare(); loadQuotes(); }
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -196,6 +196,28 @@
       el("b", { text: `${p.label}` }), el("span", { class: "muted", text: `  ·  ${p.product} (${p.price})` }),
       el("pre", { class: "log", text: p.text }),
       el("div", { class: "actions" }, el("button", { class: "primary", "data-share": String(i), text: "Copy" })))));
+  }
+
+  async function loadQuotes() {
+    let d;
+    try { d = await api("/api/testimonials"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const list = $("#quotes-list");
+    const rows = d.testimonials || [];
+    if (!rows.length) { list.replaceChildren(el("p", { class: "muted", text: "No quotes yet. Follow-up emails invite buyers to send one." })); return; }
+    list.replaceChildren(...rows.map((q) => el("div", { class: "card draft" },
+      el("p", { text: `“${q.text}”` }), el("p", { class: "muted", text: `${q.niche} · ${q.status}` }),
+      q.status === "pending" ? el("div", { class: "actions" },
+        el("button", { class: "primary", "data-quote": "approve", "data-id": String(q.id), text: "Approve" }),
+        el("button", { "data-quote": "reject", "data-id": String(q.id), text: "Reject" })) : el("span"))));
+  }
+
+  async function quoteAction(action, id) {
+    const r = await api("/api/testimonials", { method: "POST", body: { action, ids: [id] } });
+    const msg = $("#quotes-message");
+    msg.textContent = r.message || (r.ok ? "Done." : "Failed.");
+    msg.className = "message " + (r.ok ? "ok" : "bad");
+    loadQuotes();
   }
 
   async function copyShare(i) {
@@ -409,6 +431,10 @@
     $("#outreach-list").addEventListener("click", (e) => {  // delegated: the list is re-rendered
       const b = e.target.closest("[data-outreach]");
       if (b) outreachAction(b.dataset.outreach, [Number(b.dataset.id)]);
+    });
+    $("#quotes-list").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-quote]");
+      if (b) quoteAction(b.dataset.quote, Number(b.dataset.id));
     });
     $("#share-list").addEventListener("click", (e) => {
       const b = e.target.closest("[data-share]");

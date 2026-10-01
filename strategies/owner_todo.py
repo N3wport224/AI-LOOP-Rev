@@ -56,6 +56,12 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
     if drafts:
         add(6, f"Review {drafts} sales email(s)", "the agent wrote them but never sends without your OK", 5,
             "control panel → Outreach")
+    from strategies.testimonials import listing
+
+    quotes = len(listing(state, "pending"))
+    if quotes:
+        add(6, f"Approve {quotes} customer quote(s)", "real quotes on the product page help visitors decide; none is shown without your OK",
+            2, "control panel → Share → Customer quotes")
     if not cfg.heartbeat_url:
         add(7, "Turn on the heartbeat", "otherwise nobody tells you if the Mac or the agent stops", 2, "automonetize heartbeat")
     status = str(update_info(state).get("status") or "")

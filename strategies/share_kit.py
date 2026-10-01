@@ -111,10 +111,14 @@ def posts_for(product: dict[str, Any], niche_facts: list[str], promo: dict[str, 
 
 def promos_for(state: Any, products: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     from strategies.launch_promos import active_code
+    from strategies.seasonal_sale import active_sale
 
+    sale = active_sale(state)
     out = {}
     for p in products:
         promo = active_code(state, niche_of(state, p["id"]))
+        if not promo and sale and p["url"] in (sale.get("urls") or []):
+            promo = sale
         if promo:
             out[p["id"]] = promo
     return out

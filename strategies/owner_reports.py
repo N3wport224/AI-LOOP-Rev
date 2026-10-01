@@ -17,7 +17,7 @@ the emails are only written to the audit log.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -163,6 +163,12 @@ class OwnerReports(Strategy):
             "",
             f"Free-sample leads: {leads.get('active', 0)} confirmed, {leads.get('pending', 0)} pending",
         ]
+        from strategies.seasonal_sale import active_sale
+
+        sale = active_sale(state)
+        if sale:
+            lines.append(f"Sale running: {sale['percent_off']}% off with {sale['code']} until "
+                         f"{datetime.fromtimestamp(int(sale['expires_at']), tz=timezone.utc):%b %d}.")
         broken = [p for p in (state.get(HEALTH) or {}).get("products", []) if not p["ok"]]
         if broken:
             lines += ["", "Can't be bought right now:", *[f"- {p['title']}: {', '.join(p['problems'])}" for p in broken]]

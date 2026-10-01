@@ -222,7 +222,7 @@ def test_cli_and_gui_entry_points(kit, state, monkeypatch, capsys):
     assert p.parse_args(["books", "2026-09"]).month == "2026-09"
     from gui.routes.share import routes
 
-    assert [r.path for r in routes()] == ["/api/share"]
+    assert [r.path for r in routes()][:2] == ["/api/share", "/api/testimonials"]
 
 
 def test_stripe_errors_are_logged_not_raised(kit, state, transport):

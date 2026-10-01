@@ -31,8 +31,9 @@ def due(state: Any, cfg: Any) -> list[dict[str, Any]]:
     newest = (now - timedelta(days=int(cfg.winback_after_days))).isoformat(timespec="seconds")
     oldest = (now - timedelta(days=WINDOW_DAYS)).isoformat(timespec="seconds")
     active = {(r["email"] or "").lower() for r in state._all(
-        "SELECT email FROM subscribers WHERE subscription_status IN ('active', 'trialing', 'past_due') AND email IS NOT NULL")}
-    rows = state._all("SELECT * FROM subscribers WHERE subscription_status = 'canceled' AND email IS NOT NULL AND niche IS NOT NULL "
+        "SELECT email FROM subscribers WHERE tier = 'paid' AND subscription_status IN ('active', 'trialing', 'past_due') "
+        "AND email IS NOT NULL")}
+    rows = state._all("SELECT * FROM subscribers WHERE tier = 'paid' AND subscription_status = 'canceled' AND email IS NOT NULL AND niche IS NOT NULL "
                       "AND canceled_at IS NOT NULL AND canceled_at <= ? AND canceled_at >= ? ORDER BY id", (newest, oldest))
     return [r for r in rows if r["email"].lower() not in active]
 

@@ -35,7 +35,7 @@ class Config:
     max_hypothesis_generations: int = 3
 
     # Circuit breakers
-    max_actions_per_cycle: int = 45         # the engine raises it to len(PLAN) + 10 if set lower
+    max_actions_per_cycle: int = 60         # the engine raises it to len(PLAN) + 10 if set lower
     max_api_calls_per_cycle: int = 60
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3
@@ -278,6 +278,18 @@ class Config:
     winback: bool = True                     # one discounted invitation back after a subscription is canceled
     winback_after_days: int = 7
     winback_discount_pct: int = 50           # off the first month back
+
+    # Upgrade credit, sample offer, quarterly sale (Phases 36-39)
+    bundle_upgrade: bool = True              # past buyers: the bundle with what they paid counted
+    bundle_upgrade_after_days: int = 10
+    sample_offer: bool = True                # free-sample signups: one single-use discount
+    sample_offer_after_days: int = 14
+    sample_offer_pct: int = 25
+    seasonal_sale: bool = True               # a short store-wide sale every few months
+    sale_pct: int = 25
+    sale_days: int = 3
+    sale_every_days: int = 90
+    sale_min_store_age_days: int = 30
 
     # Heartbeat, release gate, refresh offers, launch codes (Phases 28-31)
     heartbeat_url: str = ""                  # e.g. https://hc-ping.com/<uuid>: emails you if the agent goes quiet

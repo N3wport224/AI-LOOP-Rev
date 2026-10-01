@@ -79,6 +79,9 @@ PLAN: list[tuple[str, int]] = [
     ("offer_refresh", 62),
     ("reward_referrals", 63),
     ("win_back", 64),
+    ("offer_bundle_upgrade", 65),
+    ("offer_sample_upgrade", 66),
+    ("run_sale", 67),
     ("check_storefront", 61),
     ("pace_goal", 95),
     ("monthly_books", 96),
@@ -125,6 +128,8 @@ class Engine:
         if toolkit is not None:
             self.breaker = toolkit.breaker
             self.tools = toolkit
+            if strategies is None:  # the full plan: same floor as below, so a supplied toolkit can't cut cycles short
+                self.breaker.max_actions_per_cycle = max(self.breaker.max_actions_per_cycle, len(PLAN) + 10)
         else:
             self.breaker = CircuitBreaker(
                 # An old automonetize.toml may pin a cap below today's plan: never let that cut every

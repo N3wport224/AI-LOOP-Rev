@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 732 tests, ~40 s, no network
+pytest                     # 750 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 44 tasks now (Phases 20-35 added fourteen). An old `automonetize.toml` that pins
+The plan has 47 tasks now (Phases 20-39 added seventeen). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -1116,6 +1116,44 @@ It sits at the top of the control panel, opens every daily report and is printed
 * Never sent to anyone who has resubscribed or is suppressed, and only once ("the only time I'll
   ask").
 * Postal address and opt-out included. In dry run nothing is created in Stripe.
+
+## Turning contacts into sales (Phases 36-39)
+
+All the offers below use real Stripe promotion codes (`tools/promo.py`). Stripe enforces each
+code's product, amount, expiry and redemption limit, and every link applies its code at checkout.
+They never go to suppressed addresses. In dry run nothing is created in Stripe.
+
+**Phase 36: bundle upgrade credit** (`strategies/bundle_upgrade.py`, task `offer_bundle_upgrade`).
+* Once the all-datasets bundle is on sale, buyers who own some but not all of its datasets get one
+  email, `bundle_upgrade_after_days` (10) after their last purchase.
+* What they paid counts: a single-use, fixed-amount code for the bundle only, valid 14 days.
+  Refunded and disputed orders don't count, and they always pay at least $1.
+* Shares the one-email-per-14-days gap with the other offers.
+
+**Phase 37: sample-to-paid offer** (`strategies/sample_offer.py`, task `offer_sample_upgrade`).
+* Confirmed free-sample signups who haven't bought after `sample_offer_after_days` (14) get one
+  single-use code: `sample_offer_pct` (25%) off their niche's dataset, valid 7 days.
+* Same compliance as the weekly sample email: their one-click unsubscribe link, the RFC 8058
+  header and the postal address. It waits until both exist.
+
+**Phase 38: testimonials** (`strategies/testimonials.py`).
+* The follow-up email invites a one-line reply with "OK to quote".
+* The support desk turns such replies into pending quotes, in the customer's own words. Sentences
+  with emails, links or phone numbers are dropped, and nothing without the consent phrase is ever
+  used.
+* You approve or reject each quote in the control panel (**Share → Customer quotes**); the to-do
+  list reminds you.
+* Each product page shows up to three approved quotes as "Verified buyer".
+
+**Phase 39: quarterly sale** (`strategies/seasonal_sale.py`, task `run_sale`).
+* Every `sale_every_days` (90), once the store has been open 30 days, the agent creates one code:
+  `sale_pct` (25%) off every dataset and the bundle for `sale_days` (3).
+* Past buyers get one email listing only what they don't own, and the share kit shows the code on
+  every product.
+* The daily report mentions the sale. Live mode only.
+
+`max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
+toolkit's, to the plan size + 10.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 
@@ -1410,6 +1448,9 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `auto_update` / `auto_update_hours` | `true` / `6` | Install verified updates of the tracked branch by itself |
 | `referrals` | `true` | Personal referral links in follow-ups; referrers get the newest version free |
 | `winback` / `winback_after_days` / `winback_discount_pct` | `true` / `7` / `50` | One discounted invitation back after a cancellation |
+| `bundle_upgrade` / `bundle_upgrade_after_days` | `true` / `10` | Bundle offer with what the buyer paid counted |
+| `sample_offer` / `sample_offer_after_days` / `sample_offer_pct` | `true` / `14` / `25` | One discount for free-sample signups |
+| `seasonal_sale` / `sale_pct` / `sale_days` / `sale_every_days` / `sale_min_store_age_days` | `true` / `25` / `3` / `90` / `30` | Quarterly store-wide sale |
 | `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
 | `release_gate_max_drop` / `release_gate_hold_days` | `0.5` / `3` | Hold a new version that lost rows |
 | `refresh_offers` / `refresh_after_days` / `refresh_min_new_rows` / `refresh_discount_pct` | `true` / `30` / `25` / `50` | Discounted update offers to past buyers |
@@ -1481,7 +1522,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 732 tests, ~40 s, no network
+pytest     # 750 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

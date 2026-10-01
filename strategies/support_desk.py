@@ -11,6 +11,8 @@ SMTP works; ``tools.inbox.imap_settings``). It's deliberately narrow:
 * **Refunds, cancellations, disputes, complaints** → never answered automatically: you get an
   alert email (through the owner reports) with the customer, subject and first lines. Money
   decisions stay yours.
+* **"OK to quote"** → the reply becomes a pending testimonial (``strategies/testimonials.py``),
+  published on the product page only after you approve it.
 * **"Unsubscribe"** → the address goes on the suppression list (no more follow-ups or updates).
 * **Anything else from a customer** → the same alert, once, so a real question is never missed.
 """
@@ -78,13 +80,24 @@ class SupportDesk(Strategy):
             return TaskResult(True, f"inbox unreadable: {exc!r}"[:200], {"handled": 0})
         handled = list(state.get(SEEN_KEY) or [])
         seen = set(handled)
-        resent = alerted = processed = unsubscribed = 0
+        from strategies.testimonials import add_pending, niche_for_customer
+        from strategies.testimonials import extract as extract_quote
+
+        resent = alerted = processed = unsubscribed = quotes = 0
         recovery = RecoveryService(tools)
         for m in messages:
             if m["message_id"] in seen:
                 continue
             processed += 1
             wants_resend, money = classify(m["subject"], m["body"])
+            quote = None if money else extract_quote(m["subject"], m["body"])
+            if quote:
+                add_pending(state, m["sender"], niche_for_customer(state, m["sender"]), quote)
+                quotes += 1
+                if not wants_resend:  # a consenting testimonial needs your OK in the panel, not an alert
+                    handled.append(m["message_id"])
+                    seen.add(m["message_id"])
+                    continue
             if is_unsubscribe(m["subject"], m["body"]):
                 state.suppress(m["sender"], "replied unsubscribe")
                 unsubscribed += 1
@@ -107,5 +120,5 @@ class SupportDesk(Strategy):
             seen.add(m["message_id"])
         state.set(SEEN_KEY, handled[-3000:])
         return TaskResult(True, f"support: {processed} new customer email(s), {resent} resent, {alerted} passed to you"
-                          + (f", {unsubscribed} unsubscribed" if unsubscribed else ""),
-                          {"handled": processed, "resent": resent, "alerted": alerted, "unsubscribed": unsubscribed})
+                          + (f", {unsubscribed} unsubscribed" if unsubscribed else "") + (f", {quotes} quote(s) for your OK" if quotes else ""),
+                          {"handled": processed, "resent": resent, "alerted": alerted, "unsubscribed": unsubscribed, "quotes": quotes})
