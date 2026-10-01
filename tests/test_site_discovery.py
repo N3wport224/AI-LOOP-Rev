@@ -31,7 +31,8 @@ def test_search_index_and_page(kit, state, clock, transport):
     m = made(kit, state, clock, transport)[0]
     index = json.loads(sd.search_index(site_pages(kit), state))
     entry = next(e for e in index if e["u"] == f"{m['slug']}/")
-    assert entry == {"t": m["title"], "u": f"{m['slug']}/", "p": m["price_cents"], "k": "Rust", "y": "slice", "r": 30}
+    assert entry == {"t": m["title"], "u": f"{m['slug']}/", "p": m["price_cents"], "k": "Rust", "y": "slice", "r": 30,
+                     "d": (clock() - __import__("datetime").timedelta(days=3)).date().isoformat()}  # newest posting (Phase 378)
     page = sd.search_page(SHELL)
     assert 'id="q"' in page and "../search.json" in page and 'href="../catalog/"' in page
     assert "innerHTML" not in page and "textContent" in page

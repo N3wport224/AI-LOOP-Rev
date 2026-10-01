@@ -2616,6 +2616,22 @@ From `strategies/refund_guard.py`, run inside `ops_checks`:
   `automonetize product SLUG release` lifts it at once.
 * **Phase 374, visible:** doctor lists held products, and Monday's report has one line about them.
 
+## How current each factory product is (Phases 375-379)
+
+From `strategies/factory_freshness.py`:
+
+* **Phase 375, measured at build:** every new version records its newest posting date and the
+  median posting age.
+* **Phase 376, on the product page:** "Built 2026-10-01 from postings up to 2026-09-30; half are from
+  the last 6 days."
+* **Phase 377, stale factory products:** the freshness guard now covers factory products. One is
+  marked stale when its weekly refresh hasn't succeeded for 14 days, or its newest posting is over 30
+  days old.
+  * A stale product isn't promoted, and you get one alert. It stays on sale.
+  * The mark lifts when a refresh brings it up to date.
+* **Phase 378, in search:** the site's search index carries each product's newest posting date.
+* **Phase 379, in the catalog spreadsheet:** `newest_posting` and `median_posting_age_days` columns.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

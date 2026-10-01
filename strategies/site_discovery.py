@@ -42,10 +42,10 @@ def factory_meta(state: Any) -> dict[str, dict[str, Any]]:
 
     ensure(state)
     out = {}
-    for r in state._all("SELECT slug, filters, rows FROM factory_products WHERE status = 'live'"):
+    for r in state._all("SELECT slug, filters, rows, newest_posting AS newest FROM factory_products WHERE status = 'live'"):
         f = json.loads(r["filters"])
         out[r["slug"]] = {"tech": f.get("tech") or "", "group": f.get("group") or "", "type": f.get("type", "slice"),
-                          "rows": int(r["rows"] or 0)}
+                          "rows": int(r["rows"] or 0), "newest": r["newest"]}
     return out
 
 
@@ -60,7 +60,8 @@ def _entries(pages: list[Any], state: Any) -> list[dict[str, Any]]:
         m = meta.get(p.slug, {})
         tech = m.get("tech") or ""
         out.append({"t": p.title, "u": f"{p.slug}/", "p": int(p.price_cents), "k": label(tech) if tech else m.get("group") or "",
-                    "y": m.get("type") or p.kind, "r": m.get("rows") or int((p.metrics or {}).get("companies") or 0)})
+                    "y": m.get("type") or p.kind, "r": m.get("rows") or int((p.metrics or {}).get("companies") or 0),
+                    **({"d": m["newest"]} if m.get("newest") else {})})  # Phase 378
     return sorted(out, key=lambda e: (e["k"] or "~", e["t"]))
 
 

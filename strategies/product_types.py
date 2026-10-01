@@ -355,5 +355,6 @@ def refresh_due(tools: Any, limit: int = REFRESH_PER_TICK) -> list[str]:
         state.update_asset(int(asset["id"]), status="superseded")
         state._exec("UPDATE factory_products SET asset_id = ?, rows = ?, refreshed_at = ? WHERE slug = ?",
                     (aid, made["rows"], state.now(), row["slug"]))
+        pf.record_freshness(state, row["slug"], made.get("freshness") or {})
         done.append(row["slug"])
     return done

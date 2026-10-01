@@ -75,7 +75,21 @@ class FreshnessGuard(Strategy):
         marks: dict[str, str] = dict(state.get(KEY) or {})
         current: dict[str, str] = {}
         it = int(state.get("iteration", 0))
+        from strategies.factory_freshness import listing_for, stale_reason
+
         for p in live_products(state):
+            if p["kind"] == "micro":  # Phase 377: factory products
+                slug = (state.get_asset(p["id"]) or {}).get("niche") or ""
+                why = stale_reason(state, slug, listing_for(ctx.tools.files, slug)) if slug else ""
+                if not why:
+                    if str(p["id"]) in marks:
+                        state.log_action(it, None, "freshness", "ok", f"{p['title']}: up to date again")
+                    continue
+                current[str(p["id"])] = marks.get(str(p["id"])) or state.now()
+                if str(p["id"]) not in marks:
+                    state.log_error("freshness_guard", f"\"{p['title']}\" looks out of date ({why}). The agent stopped "
+                                                       "promoting it; it's still on sale.", kind="alert")
+                continue
             if p["kind"] not in CHECKED_KINDS:
                 continue
             asset = state.get_asset(p["id"]) or {}

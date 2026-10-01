@@ -163,7 +163,9 @@ def site_pages(tools) -> list[ProductPage]:
         if kind == "micro":
             from strategies.version_diffs import update_note
 
-            page.files_html = (update_note(tools.state, niche)  # Phase 278
+            from strategies.factory_freshness import page_line
+
+            page.files_html = (update_note(tools.state, niche) + page_line(listing)  # Phases 278, 376
                                + bx.file_list_html((listing.get("filters") or {}).get("type", "slice")))
             from strategies.tech_passes import offer_for
 

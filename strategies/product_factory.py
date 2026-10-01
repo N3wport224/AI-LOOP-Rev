@@ -70,6 +70,9 @@ def ensure(state: Any) -> None:
     cols = {r["name"] for r in state._all("PRAGMA table_info(factory_products)")}
     if "refreshed_at" not in cols:  # Phase 154
         state._exec("ALTER TABLE factory_products ADD COLUMN refreshed_at TEXT")
+    for col in ("newest_posting", "median_age_days"):  # Phase 375
+        if col not in cols:
+            state._exec(f"ALTER TABLE factory_products ADD COLUMN {col} {'REAL' if col == 'median_age_days' else 'TEXT'}")
     state._exec("CREATE INDEX IF NOT EXISTS idx_factory_status ON factory_products (status, published_at)")  # Phase 216
 
 
@@ -315,9 +318,14 @@ def write_files(tools: Any, slug: str, version: int, made: dict[str, Any], title
     base = f"assets/{slug}/{KIND}-v{version}"
     zip_rel = f"assets/{slug}/{slug}-v{version}.zip"
     tools.files.write_bytes(zip_rel, data.getvalue())
+    from strategies.factory_freshness import measure
+
+    fresh = measure(files, tools.state.clock())
     tools.files.write_json(f"{base}/listing.json", {"name": title, "summary": made["summary"], "price_cents": made["price_cents"],
                                                     "description_markdown": made["readme"], "filters": filters,
-                                                    "insight": made.get("insight") or {}})
+                                                    "insight": made.get("insight") or {},
+                                                    "freshness": fresh})  # Phase 375
+    made["freshness"] = fresh
     tools.files.write_json(f"{base}/sample.json", {"fields": made["preview_fields"], "rows": made["preview"]})
     return zip_rel
 
@@ -337,8 +345,16 @@ def build(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
                 "created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                 (slug, aid, title, json.dumps(filters), made["rows"], cand["companies"], json.dumps(keys[:2000]),
                  "staged", state.now()))
+    record_freshness(state, slug, made.get("freshness") or {})
     return {"slug": slug, "asset_id": aid, "price_cents": made["price_cents"], "rows": made["rows"],
             "summary": made["summary"], "title": title}
+
+
+def record_freshness(state: Any, slug: str, fresh: dict[str, Any]) -> None:
+    """Phase 375: the newest posting and median age of the current version, for search, the catalog and staleness."""
+    ensure(state)
+    state._exec("UPDATE factory_products SET newest_posting = ?, median_age_days = ? WHERE slug = ?",
+                (fresh.get("newest"), fresh.get("median_days"), slug))
 
 
 def _describe(filters: dict[str, str]) -> str:

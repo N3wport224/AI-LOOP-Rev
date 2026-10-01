@@ -27,7 +27,7 @@ from typing import Any
 TYPE_NAMES = {"slice": "Postings by technology", "salary": "Salary benchmarks", "top": "Top companies",
               "remote_first": "Remote-first employers", "fast_hiring": "Fastest-hiring companies", "pack": "Starter packs"}
 CSV_FIELDS = ["slug", "title", "type", "technology", "status", "rows", "price_cents", "orders_90d", "revenue_cents_90d",
-              "published_at", "retired_at", "checkout_url"]
+              "published_at", "retired_at", "checkout_url", "newest_posting", "median_posting_age_days"]
 
 
 def _orders(state: Any, days: int = 90) -> dict[str, tuple[int, int]]:
@@ -51,7 +51,8 @@ def rows(state: Any) -> list[dict[str, Any]]:
         out.append({"slug": r["slug"], "title": r["title"], "type": f.get("type", "slice"), "technology": f.get("tech") or "",
                     "status": r["status"], "rows": r["rows"], "price_cents": int(r["price"] or 0), "orders_90d": n,
                     "revenue_cents_90d": gross, "published_at": r["published_at"] or "", "retired_at": r["retired_at"] or "",
-                    "checkout_url": r["url"] or ""})
+                    "checkout_url": r["url"] or "", "newest_posting": r.get("newest_posting") or "",
+                    "median_posting_age_days": r.get("median_age_days") if r.get("median_age_days") is not None else ""})
     return out
 
 
