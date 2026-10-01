@@ -284,8 +284,8 @@ def all_candidates(state: Any, cfg: Any) -> dict[str, list[dict[str, Any]]]:
                "pack": pack_candidates(state)}
     for kind in ("salary", "top", "remote_first", "fast_hiring", "pack"):
         by_type[kind].sort(key=lambda c: (-c["score"], c["slug"]))
-    rising = rising_techs(state)  # Phase 223: within each type, rising technologies first
-    return {kind: favour_rising(cands, rising) for kind, cands in by_type.items()}
+    rising = rising_techs(state)  # Phase 223: within each type, rising technologies first (slices: a score bonus)
+    return {kind: cands if kind == "slice" else favour_rising(cands, rising) for kind, cands in by_type.items()}
 
 
 def rotation(state: Any) -> list[str]:

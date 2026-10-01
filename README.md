@@ -2132,6 +2132,26 @@ A catalog that runs for months without surprises (`strategies/catalog_reliabilit
 * **Phase 244, rehearsed end to end:** `automonetize test-full-loop` now also has the factory make a
   product and checks it reaches the site, the catalog and search with a checkout.
 
+### Audit after Phase 244
+
+This review covered:
+* static analysis with security rules on the new modules;
+* a review of the new public pages: search, catalog, status, what's new, trends and the retired-product
+  pages. They hold only counts, board names and product links; nothing private.
+* both test suites (Python 3.11 and 3.13) and the simulator (now 14 steps);
+* a load test: 150 products made back to back from 5,000 postings across 40 technologies (each under
+  1 second), then the full site built (under 1 second) with no broken links.
+
+Fixed:
+* Trends and fastest-hiring counted postings without a date by the day the agent first saw them,
+  so on a fresh install everything looked new. Only dated postings count now.
+* Rising technologies outranked what customers asked for when choosing technology slices. Rising
+  is now a score bonus, so requests and sales still count most.
+* A product whose download was missing and couldn't be rebuilt (its postings gone) stayed on sale.
+  It is now taken off sale an hour later, with an alert.
+* The "What's new" page linked retired products, whose pages are gone. They are now named without
+  a link.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

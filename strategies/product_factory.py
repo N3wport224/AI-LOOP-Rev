@@ -136,6 +136,9 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
     from strategies.upsells import selling_techs
 
     selling = selling_techs(state, cfg)  # Phase 162: technologies that sell get more products
+    from strategies.market_trends import RISING_BONUS, rising_techs
+
+    rising = rising_techs(state)  # Phase 223
     out = []
     for tech, n in tech_counts.items():
         if n < int(cfg.factory_min_rows):
@@ -148,7 +151,7 @@ def candidates(state: Any, cfg: Any, leads: list[dict[str, Any]] | None = None) 
                 if len(rows) < int(cfg.factory_min_rows) or len(companies) < int(cfg.factory_min_companies):
                     continue
                 score = (len(companies) + (50 if tech in asked else 0) + 20 * selling.get(tech, 0)
-                         - (5 if level else 0) - (3 if region else 0))
+                         + (RISING_BONUS if tech in rising else 0) - (5 if level else 0) - (3 if region else 0))
                 out.append({**spec, "rows": rows, "companies": len(companies), "score": score})
     return sorted(out, key=lambda c: (-c["score"], c["slug"]))
 
@@ -423,7 +426,7 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
         return {"made": None, "why": "disk almost full", "published": published, "retired": retired, "refreshed": refreshed}
     waiting = too_many_waiting(state)
     if waiting:  # Phase 242
-        return {"made": None, "why": f"{waiting} products are waiting for a checkout (payments not set up, or Stripe refusing)",
+        return {"made": None, "why": f"{waiting} product(s) are waiting for a checkout (payments not set up, or Stripe refusing)",
                 "published": published, "retired": retired, "refreshed": refreshed}
     cand = next_candidate(state, cfg)
     if cand is None:

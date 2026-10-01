@@ -1,15 +1,16 @@
 """Market trends (Phases 220-224): which technologies are hiring more, and products that follow.
 
 * **Phase 220, weekly counts:** new postings per technology per week for the last ``WEEKS`` weeks,
-  by posting date (or the day the agent first saw the posting when a board gives no date). Worked
-  out at most once every ``CACHE_HOURS`` and kept in kv ``tech_trends``.
+  by posting date (postings without a date are left out). Worked out at most once every
+  ``CACHE_HOURS`` and kept in kv ``tech_trends``.
 * **Phase 221, rising and falling:** the last two weeks against the two before. A technology with
   at least ``MIN_RECENT`` recent postings that grew by ``RISE`` (25%) or more is rising; one that
   shrank by 25% or more is falling.
 * **Phase 222, trends page:** ``trends/`` on the site: rising and falling technologies and an
   8-week table for the busiest ones, from the same public postings as the datasets.
 * **Phase 223, the factory follows demand:** among products of the same type, ones about a rising
-  technology are made first.
+  technology are made first (for technology slices, a score bonus of ``RISING_BONUS``, so what
+  customers asked for and what sells still count most).
 * **Phase 224, fastest-hiring companies** (``fast-hiring-<tech>``, $9): a new product type. Companies
   that posted ``FAST_MIN_ROLES`` (3) or more new roles for a technology in the last 14 days, ranked
   by new roles. Needs ``FAST_MIN_COMPANIES`` (8) such companies.
@@ -31,19 +32,18 @@ FAST_DAYS = 14
 FAST_MIN_ROLES = 3
 FAST_MIN_COMPANIES = 8
 FAST_PRICE = 900
+RISING_BONUS = 15
 
 
 def _when(lead: dict[str, Any]) -> datetime | None:
-    for field in ("posted_at", "first_seen"):
-        raw = str(lead.get(field) or "")
-        if not raw:
-            continue
-        try:
-            t = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
-    return None
+    """The posting date. Postings without one are left out: the day the agent first saw them would
+    make everything look new on a fresh install."""
+    raw = str(lead.get("posted_at") or "")
+    try:
+        t = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
 # ------------------------------------------------------------------ Phase 220

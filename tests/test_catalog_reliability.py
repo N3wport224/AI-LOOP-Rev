@@ -62,7 +62,7 @@ def test_the_factory_stops_when_too_many_wait_for_a_checkout(kit, state, config,
     first = pf.tick(kit, force=True)
     assert first["made"] and first["status"] == "staged"
     second = pf.tick(kit, force=True)
-    assert second["made"] is None and second["why"].startswith("1 products are waiting for a checkout")
+    assert second["made"] is None and second["why"].startswith("1 product(s) are waiting for a checkout")
 
 
 # ------------------------------------------------------------------ Phase 243
@@ -77,3 +77,18 @@ def test_a_missing_download_is_rebuilt(kit, state, config, clock, transport):
     assert kit.files.exists(current["path"]) and current["checkout_url"] == asset["checkout_url"]
     assert any("had no download file" in a for a in alerts(state))
     assert cr.check_integrity(kit) == []  # hourly
+
+
+def test_a_download_that_cannot_be_rebuilt_is_taken_off_sale(kit, state, config, clock, transport):
+    made = made_product(kit, state, clock, transport)
+    asset = state.get_asset(made["asset_id"])
+    kit.files.resolve(asset["path"]).unlink()
+    state._exec("DELETE FROM leads")  # its postings are gone: nothing to rebuild from
+    clock.advance(hours=2)
+    pf.tick(kit)
+    assert state._one("SELECT status FROM factory_products WHERE slug = ?", (made["slug"],))["status"] == "live"  # one more try
+    clock.advance(hours=2)
+    pf.tick(kit)
+    assert state._one("SELECT status FROM factory_products WHERE slug = ?", (made["slug"],))["status"] == "retired"
+    assert transport.calls_to(f"{test_business_ops.STRIPE}/payment_links/{asset['product_ref']}", "POST")
+    assert any("taken off sale" in a for a in alerts(state))

@@ -12,7 +12,9 @@
   more until they go on sale. Doctor shows why.
 * **Phase 243, catalog integrity:** once an hour the factory checks every product on sale still
   has its download file. One that doesn't (a disk restore, a deleted folder) is rebuilt at the next
-  refresh instead of failing a buyer, and you get one alert a day.
+  refresh instead of failing a buyer, and you get one alert a day. If it still has no file an hour
+  later (its postings are gone, so there's nothing to rebuild from), its checkout is closed and it's
+  retired, so nobody pays for a download that can't be sent.
 * **Phase 244, rehearsed end to end:** ``automonetize test-full-loop`` now also has the factory
   make a product and checks it reaches the site with a checkout.
 """
@@ -27,6 +29,22 @@ from typing import Any
 STUB_DAYS = 90
 STAGED_MAX = 25
 INTEGRITY_KEY = "factory_integrity_at"
+MISSING_KEY = "factory_missing_files"
+
+
+def take_off_sale(tools: Any, slug: str) -> None:
+    """Close the checkout and retire a product that can't be delivered."""
+    state = tools.state
+    row = state._one("SELECT asset_id FROM factory_products WHERE slug = ?", (slug,))
+    asset = state.get_asset(int(row["asset_id"])) if row else None
+    ref = str((asset or {}).get("product_ref") or "")
+    if ref.startswith("plink_") and hasattr(tools.storefront, "deactivate"):
+        tools.storefront.deactivate(ref)
+    if asset:
+        state.update_asset(int(asset["id"]), status="retired")
+    state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), slug))
+    state.log_error("product_factory", f"{slug} was taken off sale: its download is missing and couldn't be rebuilt "
+                                       "(its postings are gone).", kind="alert")
 
 
 # ------------------------------------------------------------------ Phase 241
@@ -78,6 +96,10 @@ def check_integrity(tools: Any) -> list[str]:
         if not r["path"] or not tools.files.exists(r["path"]):
             missing.append(r["slug"])
             state._exec("UPDATE factory_products SET refreshed_at = '1970-01-01T00:00:00+00:00' WHERE slug = ?", (r["slug"],))
+    flagged = set(state.get(MISSING_KEY) or [])
+    for slug in [s for s in missing if s in flagged]:  # still missing an hour after a rebuild: nothing to sell
+        take_off_sale(tools, slug)
+    state.set(MISSING_KEY, [s for s in missing if s not in flagged])
     if missing:
         from agent.ops_checks import _daily
 

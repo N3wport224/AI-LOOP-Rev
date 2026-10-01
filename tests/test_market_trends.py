@@ -72,3 +72,11 @@ def test_too_few_fast_hirers_make_nothing(state, clock):
     postings(state, clock, 14, ["rust"], prefix="f", days_ago=3)  # 12 companies, but 1-2 roles each
     tagged = [(lead, pf.facets(lead)) for lead in pf.fresh_leads(state, 60)]
     assert mt.fast_hiring_candidates(tagged, clock()) == []
+
+
+def test_undated_postings_do_not_count_as_new(state, clock):
+    postings(state, clock, 30, ["rust"])
+    state._exec("UPDATE leads SET data = json_remove(data, '$.posted_at')")
+    assert mt.trends(state, force=True)["counts"] == {}
+    tagged = [(lead, pf.facets(lead)) for lead in pf.fresh_leads(state, 60)]
+    assert mt.fast_hiring_candidates(tagged, clock()) == []
