@@ -1709,6 +1709,25 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
   * the backup restore test;
   * resting tasks, muted alerts and held emails.
 
+### Audit after Phase 144
+
+This review covered:
+* static analysis (pyflakes, and ruff with bugbear and bandit rules);
+* a manual review of every new module;
+* a check that error redaction never garbles a real alert message;
+* a run of every new command on a fresh install;
+* a secrets scan of the new commits;
+* both test suites (Python 3.11 and 3.13).
+
+Found and fixed:
+* **`security.txt` could be given extra fields.** A contact address containing a line break would
+  have added them; such an address is now refused.
+* **The weekly backup restore test didn't quote table names.** It now quotes them safely before
+  reading the backup.
+* **Two problems the new consistency tests caught during this batch:**
+  * eight public routes (the webhook and API among them) lacked `nosniff`;
+  * five tasks were mentioned nowhere in the README.
+
 ## Every task in a cycle
 
 Each cycle runs these in order (lower numbers first). `automonetize explain <task>` says more

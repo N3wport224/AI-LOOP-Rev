@@ -100,8 +100,9 @@ def home_jsonld(base_url: str, site_title: str, email: str = "") -> str:
 
 
 def security_txt(email: str, base_url: str, now: datetime) -> str:
-    """RFC 9116. "" without a contact address (the file would be useless)."""
-    if not email:
+    """RFC 9116. "" without a usable contact address (the file would be useless)."""
+    email = (email or "").strip()
+    if not email or any(c in email for c in "\r\n ") or "@" not in email:
         return ""
     expires = (now + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = [f"Contact: mailto:{email}", f"Expires: {expires}", "Preferred-Languages: en"]

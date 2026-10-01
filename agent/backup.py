@@ -178,7 +178,8 @@ def verify_backup(config: Any, name: str | None = None) -> dict[str, Any]:
                 tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
                                                      "AND name NOT LIKE 'sqlite_%'")]
                 for t in tables:
-                    counts[f"{db}:{t}"] = int(conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0])
+                    quoted = t.replace('"', '""')
+                    counts[f"{db}:{t}"] = int(conn.execute(f'SELECT COUNT(*) FROM "{quoted}"').fetchone()[0])
             except sqlite3.DatabaseError as exc:
                 return {"ok": False, "name": name, "detail": f"{db}: {exc}"}
             finally:

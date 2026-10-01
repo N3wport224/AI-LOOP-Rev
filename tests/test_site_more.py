@@ -65,3 +65,8 @@ def test_the_new_pages_pass_the_site_audit(config, clock):
     report = audit_site(build(config, clock), "https://me.github.io/site")
     assert report["broken_links"] == [] and report["a11y"] == []
     assert not [s for s in report["seo"] if s.startswith("compare/")]
+
+
+def test_security_txt_refuses_an_address_that_could_inject_fields(clock):
+    assert security_txt("a@b.example\nPolicy: https://evil.example", "", clock()) == ""
+    assert security_txt("not-an-address", "", clock()) == ""
