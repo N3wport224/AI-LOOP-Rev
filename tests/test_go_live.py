@@ -66,3 +66,32 @@ def test_email_check_names_what_is_missing(config, capsys):
     env = {"AUTOMONETIZE_DATA_DIR": str(config.data_dir), "SMTP_HOST": "smtp.gmail.com"}
     assert go_live.check_email(env) is False
     assert "Email delivery isn't ready" in capsys.readouterr().out
+
+
+def test_email_login_falls_back_to_the_other_port_and_unspaced_password(monkeypatch):
+    attempts = []
+
+    def fake_login(host, port, user, password):
+        attempts.append((port, password))
+        return None if (port, password) == (465, "abcdefghijklmnop") else "SMTPServerDisconnected: Connection unexpectedly closed"
+
+    monkeypatch.setattr(go_live, "smtp_login", fake_login)
+    assert go_live.smtp_candidates(587, "abcd efgh ijkl mnop") == [
+        (587, "abcd efgh ijkl mnop"), (465, "abcd efgh ijkl mnop"), (587, "abcdefghijklmnop"), (465, "abcdefghijklmnop")]
+
+    class Cfg:
+        smtp_host, smtp_port, smtp_username, smtp_password = "smtp.gmail.com", 587, "me@gmail.com", "abcd efgh ijkl mnop"
+
+    class Dispatcher:
+        @staticmethod
+        def compliance_problems(kind):
+            return []
+
+    monkeypatch.setattr("agent.config.Config.load", classmethod(lambda cls, path=None, env=None: Cfg()))
+    Cfg.dry_run = True
+    Cfg.ensure_dirs = lambda self: None
+    Cfg.db_path = ":memory:"
+    monkeypatch.setattr("tools.build_toolkit", lambda *a, **k: type("T", (), {"dispatcher": Dispatcher})())
+    env = {}
+    assert go_live.check_email(env) is True
+    assert env == {"SMTP_PORT": "465", "SMTP_PASSWORD": "abcdefghijklmnop"} and len(attempts) == 4

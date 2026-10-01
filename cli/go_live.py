@@ -71,7 +71,6 @@ def check_stripe(key: str) -> bool:
 
 def check_email(env: dict[str, str]) -> bool:
     from agent.config import Config
-    from agent.setup_autonomous import check_mailer_connectivity
     from agent.state import StateStore
     from tools import build_toolkit
     from tools.circuit_breaker import CircuitBreaker
@@ -87,13 +86,59 @@ def check_email(env: dict[str, str]) -> bool:
             say(RED, f"  - {p}")
         say(RED, "  Fix it in the control panel (Settings → Delivery mailer / Compliance), then run this again. Nothing was changed.")
         return False
-    check = check_mailer_connectivity(config, tools.http)
-    if check.status == "fail":
-        say(RED, f"✘ Couldn't log in to your mailbox: {check.detail}")
-        say(RED, "  For Gmail, use an App password (Google Account → Security → App passwords). Nothing was changed.")
-        return False
-    say(GREEN, f"✔ Email: {check.detail or 'settings complete'}")
-    return True
+    tried = []
+    for port, password in smtp_candidates(config.smtp_port, config.smtp_password or ""):
+        error = smtp_login(config.smtp_host, port, config.smtp_username, password)
+        tried.append((port, password != (config.smtp_password or ""), error))
+        if error is None:
+            if port != config.smtp_port:
+                env["SMTP_PORT"] = str(port)
+                say(GREEN, f"✔ Fixed: port {config.smtp_port} doesn't work from this network, {port} does (saved)")
+            if password != (config.smtp_password or ""):
+                env["SMTP_PASSWORD"] = password
+                say(GREEN, "✔ Fixed: removed the spaces Google shows in app passwords (saved)")
+            say(GREEN, f"✔ Email: logged in to {config.smtp_host}:{port} as {config.smtp_username}")
+            return True
+    say(RED, f"✘ Couldn't log in to your mailbox. Server {config.smtp_host!r}, user {config.smtp_username!r}:")
+    for port, stripped, error in tried:
+        say(RED, f"  - port {port}{' (password without spaces)' if stripped else ''}: {error}")
+    say(RED, "  Check in the control panel (Settings → Delivery mailer):")
+    say(RED, "  - SMTP host is exactly smtp.gmail.com (for Gmail), and SMTP user is your full Gmail address")
+    say(RED, "  - SMTP password is a Google App password (Google Account → Security → 2-Step Verification on →")
+    say(RED, "    App passwords), not your normal Gmail password")
+    say(RED, "  Then run this again. Nothing was changed.")
+    return False
+
+
+def smtp_candidates(port: int, password: str) -> list[tuple[int, str]]:
+    """The configured settings first, then the other standard port, then without spaces."""
+    ports = [port] + [p for p in (587, 465) if p != port]
+    passwords = [password] + ([password.replace(" ", "")] if " " in password else [])
+    return [(p, pw) for pw in passwords for p in ports]
+
+
+def smtp_login(host: str, port: int, user: str, password: str) -> str | None:
+    """None if the login works, else a short reason."""
+    import smtplib
+    import socket
+
+    try:
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=20)
+        else:
+            server = smtplib.SMTP(host, port, timeout=20)
+        with server:
+            server.ehlo()
+            if port != 465:
+                server.starttls()
+                server.ehlo()
+            if user:
+                server.login(user, password)
+        return None
+    except smtplib.SMTPAuthenticationError:
+        return "the server refused the username/password (use a Google App password)"
+    except (smtplib.SMTPException, OSError, socket.timeout) as exc:
+        return f"{type(exc).__name__}: {exc}"[:200]
 
 
 def forget_test_listings(env: dict[str, str]) -> int:
@@ -172,9 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     env = load_env_into(env_file)
     was_test = not str(env.get("STRIPE_SECRET_KEY") or env.get("STRIPE_API_KEY") or "").startswith(("sk_live_", "rk_live_"))
     env.update(STRIPE_SECRET_KEY=key, DRY_RUN="false")
+    before = dict(env)
     if not check_email(env):
         return 1
-    update_env_file(env_file, {"STRIPE_SECRET_KEY": key, "STRIPE_MODE": "live", "DRY_RUN": "false"})
+    fixes = {k: env[k] for k in ("SMTP_PORT", "SMTP_PASSWORD") if env.get(k) != before.get(k)}
+    update_env_file(env_file, {"STRIPE_SECRET_KEY": key, "STRIPE_MODE": "live", "DRY_RUN": "false", **fixes})
     say(GREEN, "✔ Saved: live Stripe key, real email delivery")
     if was_test and (n := forget_test_listings(load_env_into(env_file))):
         say(GREEN, f"✔ {n} test-mode listing(s) will be recreated in your live Stripe account")
