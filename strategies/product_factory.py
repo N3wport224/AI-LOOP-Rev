@@ -104,7 +104,9 @@ def fresh_leads(state: Any, max_age_days: int) -> list[dict[str, Any]]:
         out.append(lead)
     from strategies.posting_quality import drop_unlisted
 
-    return drop_unlisted(out)  # Phase 230: postings the boards stopped listing are left out
+    from strategies.opt_out import drop_excluded
+
+    return drop_excluded(state, drop_unlisted(out))  # Phases 230, 287
 
 
 def slice_spec(tech: str, region: str = "", level: str = "") -> dict[str, Any]:

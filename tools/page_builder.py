@@ -800,6 +800,10 @@ class SiteBuilder:
         for rel, page_html in legal_pages(cfg, lambda title, body, desc: _shell(
                 title, body, cfg.site_title, description=desc, depth=rel_depth(title))).items():
             out[rel] = page_html
+        from strategies.opt_out import PAGE as REMOVE_PAGE, remove_page
+
+        out[REMOVE_PAGE] = remove_page(cfg, lambda title, body, desc: _shell(  # Phase 285: the privacy page links it
+            title, body, cfg.site_title, description=desc))
         out["404.html"] = not_found_page(pages, lambda title, body, root: _shell(title, body, cfg.site_title, noindex=True,
                                                                                  root=root), self.base_url)
         from tools.offer_pages import render_changelog

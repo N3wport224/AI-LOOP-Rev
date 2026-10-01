@@ -1567,6 +1567,7 @@ Two changes elsewhere:
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
 automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one product, by hand
+automonetize optout [approve ID|reject ID]  # companies asking to be left out of the datasets
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2284,6 +2285,24 @@ Each weekly refresh says what's new (`strategies/version_diffs.py`).
   its checkout working for links you've already shared. Show brings it back.
 * **Phase 284, rebuild:** rebuilds the download from the latest postings now, instead of waiting
   for the weekly refresh.
+
+## Companies can ask to be left out (Phases 285-289)
+
+The datasets come from public job postings, but a company may still prefer not to appear
+(`strategies/opt_out.py`).
+
+* **Phase 285, the request form:** `remove/` on the site posts to `/v1/optout`, rate-limited to 3
+  requests per network per hour. It asks for the company name, a work email and an optional note.
+  Without a public address, the page gives your email instead.
+* **Phase 286, you decide:** `automonetize optout` lists waiting requests; `approve ID` or
+  `reject ID` decides each one.
+  * Each request raises one alert.
+  * The list shows whether the email's domain looks like the company's, so a request made on
+    someone else's behalf stands out.
+* **Phase 287, left out everywhere:** an approved company's postings are dropped from every new
+  product and every weekly refresh.
+* **Phase 288, confirmation:** on approval the requester gets one email saying it's done.
+* **Phase 289, in the privacy policy:** the privacy page explains this and links the form.
 
 ## Safety and consistency (Phases 140-144)
 

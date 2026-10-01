@@ -64,7 +64,10 @@ def legal_pages(cfg: Any, shell: Any) -> dict[str, str]:
                "one-click unsubscribe.</li>"
                "<li><b>Site visits:</b> no cookies and no third-party trackers. The page remembers in your own browser which "
                "site sent you (for 30 days), so a purchase can be credited to it, and counts anonymously which page wording "
-               "visitors click.</li></ul>"
+               "visitors click.</li>"
+               "<li><b>Companies in our datasets:</b> the rows come from public job postings. A company that would rather "
+               "not appear can <a href=\"../../remove/\">ask to be left out</a>; once checked, its postings leave every "
+               "dataset within a week.</li></ul>"
                "<p>We never sell or share your data. Ask for a copy of what we hold about you, or for it to be deleted, by "
                "emailing us; we answer within 30 days.</p>" + contact_line)
     refunds = (f"<h1>Refunds</h1><p>If a dataset doesn't match its description, or the file doesn't arrive, email us within "

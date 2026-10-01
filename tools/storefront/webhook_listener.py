@@ -499,6 +499,9 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
 
     buyer_experience.mount(app, processor.tools, run_in_pool, client_ip,
                            CaptureLimiter(buyer_experience.REQUESTS_PER_IP_HOUR))  # Phase 208: /v1/requests
+    from strategies import opt_out
+
+    opt_out.mount(app, processor.tools, run_in_pool, client_ip, CaptureLimiter(opt_out.REQUESTS_PER_IP_HOUR))  # Phase 285
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

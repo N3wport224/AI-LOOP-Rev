@@ -290,6 +290,32 @@ def product_main(argv: list[str]) -> int:
     return 0
 
 
+def optout_main(argv: list[str]) -> int:
+    """`automonetize optout [list] | approve ID | reject ID` (Phase 286)."""
+    from strategies.opt_out import decide, pending
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    config, state, _ = _setup()
+    if argv[:1] in (["approve"], ["reject"]) and len(argv) == 2:
+        tools = build_toolkit(config, state, CircuitBreaker(1000, 1000, 1000))
+        try:
+            entry = decide(tools, argv[1], argv[0] == "approve")
+        except ValueError as exc:
+            say(RED, str(exc))
+            return 2
+        say(GREEN, f"✔ {entry['company']}: {entry['status']}" + (" (left out from the next refresh; confirmation emailed)"
+                                                                if entry["status"] == "approved" else ""))
+        return 0
+    items = pending(state)
+    if not items:
+        print("No requests waiting.")
+    for r in items:
+        match = "domain matches" if r["domain_matches"] else "domain does NOT match the company: check before approving"
+        print(f"{r['id']}  {r['company']}  <{r['email']}>  ({match})  {r['at'][:10]}" + (f"\n        \"{r['note']}\"" if r["note"] else ""))
+    return 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

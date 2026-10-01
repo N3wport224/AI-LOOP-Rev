@@ -859,6 +859,12 @@ def cmd_product(args: argparse.Namespace, console: Console) -> int:
     return product_main([args.slug, args.action] + ([args.value] if args.value else []))
 
 
+def cmd_optout(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import optout_main
+
+    return optout_main(args.rest)
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1230,6 +1236,9 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("action", choices=["pin", "unpin", "retire", "price", "hide", "show", "rebuild"])
     pc.add_argument("value", nargs="?", default="")
     pc.set_defaults(func=cmd_product)
+    oo = sub.add_parser("optout", help="companies asking to be left out: list; approve ID; reject ID")
+    oo.add_argument("rest", nargs="*")
+    oo.set_defaults(func=cmd_optout)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")
