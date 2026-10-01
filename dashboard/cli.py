@@ -835,6 +835,12 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_factory(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import factory_main
+
+    return factory_main((["--now"] if args.now else []) + (["--next"] if args.next else []))
+
+
 def cmd_audit(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import audit_main
 
@@ -1174,6 +1180,10 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    fa = sub.add_parser("factory", help="the product factory's catalog; --now makes one product now, --next previews it")
+    fa.add_argument("--now", action="store_true")
+    fa.add_argument("--next", action="store_true")
+    fa.set_defaults(func=cmd_factory)
     au = sub.add_parser("audit", help="every self-check in one report: security, settings, libraries, tunnel, site, backups")
     au.set_defaults(func=cmd_audit)
     ex = sub.add_parser("explain", help="what a task does, where it runs in the cycle, and its last runs")

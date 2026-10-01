@@ -123,6 +123,8 @@ def site_pages(tools) -> list[ProductPage]:
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
         if not niche or kind in ("subscription", "team_license", "subscription_annual") or (niche, kind) in seen:
             continue
+        if kind == "micro" and (asset.get("status") != "published" or not asset.get("checkout_url")):
+            continue  # factory products appear once they can be bought; retired ones disappear
         seen.add((niche, kind))
         base = f"assets/{niche}/v{asset['version']}" if kind == "dataset" else f"assets/{niche}/{kind}-v{asset['version']}"
         sample = tools.files.read_json(f"{base}/sample.json") if tools.files.exists(f"{base}/sample.json") else {}

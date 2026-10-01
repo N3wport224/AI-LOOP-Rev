@@ -88,6 +88,8 @@ class Supervisor:
             Worker("engine", lambda stop: self.engine.run_forever(
                 interval=interval, max_cycles=max_cycles, on_cycle=on_cycle, install_signal_handlers=False), critical=True)
         ]
+        if config.product_factory and getattr(self.engine, "_full_plan", False):  # not for test engines with custom plans
+            self.workers.append(Worker("factory", self._factory_target(), critical=False))
         leads_public = (config.lead_magnet_enabled or config.api_enabled) and bool(config.lead_capture_base)
         if webhook and (config.stripe_webhook_secret or leads_public):
             from tools.storefront.webhook_listener import WebhookServer
@@ -96,6 +98,20 @@ class Supervisor:
             self.workers.append(Worker("webhook", self.webhook_server.run, critical=False))
         elif webhook:
             log.warning("STRIPE_WEBHOOK_SECRET not set: webhook listener disabled, polling sync only")
+
+    def _factory_target(self) -> Callable[[threading.Event], Any]:
+        """The product factory runs on its own toolkit (and API budget), every factory_interval_seconds."""
+        def target(stop: threading.Event) -> None:
+            from strategies.product_factory import run_worker
+            from tools import build_toolkit
+            from tools.circuit_breaker import CircuitBreaker
+
+            cfg = self.config
+            breaker = CircuitBreaker(max_actions_per_cycle=1000, max_api_calls_per_cycle=cfg.max_api_calls_per_cycle,
+                                     max_consecutive_errors=1000)
+            tools = build_toolkit(cfg, self.state, breaker)
+            run_worker(tools, stop, self.engine.is_stopped)
+        return target
 
     # -- signals -----------------------------------------------------------------------
     def _on_signal(self, signum: int, _frame: Any) -> None:

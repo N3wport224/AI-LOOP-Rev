@@ -47,6 +47,7 @@ PLAN: list[tuple[str, int]] = [
     ("discover_sources", 12),
     ("build_intel", 15),
     ("package_asset", 20),
+    ("run_factory", 21),  # new products from slices of all postings (catch-up when no factory worker runs)
     ("publish_listing", 25),
     ("publish_showcase", 30),
     ("tune_copy", 29),

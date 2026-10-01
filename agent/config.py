@@ -35,8 +35,8 @@ class Config:
     max_hypothesis_generations: int = 3  # how many times a niche idea may be re-tried with new parameters
 
     # Circuit breakers
-    max_actions_per_cycle: int = 60         # the engine raises it to len(PLAN) + 10 if set lower
-    max_api_calls_per_cycle: int = 60
+    max_actions_per_cycle: int = 100        # the engine raises it to len(PLAN) + 10 if set lower
+    max_api_calls_per_cycle: int = 200      # a runaway guard; the site publishes several new product pages per cycle
     max_consecutive_errors: int = 5
     task_retry_attempts: int = 3         # tries per task per cycle before it counts as failed
 
@@ -152,6 +152,15 @@ class Config:
     power_assertions: bool = True            # hold off idle sleep while a cycle or webhook is in flight
     schedule_wake: bool = True               # ask pmset to wake the Mac for the next cycle (needs sudo -n)
     digest_push: bool = True                 # one-line daily summary to your phone (needs ntfy_topic)
+    # Product factory (strategies/product_factory.py)
+    product_factory: bool = True             # make new products from slices of the collected postings
+    factory_interval_seconds: int = 600      # one new product this often (the factory worker under supervise)
+    factory_min_rows: int = 20               # a product needs at least this many postings...
+    factory_min_companies: int = 8           # ...from at least this many companies
+    factory_max_age_days: int = 60           # only postings this recent go into a product
+    factory_max_live: int = 500              # most factory products on sale at once
+    factory_retire_days: int = 60            # a product with no sale after this long is retired
+    factory_prices: list[int] = field(default_factory=lambda: [500, 900, 1400])  # cents: <60 rows, <200, larger
     battery_saver: bool = True               # on battery, heavy builds wait until the Mac is plugged in
 
     # Pricing engine
@@ -459,7 +468,8 @@ _FALSE = {"0", "false", "no", "off"}
 
 _LIST_FIELDS = {"shell_allowlist", "lead_sources", "sender_skills", "blocked_recipient_tlds", "network_check_hosts",
                 "blocked_signup_domains"}
-_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix", "dunning_reminder_days"}
+_JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_variant_map", "price_matrix", "dunning_reminder_days",
+                "factory_prices"}
 
 
 def _coerce(raw: str, default: Any, name: str) -> Any:

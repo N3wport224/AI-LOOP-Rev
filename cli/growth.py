@@ -173,6 +173,32 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def factory_main(argv: list[str]) -> int:
+    """`automonetize factory [--now] [--next]` (Phase 148): the product catalog; make one now; preview the next."""
+    from strategies import product_factory as pf
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    config, state, _ = _setup()
+    if "--next" in argv:
+        cand = pf.next_candidate(state, config)
+        print(f"Next: {cand['title']} ({len(cand['rows'])} postings, {cand['companies']} companies)" if cand else
+              "No new slice clears the quality floor yet.")
+        return 0
+    if "--now" in argv:
+        tools = build_toolkit(config, state, CircuitBreaker(1000, 1000, 1000))
+        out = pf.tick(tools, force=True)
+        made = out.get("made")
+        say(GREEN if made else YELLOW, f"✔ Made {made['title']} ({made['rows']} rows, ${made['price_cents'] / 100:.2f}, "
+                                       f"{out['status']})" if made else f"Nothing made: {out.get('why')}")
+    counts = pf.catalog(state)
+    print(f"Catalog: {counts.get('live', 0)} on sale, {counts.get('staged', 0)} waiting for checkout, "
+          f"{counts.get('retired', 0)} retired. One new product every {config.factory_interval_seconds // 60} min.")
+    for r in state._all("SELECT title, rows, status, created_at FROM factory_products ORDER BY created_at DESC LIMIT 10"):
+        print(f"  {r['created_at'][:16].replace('T', ' ')}  {r['status']:<8} {r['rows']:>5} rows  {r['title']}")
+    return 0
+
+
 def audit_main(argv: list[str]) -> int:
     """`automonetize audit` (Phase 144): every self-check; exit 1 if anything failed."""
     from tools.self_audit import run_audit

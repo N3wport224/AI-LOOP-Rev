@@ -96,7 +96,7 @@ class ProductPage:
 
     @property
     def slug(self) -> str:
-        return self.niche if self.kind == "dataset" else f"{self.niche}-{self.kind}"
+        return self.niche if self.kind in ("dataset", "micro") else f"{self.niche}-{self.kind}"
 
 
 def rel_depth(title: str) -> int:
@@ -741,7 +741,7 @@ class SiteBuilder:
             out[f"{p.slug}/radar-badge.svg"] = badge_for(label, p.metrics or {})
             price = f"${p.price_cents / 100:.2f}"
             out[f"{p.slug}/og.svg"] = render_og_svg(p.title, p.metrics or {}, price)
-            png = render_og_png(p.title, p.metrics or {}, price) if cfg.og_images else None
+            png = render_og_png(p.title, p.metrics or {}, price) if cfg.og_images and p.kind != "micro" else None
             if png:
                 out[f"{p.slug}/og.png"] = png
         total_roles = sum(int((p.metrics or {}).get("roles") or 0) for p in pages if p.kind == "dataset")

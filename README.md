@@ -1563,7 +1563,8 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize audit                        # every self-check in one report; exit 1 if anything failed
+* **Phase 113, task timings:** `automonetize factory [--now|--next]       # the product catalog; make a product now; preview the next
+automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
 automonetize mute SOURCE [--days N] | mute --list   # pause alert emails from one source (still logged)
@@ -1684,6 +1685,45 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
 * **Phase 139:** `automonetize report --now` emails today's report right away; `--print` shows it
   in the terminal instead.
 
+## Product factory (Phases 145-149)
+
+The agent no longer builds one product per niche and stops: it keeps making new ones.
+
+* **Phase 145, product ideas:** it takes every job posting collected from every board and slices
+  them into narrower datasets people search for.
+  * Each technology alone, and crossed with a region (US, Europe), remote-only, and senior or
+    junior: "Companies Hiring Rust Engineers in Europe", "Remote Companies Hiring for Senior
+    Kubernetes Engineers".
+  * Ideas are ranked by how many companies they cover, and topics customers asked for go first.
+* **Phase 146, building:** each product is a zip like the main datasets: CSV, Excel CSV, JSON,
+  JSONL, SQL, QUALITY.md, FIELDS.md, TOP20.md and a README. It also gets a 5-row public preview.
+* **Phase 147, publishing:**
+  * a Stripe product and payment link, priced by size (`factory_prices`: $5, $9 or $14);
+  * a page on the site;
+  * delivery like every other dataset.
+* **Phase 148, every 10 minutes:**
+  * Under `automonetize supervise`, a separate `factory` worker (with its own API budget) makes one
+    product every `factory_interval_seconds` (600).
+  * Under `automonetize run`, the `run_factory` task catches up each cycle, up to 6 products.
+  * `automonetize factory` shows the catalog; `--now` makes one immediately; `--next` previews the
+    next one.
+* **Phase 149, quality floor.** Making thin or duplicate products would hurt search ranking and your
+  Stripe account's standing, so a product needs:
+  * at least `factory_min_rows` (20) postings from `factory_min_companies` (8) companies, posted in
+    the last `factory_max_age_days` (60);
+  * to be mostly new: a slice that is 85% the same postings as an existing product is skipped.
+
+  Two more limits keep the catalog worth browsing:
+  * at most `factory_max_live` (500) factory products are on sale at once;
+  * a product with no sale after `factory_retire_days` (60) is retired: its link is deactivated and
+    its page removed.
+
+  When nothing new clears the floor, the factory waits for more postings rather than padding. More
+  job sources (self-discovered ones too) mean more products.
+
+The default caps per cycle are now 100 actions and 200 API calls, so the site can publish the new
+pages as they appear.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -1741,6 +1781,7 @@ and shows its last runs.
 | 12 | `discover_sources` | Find and trial new public job sources before they feed the data. |
 | 15 | `build_intel` | Turn postings into company profiles: stack, open roles, hiring urgency. |
 | 20 | `package_asset` | Build the next dataset version (zip with CSV, JSON, Excel, SQL and reports). |
+| 21 | `run_factory` | Make new products from slices of all postings (catch-up when the factory worker isn't running). |
 | 25 | `publish_listing` | Create or update the product and its Stripe payment link. |
 | 29 | `tune_copy` | Learn which product-page wording sells (copy bandit). |
 | 30 | `publish_showcase` | Publish a 5-record preview with the checkout link (GitHub repo or Gist). |
@@ -2040,7 +2081,7 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `signal_window_iterations` / `pivot_after_iterations` | `12` / `24` | Pivot windows (views+sales / revenue) |
 | `min_hypothesis_days` / `stale_revenue_days` | `10` / `14` | Minimum niche age before a zero-traction pivot; "traction faded" window |
 | `daily_target_cents` | `1000` | The $10.00/day goal |
-| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `45` / `60` / `5` | Circuit breakers (raised to the plan size + 10 when set lower) |
+| `max_actions_per_cycle` / `max_api_calls_per_cycle` / `max_consecutive_errors` | `100` / `200` / `5` | Circuit breakers (raised to the plan size + 10 when set lower) |
 | `storefront_provider` | `auto` | `auto`, `stripe`, `lemonsqueezy` or `gumroad` |
 | `price_tiers` | `[[0,900],[25,1400],[75,1900]]` | Starting one-off price by company count, clamped to $5-$19 |
 | `price_matrix` / `pricing_min_views` / `pricing_window_hours` | `[900,1400,1900]` / `20` / `48` | One-off price experiments |

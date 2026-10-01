@@ -84,6 +84,7 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Upkeep", "Job-source and clock checks", None, None),
     ("Money", "Milestone emails", "owner_reports", None),
     ("Money", "Monthly and yearly books", "bookkeeping", None),
+    ("Products", "Product factory (one new product every 10 minutes)", "product_factory", _live),
     ("Money", "Offer tuning", "offer_tuning", None),
 ]
 
