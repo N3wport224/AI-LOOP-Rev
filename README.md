@@ -2017,6 +2017,21 @@ These run inside `ops_checks` and show in `automonetize doctor` (`agent/scale_ch
 * **Phase 219, scale test:** a test builds a catalog of 1,500 products with 4,500 orders and checks
   that the hot paths stay fast and indexed.
 
+### Audit after Phase 219
+
+This review covered:
+* static analysis with security rules on the new modules;
+* a review of the new public surface: the request form, the library form's page reply, and the
+  removal of site pages;
+* both test suites (Python 3.11 and 3.13) and the simulator;
+* a load test: 150 products made back to back from 5,000 postings across 40 technologies (each
+  under 1 second), then the site built from them (617 files, well under a second).
+
+Fixed:
+* A job board on the 6-hour cadence that failed was retried every cycle instead of waiting its turn.
+* A malformed JSON post to `/v1/requests` answered with a server error; it now gets a 400.
+* Automatic price rises (Phase 212) were missing from the Money tab's price history.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

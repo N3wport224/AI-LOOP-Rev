@@ -92,6 +92,9 @@ def test_a_product_selling_well_moves_up_one_price_step(kit, state, config, cloc
     step = next(p for p in ch.PRICE_STEPS if p > before["price_cents"])
     assert after["price_cents"] == step and after["product_ref"] != before["product_ref"]
     assert transport.calls_to(f"{STRIPE}/payment_links/{before['product_ref']}", "POST")  # the old link is closed
+    from strategies.money_insight import price_history
+
+    assert price_history(state, 1)[0]["new_cents"] == step  # shows in the Money tab
     described = [c for c in transport.calls_to(f"{STRIPE}/products/prod_l", "POST") if b"description=" in (c["body"] or b"")]
     assert described and b"40" in described[-1]["body"]  # Phase 214: the new row count
 

@@ -69,3 +69,15 @@ def test_sources_page_credits_every_board_in_use(config):
     config.lead_sources = ["remoteok", "remotive"]
     page = js.sources_page(config, lambda t, b, d: b)
     assert 'href="https://remotive.com"' in page and "Remote OK" in page and "Jobicy" not in page
+
+
+def test_a_failing_board_also_waits_its_turn(toolkit, state, config, transport, clock, make_hypothesis):
+    config.lead_sources = ["remoteok", "remotive"]
+    transport.add("https://remotive.com/api/remote-jobs", Response(500, "u", b"down", {}))
+    hyp = make_hypothesis(keywords=["rust"])
+    agg = LeadAggregator()
+    agg.run("aggregate_leads", TaskContext(toolkit, hyp, {}))
+    calls = len(transport.calls_to("https://remotive.com/"))
+    assert calls >= 1
+    agg.run("aggregate_leads", TaskContext(toolkit, hyp, {}))
+    assert len(transport.calls_to("https://remotive.com/")) == calls  # not hammered every cycle

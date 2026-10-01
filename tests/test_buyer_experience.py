@@ -96,6 +96,9 @@ def test_requests_feed_demand_and_notify_once(kit, state, config, clock, transpo
         assert r.status == 200 and "once when it&#x27;s on sale" in await r.text()
         bad = await client.post("/v1/requests", data={"request": "x"})
         assert bad.status == 400
+        for junk in (b"[1, 2]", b"{nope"):
+            r = await client.post("/v1/requests", data=junk, headers={"Content-Type": "application/json"})
+            assert r.status == 400
         for _ in range(bx.REQUESTS_PER_IP_HOUR):
             await client.post("/v1/requests", data={"request": "kotlin please"})
         assert (await client.post("/v1/requests", data={"request": "kotlin please"})).status == 429

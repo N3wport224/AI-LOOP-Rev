@@ -394,6 +394,7 @@ class LeadAggregator(Strategy):
             except CircuitOpenError:
                 raise  # budget exhausted: stop the whole task, don't blame the source
             except Exception as exc:  # noqa: BLE001 - one bad source must not sink the others
+                fetched(tools.state, source)  # a rate-limited board waits its turn after a failure too
                 failed_sources.append(source)
                 tools.state.log_error(f"lead_source:{source}", repr(exc))
                 record_parse(tools.state, source, 0, LAST_SHAPE.pop(source, None), error=repr(exc))

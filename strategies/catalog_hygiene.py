@@ -77,6 +77,9 @@ def reprice(tools: Any, asset: dict[str, Any], title: str, summary: str, price: 
     result = tools.storefront.publish(listing, asset)
     if not result.live:
         return None
+    from strategies.money_insight import record_price_change
+
+    record_price_change(tools.state, int(asset["id"]), int(asset["price_cents"]), price)  # shows in the Money tab
     tools.state.log_action(int(tools.state.get("iteration", 0)), None, "reprice", "ok",
                            f"{title}: ${int(asset['price_cents']) / 100:.2f} → ${price / 100:.2f} (selling well)")
     return {"checkout_url": result.checkout_url, "product_ref": result.product_ref, "price_cents": price}

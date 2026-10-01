@@ -200,7 +200,12 @@ def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
         if not limiter.allow(client_ip(request)):
             return web.Response(status=429, text=recovery_page(429, "Too many requests from this network. Try again in an hour."),
                                 content_type="text/html")
-        data = dict(await request.post()) if "json" not in request.headers.get("Content-Type", "") else await request.json()
+        try:
+            data = dict(await request.post()) if "json" not in request.headers.get("Content-Type", "") else await request.json()
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            return web.Response(status=400, text=recovery_page(400, "Send a form or a JSON object."), content_type="text/html")
         try:
             out = await run(record_request, tools.state, tools.config, str(data.get("request") or ""), str(data.get("email") or ""),
                             str(data.get("notify") or "") in ("1", "on", "true"))
