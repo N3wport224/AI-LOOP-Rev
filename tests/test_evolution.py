@@ -509,6 +509,16 @@ def test_unknown_technology_tags_are_learned(state, config, pristine):
     assert re.search(r"(?<![\w+#.])(svelte)(?![\w+#])", "we use Svelte daily", re.I)
 
 
+def test_roles_and_fields_are_never_learned_as_technologies(state, config, pristine):
+    from strategies.b2b_lead_aggregator import POOL_NICHE
+
+    seed_leads(state, n_svelte=0)
+    for i in range(8):  # seen in the wild: these sit next to real tech on many postings
+        state.upsert_lead(f"r{i}", POOL_NICHE, {"title": "Python Engineer", "company": f"R{i}", "description": "Python, AWS",
+                                                "tags": ["web dev", "math", "product manager", "software engineering", "vfx"]})
+    assert diagnose_unknown_tags(state, config, pristine, state.clock()) == []
+
+
 def test_rare_tags_are_not_learned(state, config, pristine):
     seed_leads(state, n_svelte=3)
     assert diagnose_unknown_tags(state, config, pristine, state.clock()) == []

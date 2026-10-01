@@ -186,6 +186,18 @@ CASING = {
     "github actions": "GitHub Actions", "gitlab": "GitLab", "argocd": "Argo CD", "graphql api": "GraphQL", "sqlite": "SQLite",
     "nuxt": "Nuxt", "nuxtjs": "Nuxt", "deno": "Deno", "bun": "Bun", "unity": "Unity", "linux": "Linux", "macos": "macOS",
 }
+# Words that make a tag a role, field or topic rather than a technology ("web dev", "product
+# manager", "software engineering"): any tag containing one is never learned.
+NON_TECH_WORDS = {
+    "dev", "devs", "developer", "developers", "development", "engineer", "engineers", "engineering", "manager", "management",
+    "designer", "design", "analyst", "analytics", "lead", "leader", "head", "director", "product", "products", "math", "maths",
+    "mathematics", "marketing", "sales", "support", "recruiter", "recruiting", "operations", "ops", "admin", "assistant",
+    "consultant", "consulting", "intern", "junior", "senior", "staff", "principal", "remote", "web", "software", "mobile",
+    "game", "games", "vfx", "art", "artist", "animation", "writer", "writing", "editor", "editing", "teacher", "tutor",
+    "finance", "accounting", "legal", "health", "medical", "science", "scientist", "research", "researcher", "business",
+    "customer", "success", "community", "content", "social", "media", "video", "audio", "music", "photo", "photography",
+    "hr", "people", "talent", "copywriter", "copywriting", "seo", "growth", "strategy", "startup", "saas", "ecommerce",
+}
 MIN_COMPANIES = 3
 MIN_TECH_RATIO = 0.6
 MAX_NEW_TAGS = 8
@@ -231,6 +243,7 @@ def diagnose_unknown_tags(state: Any, config: Any, repo: Path, now: datetime) ->
         body = " ".join([lead.get("title") or "", " ".join(tags), (lead.get("description") or "")[:1500]])
         has_tech = bool(fingerprint(body))
         unknown = {t for t in tags if TAG_RE.match(t) and t not in STOP and not t.isdigit()
+                   and not set(re.split(r"[ -]", t)) & NON_TECH_WORDS
                    and not fingerprint(t) and not resolve_tech(t) and tag_pattern(t) not in learned_patterns}
         per_posting.append(unknown)
         bodies.append(body)
