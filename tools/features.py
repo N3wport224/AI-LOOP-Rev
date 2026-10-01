@@ -30,6 +30,12 @@ def _tunnel(cfg: Any, state: Any) -> str | None:
     return None if cfg.lead_capture_base else "a public URL (deploy/tunnel/setup_tunnel.sh)"
 
 
+def _chat(cfg: Any) -> bool:
+    from tools.chat import enabled
+
+    return enabled(cfg)
+
+
 def _imap(cfg: Any, state: Any) -> str | None:
     from tools.inbox import imap_settings
 
@@ -78,6 +84,8 @@ FEATURES: list[tuple[str, str, str | None, Need | None]] = [
     ("Upkeep", "Self-evolution", "enable_autonomous_code_evolution", None),
     ("Upkeep", "Heartbeat", None, lambda c, s: None if c.heartbeat_url else "a ping URL (automonetize heartbeat)"),
     ("Upkeep", "Phone notifications", None, lambda c, s: None if c.ntfy_topic else "a topic (automonetize phone)"),
+    ("Upkeep", "Chat notifications (Slack/Discord)", None,
+     lambda c, s: None if _chat(c) else "a webhook address (automonetize chat <url>)"),
     ("Upkeep", "Email commands", "owner_commands", _imap),
     ("Upkeep", "Daily phone summary", "digest_push", lambda c, s: None if c.ntfy_topic else "a topic (automonetize phone)"),
     ("Upkeep", "Battery saver", "battery_saver", None),

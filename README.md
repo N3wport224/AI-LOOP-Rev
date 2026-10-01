@@ -1569,6 +1569,7 @@ automonetize products                     # every product ranked by revenue
 automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one product, by hand
 automonetize optout [approve ID|reject ID]  # companies asking to be left out of the datasets
 automonetize sources                      # what each job board brought, its speed, any back-off
+automonetize chat WEBHOOK-URL|test         # sales and alerts in Slack or Discord
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2349,6 +2350,24 @@ Two lines of HTML put a dataset on any page (`strategies/widget.py`).
   link, so sales through the card are theirs.
 * **Phase 304, small and quiet:** the script is plain ASCII, stays under 4 KB and makes one request,
   to this site. A test enforces all of this, and the card was checked in headless Chromium.
+
+## Sales and alerts in Slack or Discord (Phases 305-309)
+
+From `tools/chat.py`:
+
+* **Phase 305, one setting:** `chat_webhook_url` (`CHAT_WEBHOOK_URL` in `.env`) is a Slack
+  incoming-webhook or Discord webhook address.
+  * Only those two services are accepted, so a typo can't send notifications elsewhere.
+  * Treat the address like a password.
+* **Phase 306, everything your phone gets:** each sale, alerts, milestones, the daily summary and
+  restarts are also posted to the channel. Email addresses are masked in every notification, phone
+  or chat, since these pass through outside services.
+* **Phase 307, set up and test:** `automonetize chat <webhook-url>` checks the address, saves it and
+  posts a test message. `automonetize chat test` posts another.
+* **Phase 308, never a flood:** at most 30 messages an hour. The next message after a pause says how
+  many were held back.
+* **Phase 309, visible:** `automonetize features` and doctor show whether chat notifications are on
+  and which service is used. The address itself is never printed.
 
 ## Safety and consistency (Phases 140-144)
 

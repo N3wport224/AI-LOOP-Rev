@@ -332,6 +332,37 @@ def sources_main(argv: list[str]) -> int:
     return 0
 
 
+def chat_main(argv: list[str], transport=None) -> int:
+    """`automonetize chat WEBHOOK-URL | test` (Phase 307): Slack or Discord notifications."""
+    from agent.setup_autonomous import load_env_into
+    from agent.tunnel import update_env_file
+    from cli.go_live import restart
+    from tools import build_toolkit
+    from tools.chat import post, service
+    from tools.circuit_breaker import CircuitBreaker
+
+    config, state, _ = _setup()
+    if argv and argv[0] != "test":
+        kind = service(argv[0])
+        if not kind:
+            say(RED, "That isn't a Slack incoming-webhook (https://hooks.slack.com/services/...) or Discord webhook "
+                     "(https://discord.com/api/webhooks/...) address.")
+            return 2
+        config.chat_webhook_url = argv[0].strip()
+        update_env_file(ROOT / ".env", {"CHAT_WEBHOOK_URL": config.chat_webhook_url})
+    elif not service(config.chat_webhook_url):
+        say(YELLOW, "No chat webhook yet: automonetize chat <webhook-url>")
+        return 1
+    tools = build_toolkit(config, state, CircuitBreaker(100, 100, 100), transport=transport, sleep=lambda s: None)
+    ok = post(tools.http, config, "AutoMonetize is connected", "Sales and anything that needs you will show up here.")
+    kind = service(config.chat_webhook_url).title()
+    say(GREEN if ok else YELLOW, f"✔ {kind}: test message sent." if ok else f"{kind}: saved, but the test message didn't go "
+                                                                             "through; check the address in the app.")
+    if argv and argv[0] != "test":
+        restart(load_env_into(ROOT / ".env"))
+    return 0 if ok else 1
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

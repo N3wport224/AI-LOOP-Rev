@@ -56,6 +56,6 @@ def announce(tools: Any, to: str) -> bool:
     for key, subject, body in news:
         tools.dispatcher.send_transactional(Email(to=to, subject=subject, body=body + "\n\nAutoMonetize", kind="delivery"),
                                             audit_key=f"owner:milestone:{key}")
-        push(tools.http, cfg, subject, body.split("\n")[0][:200], tags="tada")
+        push(tools.http, cfg, subject, body.split("\n")[0][:200], tags="tada", state=tools.state)
         state.set(KEY, sorted(set(state.get(KEY) or []) | {key}))
     return bool(news)

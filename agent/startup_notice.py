@@ -48,7 +48,7 @@ def maybe_notify(tools: Any, check: Any = None) -> bool:
         subject = "✅ AutoMonetize is running" if not bad else f"⚠️ AutoMonetize started, {bad} connection problem(s)"
         tools.dispatcher.send_transactional(Email(to=to, subject=subject, body="\n".join(lines), kind="delivery"),
                                             audit_key=f"start:{state.now()}")
-        push(tools.http, cfg, subject.replace("✅ ", "").replace("⚠️ ", ""), connections.summary(conns))
+        push(tools.http, cfg, subject.replace("✅ ", "").replace("⚠️ ", ""), connections.summary(conns), state=tools.state)
         return True
     except Exception as exc:  # noqa: BLE001 - a notice must never stop the first cycle
         state.log_error("startup_notice", f"couldn't send the start notice: {exc!r}")

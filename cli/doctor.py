@@ -207,6 +207,13 @@ class Doctor:
         for name, secs in (scale.get("slow") or {}).items():
             out.append(Finding(f"Task {name}", "warn", f"slow: over {secs / 60:.0f} min on each of its last runs",
                                "it still runs; everything after it waits"))
+        from tools.chat import service as chat_service
+
+        if cfg.chat_webhook_url:  # Phase 309: the service, never the address
+            kind = chat_service(cfg.chat_webhook_url)
+            out.append(Finding("Chat notifications", "ok" if kind else "warn",
+                               f"{kind.title()} webhook set" if kind else "the webhook address isn't a Slack or Discord one",
+                               "" if kind else "automonetize chat <webhook-url>"))
         if ops.get("battery_saving"):
             out.append(Finding("Power", "warn", "on battery: dataset and site builds wait for power", "plug the Mac in"))
         from agent.task_cooldown import resting

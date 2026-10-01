@@ -25,15 +25,28 @@ def enabled(config: Any) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_-]{8,64}", str(getattr(config, "ntfy_topic", "") or "")))
 
 
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def no_emails(text: str) -> str:
+    return _EMAIL.sub("[email]", str(text or ""))
+
+
 def _ascii(text: str) -> str:
     # HTTP headers must be latin-1; keep titles plain.
     return text.encode("ascii", "ignore").decode().strip()[:120]
 
 
-def push(http: Any, config: Any, title: str, message: str, priority: str = "default", tags: str = "") -> bool:
-    """Send one notification. Never raises: returns whether it was accepted."""
+def push(http: Any, config: Any, title: str, message: str, priority: str = "default", tags: str = "",
+         state: Any = None) -> bool:
+    """Send one notification (phone, and Slack/Discord when set: Phase 306). Never raises: returns
+    whether either accepted it."""
+    from tools.chat import post as chat_post
+
+    title, message = no_emails(title), no_emails(message)  # these pass through ntfy, Slack or Discord
+    chatted = chat_post(http, config, title, message, state)
     if not enabled(config):
-        return False
+        return chatted
     headers = {"Title": _ascii(title), "Priority": priority}
     if tags:
         headers["Tags"] = tags
@@ -42,4 +55,4 @@ def push(http: Any, config: Any, title: str, message: str, priority: str = "defa
         http.post(f"{server}/{config.ntfy_topic}", raw_body=message[:1000].encode(), headers=headers, check_robots=False, attempts=2)
         return True
     except Exception:  # noqa: BLE001 - a missed buzz must never fail a sale email or a cycle
-        return False
+        return chatted

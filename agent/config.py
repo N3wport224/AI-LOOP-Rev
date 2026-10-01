@@ -333,6 +333,7 @@ class Config:
 
     # Remote control (Phases 60-64)
     ntfy_topic: str = ""                     # phone notifications via ntfy.sh (`automonetize phone`)
+    chat_webhook_url: str = ""               # Slack or Discord webhook for the same notifications (`automonetize chat`); secret
     ntfy_server: str = ""                    # "" = https://ntfy.sh
     sale_alerts: str = "each"                # each | daily (digest only) | off
     owner_digest: str = "daily"              # daily | weekly (Mondays) | off
@@ -467,6 +468,7 @@ _PLAIN_ENV = {
     "OWNER_EMAIL": "owner_email",
     "HEALTHCHECK_URL": "heartbeat_url",
     "NTFY_TOPIC": "ntfy_topic",
+    "CHAT_WEBHOOK_URL": "chat_webhook_url",
     # Aliases accepted for hand-edited .env files (and the names the GUI shows).
     "STRIPE_API_KEY": "stripe_secret_key",
     "SMTP_HOST": "smtp_host",
