@@ -64,7 +64,7 @@ def log_candidates(gctx) -> list[Path]:
 def build_status(gctx) -> dict[str, Any]:
     from gui.control import probe_webhook
 
-    cfg, state = gctx.config, gctx.state
+    cfg, state = gctx.fresh_config(), gctx.state
     snap = collect_snapshot(state, cfg)
     sup = gctx.controller.status()
     webhook = (gctx.webhook_probe or probe_webhook)(cfg) if sup["running"] else {"healthy": False, "events": {}}

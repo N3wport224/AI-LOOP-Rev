@@ -446,3 +446,14 @@ def test_dashboard_renders_the_growth_panel(config, state):
     out = console.export_text()
     assert "Developer API & Growth Engine" in out and "1 requests today" in out and "1 subscriber" in out
     assert "instant_feed (control)" in out and "python-remote 70% ($29.00)" in out and "Discovered sources" in out
+
+
+def test_status_follows_env_changes_made_outside_the_panel(gui):
+    # `automonetize go-live` edits .env directly; the badges must not keep showing the old mode.
+    from gui.routes.control import build_status
+
+    assert build_status(gui)["dry_run"] is True
+    gui.env_file.write_text(gui.env_file.read_text().replace("DRY_RUN=true", "") + "\nDRY_RUN=false\n")
+    assert build_status(gui)["dry_run"] is False
+    gui.env_file.write_text(gui.env_file.read_text() + "\nSTRIPE_SECRET_KEY='unterminated\n")  # half-written
+    assert build_status(gui)["dry_run"] in (True, False)  # never crashes the status call

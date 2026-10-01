@@ -34,7 +34,24 @@ class GuiContext:
         cfg = Config.load(self.config_path, env=load_env_into(self.env_file))
         self.config = cfg
         self.controller.config = cfg
+        self._env_stamp = self._stamp()
         return cfg
+
+    def _stamp(self) -> tuple[float, int] | None:
+        try:
+            st = self.env_file.stat()
+            return st.st_mtime, st.st_size
+        except OSError:
+            return None
+
+    def fresh_config(self) -> Config:
+        """The config, reloaded if .env changed outside the panel (e.g. `automonetize go-live`)."""
+        if getattr(self, "_env_stamp", None) != self._stamp():
+            try:
+                return self.reload_config()
+            except Exception:  # noqa: BLE001 - a half-written .env: keep showing the last good config
+                return self.config
+        return self.config
 
 
 CTX: web.AppKey[GuiContext] = web.AppKey("gui_context", GuiContext)
