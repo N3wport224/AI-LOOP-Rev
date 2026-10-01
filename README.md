@@ -2632,6 +2632,24 @@ From `strategies/factory_freshness.py`:
 * **Phase 378, in search:** the site's search index carries each product's newest posting date.
 * **Phase 379, in the catalog spreadsheet:** `newest_posting` and `median_posting_age_days` columns.
 
+## Company pages (Phases 380-384)
+
+People search for "<company> hiring"; this gives them a useful page (`strategies/company_pages.py`).
+
+* **Phase 380, which companies:** employers with at least 3 current postings; the 300 with the most
+  get a page. Staffing agencies and companies that asked to be left out never get one.
+* **Phase 381, the page:** `company/<slug>/` shows:
+  * open roles, example titles, locations and remote share;
+  * the technologies they ask for and the newest posting date;
+  * links to up to 10 of their public postings on the original job boards;
+  * the datasets about their technologies.
+* **Phase 382, the index:** `company/` lists them A to Z. The home page links it and the sitemap
+  includes every page.
+* **Phase 383, structured data:** each page carries `Organization` data. There's no `JobPosting` data,
+  because the postings belong to their boards.
+* **Phase 384, always current:** pages are rebuilt with the site. A company that stops hiring loses
+  its page at the next build.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

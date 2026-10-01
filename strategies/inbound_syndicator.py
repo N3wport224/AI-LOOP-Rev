@@ -389,6 +389,10 @@ class InboundSyndicator(Strategy):
 
         extra.update(site_files(pages, tools.state, cfg, lambda title, body, desc, depth: _shell(  # Phases 225-229
             title, body, cfg.site_title, description=desc, depth=depth)))
+        from strategies.company_pages import site_files as company_files
+
+        extra.update(company_files(tools.state, cfg, pages, lambda title, body, desc, depth: _shell(  # Phases 380-384
+            title, body, cfg.site_title, description=desc, depth=depth)))
         from strategies.tech_compare import site_files as compare_files
 
         extra.update(compare_files(tools.state, pages, lambda title, body, desc, depth: _shell(  # Phases 330-334
