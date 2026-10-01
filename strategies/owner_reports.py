@@ -328,6 +328,11 @@ class OwnerReports(Strategy):
             catalog_plan = plan_line(state, cfg)  # Phase 329
             if catalog_plan:
                 lines += ["", catalog_plan]
+            from agent.health_score import weekly_line as health_line
+
+            health = health_line(state)  # Phase 400
+            if health:
+                lines += ["", health]
             from strategies.refund_guard import weekly_line as returns_line
 
             returned = returns_line(state)  # Phase 374

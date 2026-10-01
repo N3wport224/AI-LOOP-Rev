@@ -328,6 +328,10 @@ def report(findings: list[Finding]) -> int:
             print(f"    fix: {f.fix}")
     bad = sum(f.status != "ok" for f in findings)
     say(GREEN if not bad else YELLOW, "\nAll good." if not bad else f"\n{bad} thing(s) to look at.")
+    from agent.health_score import label, score
+
+    value = score(f.status for f in findings)  # Phase 400
+    say(GREEN if value >= 90 else YELLOW if value >= 50 else RED, f"Health score: {value}/100 ({label(value)})")
     return 1 if any(f.status == "fail" for f in findings) else 0
 
 
@@ -345,6 +349,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if msg.startswith("installed") else 1
     say(BOLD, "AutoMonetize health check")
     findings = doc.checks()
+    from agent.health_score import record as record_score
+
+    record_score(state, findings)
     if "--fix" in argv:
         fixes = [f for f in findings if f.status != "ok" and f.auto]
         for f in fixes:

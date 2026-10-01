@@ -2702,6 +2702,16 @@ File writes were already atomic: written to a temporary file, then renamed. This
   download is missing is removed. The factory makes it again when its postings allow.
 * **Phase 399, tested:** tests run three factory runs at once and interrupt a build.
 
+## Health score (Phase 400)
+
+`automonetize doctor` runs dozens of checks; the health score sums them up (`agent/health_score.py`).
+
+* A check that's fine counts fully, a warning counts half and a failure counts nothing, scaled to
+  0-100.
+* Any failure caps the score at 69, so a broken essential can't hide behind many green checks.
+* The score shows at the end of `automonetize doctor`, in the control panel's Health tab, and in
+  Monday's report (the last score).
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

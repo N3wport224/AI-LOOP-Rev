@@ -397,6 +397,7 @@
     $("#quiet-toggle").textContent = quietOn ? "Turn quiet mode off" : "Quiet mode (hold marketing email)";
     $("#quiet-state").textContent = quietOn ? "Marketing email is held; purchases and support still go out." : "";
     const icon = { ok: "✔ ok", warn: "! warn", fail: "✘ fail" };
+    $("#health-score").textContent = d.score ? `Health score: ${d.score.score}/100 (${d.score.label})` : "";
     $("#health-table tbody").replaceChildren(...(d.findings || []).map((f) => el("tr", {},
       el("td", { text: f.name }), el("td", { class: "status-" + f.status, text: icon[f.status] || f.status }),
       el("td", { text: f.detail }), el("td", { text: f.fix || "" }),

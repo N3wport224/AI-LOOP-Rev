@@ -41,7 +41,10 @@ def findings(gctx) -> dict[str, Any]:
         stores = inventory(gctx.state, gctx.fresh_config())  # Phase 394
     except Exception:  # noqa: BLE001 - the inventory must never break the tab
         stores = []
-    return {"findings": out, "quiet": bool(q), "quiet_since": (q or {}).get("since"), "privacy_inventory": stores}
+    from agent.health_score import record as record_score
+
+    return {"findings": out, "quiet": bool(q), "quiet_since": (q or {}).get("since"), "privacy_inventory": stores,
+            "score": record_score(gctx.state, out)}  # Phase 400
 
 
 async def get_health(request: web.Request) -> web.Response:
