@@ -436,7 +436,8 @@ def tick(tools: Any, force: bool = False) -> dict[str, Any]:
     check_integrity(tools)  # Phase 243: a missing download is rebuilt by the refresh just below
     from strategies.posting_hygiene import check_links
 
-    check_links(tools)  # Phase 294: daily
+    if not force:  # a "make one now" (panel, CLI) stays quick: the daily link check waits for the scheduled tick
+        check_links(tools)  # Phase 294
     refreshed = refresh_due(tools)
     last = state.get(LAST)
     if not force and last and state.clock() - datetime.fromisoformat(last) < timedelta(seconds=int(cfg.factory_interval_seconds)):
