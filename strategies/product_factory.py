@@ -411,6 +411,9 @@ def retire_unsold(tools: Any) -> list[str]:
             archive(tools, ref)  # Phase 211: the Stripe product too, best effort
         state.update_asset(int(row["asset_id"]), status="retired")
         state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), row["slug"]))
+        from strategies.factory_insights import set_reason
+
+        set_reason(state, row["slug"], "unsold")  # Phase 337
         retired.append(row["slug"])
     return retired
 

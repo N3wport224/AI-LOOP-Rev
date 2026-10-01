@@ -43,6 +43,9 @@ def take_off_sale(tools: Any, slug: str, reason: str = "") -> None:
     if asset:
         state.update_asset(int(asset["id"]), status="retired")
     state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), slug))
+    from strategies.factory_insights import set_reason
+
+    set_reason(state, slug, "owner" if reason else "missing_download")  # Phase 337
     if reason:
         state.log_action(int(state.get("iteration", 0)), None, "product_retired", "ok", f"{slug}: {reason}")
     else:

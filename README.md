@@ -1574,7 +1574,7 @@ automonetize qa                           # quality checks: downloads, rows, pag
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
-automonetize factory [--now|--next|--types|--csv|--plan]  # the catalog; make one; next; by type; spreadsheet; plan
+automonetize factory [--now|--next|--types|--csv|--plan|--insights]  # the catalog; make one; next; by type; CSV; plan; insights
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
@@ -2460,6 +2460,21 @@ the catalog itself (`strategies/growth_plan.py`):
   previous week.
 * **Phase 334, answers for search engines:** each page carries `FAQPage` data ("Which has more
   openings?", "Which is more often remote?", "Which pays more?"), answered from the same numbers.
+
+## What the catalog teaches (Phases 335-339)
+
+`automonetize factory --insights` and the control panel (`strategies/factory_insights.py`):
+
+* **Phase 335, when products sell:** orders and revenue by the product's age at the sale (first
+  week, weeks 2-4, month 2, older).
+* **Phase 336, time to first sale:** the median days from going on sale to the first order, and the
+  share of products that sold within 14 and 30 days.
+* **Phase 337, why products left:** each retirement records its reason (no sale in time, retired by
+  you, download couldn't be rebuilt), and the reasons are counted.
+* **Phase 338, did price changes work:** for each price change, orders in the 4 weeks before and
+  after ("too early to tell" until 4 weeks have passed).
+* **Phase 339, type by technology:** 90-day revenue for each product type and the eight best
+  technologies.
 
 ## Safety and consistency (Phases 140-144)
 
