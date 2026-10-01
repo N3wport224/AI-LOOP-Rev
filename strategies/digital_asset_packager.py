@@ -177,7 +177,12 @@ class DigitalAssetPackager(Strategy):
                 metrics={"built": False, "version": latest["version"], "product_linked": linked},
             )
 
+        from agent.disk_guard import builds_paused
         from strategies.release_gate import gate
+
+        if builds_paused(tools.state):
+            return TaskResult(ok=True, summary="build paused: the disk is almost full (see doctor)",
+                              metrics={"built": False, "paused": True})
 
         hold = gate(tools.state, cfg, niche, latest, leads)
         if hold:

@@ -88,6 +88,8 @@ PLAN: list[tuple[str, int]] = [
     ("backup_data", 97),
     ("send_heartbeat", 94),
     ("audit_security", 93),
+    ("housekeeping", 92),
+    ("check_disk", 5),  # first: a full disk pauses builds before they start
     ("tune_offers", 68),
     ("process_bounces", 44),
     ("report_owner", 98),
@@ -165,6 +167,12 @@ class Engine:
             from agent.security_audit import SecurityAudit
 
             self.handlers["audit_security"] = SecurityAudit()
+            from agent.housekeeping import Housekeeping
+
+            self.handlers["housekeeping"] = Housekeeping()
+            from agent.disk_guard import DiskGuard
+
+            self.handlers["check_disk"] = DiskGuard()
         self._stop_event = threading.Event()
         if online_check is None:
             from agent.connectivity import is_online

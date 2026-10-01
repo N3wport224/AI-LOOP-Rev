@@ -425,6 +425,15 @@ class StateStore:
             self.conn.close()
             self.closed = True
 
+    def __del__(self) -> None:
+        # A store dropped without close() (a short-lived helper, a test) must not leak its handle:
+        # Python 3.13+ reports unclosed SQLite connections as ResourceWarnings.
+        try:
+            if hasattr(self, "conn"):
+                self.close()
+        except Exception:  # noqa: BLE001 - never raise from a finalizer
+            pass
+
     def now(self) -> str:
         return iso(self.clock())
 

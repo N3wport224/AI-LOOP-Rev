@@ -8,6 +8,10 @@
 * **When:** once a day by the ``backup_data`` task (part of the agent, not of ``strategies/``), and on
   demand with ``automonetize backup``. Kept for ``backup_keep_days`` (14) days.
 * **How:** SQLite's online backup API, so a copy taken while the agent runs is consistent.
+* **Checked:** before the daily backup, ``PRAGMA quick_check`` runs on each database. A failed check
+  raises an alert with the restore command and keeps every old backup (nothing is pruned).
+* **Before risky changes:** self-update and self-evolution take a "pre-update" / "pre-evolution"
+  backup first (``safety_backup``).
 * **Restore:** ``automonetize restore <name>`` stops the agent, keeps a "pre-restore" backup of the
   current state, copies the backup back and starts the agent again.
 """
@@ -41,6 +45,28 @@ def _copy_db(src: Path, dst: Path) -> None:
         source.backup(target)
     source.close()
     target.close()
+
+
+def integrity(path: Path) -> str:
+    """SQLite's quick_check: "ok", or what's wrong."""
+    if not Path(path).exists():
+        return "ok"
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        rows = [r[0] for r in conn.execute("PRAGMA quick_check").fetchall()]
+    except sqlite3.DatabaseError as exc:  # too damaged to even check
+        return str(exc)
+    finally:
+        conn.close()
+    return "ok" if rows == ["ok"] else "; ".join(map(str, rows[:5]))
+
+
+def safety_backup(config: Any, root: Path, now: datetime, label: str) -> Path | None:
+    """A backup before a risky change (self-update, self-evolution). Never raises: returns None on failure."""
+    try:
+        return make_backup(config, root / ".env", root / "automonetize.toml", now, label=label)
+    except Exception:  # noqa: BLE001 - the change is still verified and reversible by git; a backup is extra safety
+        return None
 
 
 def make_backup(config: Any, env_file: Path | None, toml_file: Path | None, now: datetime, label: str = "") -> Path:
@@ -136,6 +162,16 @@ class Backups(Strategy):
         last = state.get("last_backup_at")
         if last and now - datetime.fromisoformat(last) < timedelta(hours=23):
             return TaskResult(True, f"last backup {last[:16]}", {})
+        problems = {db: integrity(Path(cfg.data_dir) / db) for db in DBS}
+        broken = {db: why for db, why in problems.items() if why != "ok"}
+        if broken:
+            # Don't prune: the older backups may be the only healthy copies left.
+            newest = (list_backups(cfg) or [{}])[0].get("name", "")
+            state.log_error("backup", f"database check failed ({broken}). Restore the last good copy with "
+                                      f"`automonetize restore {newest or '<name>'}` (`automonetize backup list` shows them).",
+                            kind="alert")
+            state.set("last_backup_at", now.isoformat(timespec="seconds"))  # alert once a day, not every cycle
+            return TaskResult(True, f"database check failed: {broken}"[:200], {"integrity": "failed"})
         try:
             path = make_backup(cfg, self.workdir / ".env", self.workdir / "automonetize.toml", now)
             removed = prune(cfg, now)

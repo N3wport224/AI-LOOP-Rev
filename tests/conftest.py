@@ -186,6 +186,7 @@ def config(tmp_path: Path) -> Config:
         ],
         network_check_hosts=[],
         auto_update=False,  # never fetch or switch the real checkout from a test (self-update has its own suite)
+        backup_dir=str(tmp_path / "backups"),  # never write into the real home folder
         min_hypothesis_days=0,  # most tests exercise the iteration rules; the age floor has its own tests
         # Phase 1-3 tests were written against this price grid; Phase 4 defaults are tested separately.
         price_tiers=[[0, 500], [25, 900], [75, 1500]],

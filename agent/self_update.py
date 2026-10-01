@@ -207,6 +207,9 @@ class SelfUpdate(Strategy):
             state.set(KEY, data)
             state.log_error("self_update", f"An update ({behind} commit(s)) was not installed: {detail}"[:900], kind="alert")
             return TaskResult(True, data["status"], {"behind": behind, "installed": False})
+        from agent.backup import safety_backup
+
+        safety_backup(cfg, repo_root(cfg), state.clock(), "pre-update")
         try:
             up.switch(head, target)
         except Exception as exc:  # noqa: BLE001

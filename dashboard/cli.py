@@ -1075,14 +1075,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, console: Console | None = None) -> int:
     args = build_parser().parse_args(argv)
     console = console or Console()
-    before = {id(s) for s in StateStore.open_stores()}
+    before = list(StateStore.open_stores())  # the objects, not id()s: a freed store's id can be reused
     try:
         return int(args.func(args, console) or 0)
     finally:
         # Close every database this command opened (directly or through an Engine), checkpointing
         # the WAL so a short-lived CLI call never leaves -wal/-shm growth or open handles behind.
         for store in StateStore.open_stores():
-            if id(store) not in before:
+            if not any(store is b for b in before):
                 try:
                     store.checkpoint()
                 finally:

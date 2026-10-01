@@ -180,6 +180,15 @@ class Doctor:
             out.append(Finding("Heartbeat", "ok" if fresh else "warn",
                                f"last ping {beat[:16]}" if beat else "no ping sent yet",
                                "" if fresh else "check the URL with: automonetize heartbeat <url>"))
+        disk = state.get("disk") or {}
+        if disk:
+            low = disk["free_gb"] < float(cfg.disk_warn_gb)
+            out.append(Finding("Disk space", "warn" if low else "ok", f"{disk['free_gb']:.1f} GB free of {disk['total_gb']:.0f} GB",
+                               "empty the Trash and delete large downloads" if low else ""))
+        from agent.config_check import problems as config_problems
+
+        for p in config_problems(cfg, ROOT / "automonetize.toml"):
+            out.append(Finding("Settings", "warn", p, "fix it in automonetize.toml or control panel → Settings"))
         sec = state.get("security_audit") or {}
         for f in sec.get("findings", []):
             out.append(Finding(f"Security: {f['name']}", "fail" if f["status"] == "fail" else "warn", f["detail"], f["fix"]))

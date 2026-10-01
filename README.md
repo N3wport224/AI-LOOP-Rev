@@ -170,7 +170,7 @@ pip install -e '.[dev]'
 automonetize init          # writes automonetize.toml (commented) and data/agent_state.db
 cp .env.example .env       # secrets go here, never in the TOML
 pip install -e '.[images]'    # optional: Pillow, for PNG OpenGraph cards (SVG badges work without it)
-pytest                     # 766 tests, ~40 s, no network
+pytest                     # 777 tests, ~40 s, no network
 automonetize gui           # optional: enter keys in the browser instead of editing .env
 ```
 
@@ -942,7 +942,7 @@ in the daily report, the control panel (**Stripe balance** card) and `automoneti
   * `automonetize restore NAME` asks you to type RESTORE, stops the agent and saves the current state
     as a "pre-restore" backup. It then restores and starts the agent again.
 
-The plan has 50 tasks now (Phases 20-44 added twenty). An old `automonetize.toml` that pins
+The plan has 52 tasks now (Phases 20-49 added twenty-two). An old `automonetize.toml` that pins
 `max_actions_per_cycle` lower is raised to the plan size + 10 automatically, so no cycle is ever
 cut short.
 
@@ -1202,6 +1202,38 @@ Purchases, receipts, support replies and referral rewards are not marketing and 
   * a full `sk_live_` key. The fix lists the exact permissions for a *restricted* key, which
     limits the damage if a key ever leaks.
 * In sandboxes (tests, simulator, evolution checks) it only reports.
+
+## Long-running reliability (Phases 45-49)
+
+**Phase 45: CI on Linux and macOS** (`.github/workflows/tests.yml`).
+* Every push runs lint, the full suite and the end-to-end rehearsal on a macOS runner and on Linux
+  (Python 3.11 and 3.13).
+* The first run found real Python 3.13 failures: unclosed database handles. They're fixed: stores
+  now close themselves when dropped, and the CLI tracks open stores by object, not `id()`.
+* This matters because self-update (Phase 32) runs the same suite on your Mac before installing
+  anything.
+
+**Phase 46: pre-change backups and integrity** (`agent/backup.py`).
+* Self-update and self-evolution take a "pre-update" / "pre-evolution" backup first.
+* The daily backup first runs `PRAGMA quick_check`. If a database is damaged, you get an alert
+  with the exact restore command, and no old backup is pruned.
+
+**Phase 47: housekeeping** (`agent/housekeeping.py`, task `housekeeping`, daily).
+* Deletes actions after `log_keep_days` (90) and errors after twice that.
+* Deletes handled webhook events after 90 days and the contact log after 400.
+* Gzips the email audit log once it passes 5 MB and keeps the archives for a year.
+* Deletes files of dataset versions beyond the newest `keep_versions` (3), **except any version
+  someone bought** (order recovery re-sends exactly that file). Database rows are never deleted.
+
+**Phase 48: disk guard** (`agent/disk_guard.py`, task `check_disk`, first in every cycle).
+* Below `disk_warn_gb` (2 GB) free: one alert a day naming the biggest agent folders.
+* Below `disk_critical_gb` (0.5 GB): housekeeping runs immediately and new dataset builds pause
+  until there's room. The databases and purchased files are never what fails.
+
+**Phase 49: config check** (`agent/config_check.py`, in `automonetize doctor`).
+* Flags misspelt settings in `automonetize.toml`, with "did you mean …?" (otherwise they're
+  silently ignored).
+* Flags out-of-range values and malformed emails and URLs.
 
 `max_actions_per_cycle` now defaults to 60. The engine raises any lower cap, including a supplied
 toolkit's, to the plan size + 10.
@@ -1505,6 +1537,8 @@ their conventional unprefixed names. Unknown keys are rejected.
 | `promo_daily_cap` | `150` | Marketing emails per day in total |
 | `bounce_pause_rate` | `0.05` | Pause marketing email for a week above this hard-bounce rate |
 | `offer_tuning` | `true` | Adjust offer discounts from measured sales |
+| `log_keep_days` / `keep_versions` | `90` / `3` | Housekeeping: log retention, dataset versions kept (sold ones always kept) |
+| `disk_warn_gb` / `disk_critical_gb` | `2` / `0.5` | Disk guard thresholds |
 | `HEALTHCHECK_URL` (`heartbeat_url`) | empty | Ping URL of an outside check that emails you if the agent stops |
 | `release_gate_max_drop` / `release_gate_hold_days` | `0.5` / `3` | Hold a new version that lost rows |
 | `refresh_offers` / `refresh_after_days` / `refresh_min_new_rows` / `refresh_discount_pct` | `true` / `30` / `25` / `50` | Discounted update offers to past buyers |
@@ -1576,7 +1610,7 @@ email once `dry_run = false`).
 ## Testing
 
 ```bash
-pytest     # 766 tests, ~40 s, no network
+pytest     # 777 tests, ~40 s, no network
 ```
 
 See [AUDIT.md](AUDIT.md) for the operational audit and its 16 regression-tested fixes.

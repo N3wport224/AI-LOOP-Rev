@@ -1,0 +1,128 @@
+"""Housekeeping: keep a Mac that runs for months tidy, without ever losing anything that matters.
+
+``housekeeping`` runs once a day (part of ``agent/``):
+
+* **Logs:** actions older than ``log_keep_days`` (90) and errors older than twice that are deleted
+  (alerts are kept as long as errors). Handled webhook events older than 90 days, and the contact
+  log after 400 days (the offer rules only look back a year), go too.
+* **Email audit log:** once ``dispatched_audit.log`` passes 5 MB it is gzipped to
+  ``dispatched_audit-YYYYMMDD.log.gz``; archives older than a year are deleted.
+* **Old dataset versions:** the newest ``keep_versions`` (3) versions of each dataset are kept;
+  older zip files and version folders are deleted *unless an order points at them* (order
+  recovery re-sends exactly what was bought), or another product still uses the file. The database
+  rows stay, so sales history is complete.
+* **Database:** ``PRAGMA optimize`` keeps queries fast.
+
+Every run records what it removed in kv ``housekeeping``.
+"""
+
+from __future__ import annotations
+
+import gzip
+import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from strategies.base import Strategy, TaskContext, TaskResult
+
+KEY = "housekeeping"
+AUDIT_ROTATE_BYTES = 5 * 1024 * 1024
+ARCHIVE_KEEP_DAYS = 365
+CONTACT_KEEP_DAYS = 400
+WEBHOOK_KEEP_DAYS = 90
+
+
+def prune_logs(state: Any, cfg: Any) -> dict[str, int]:
+    from tools import contact_policy as contact
+
+    now = state.clock()
+
+    def before(days: float) -> str:
+        return (now - timedelta(days=days)).isoformat(timespec="seconds")
+
+    contact.ensure(state)
+    keep = int(cfg.log_keep_days)
+    return {
+        "actions": state._exec("DELETE FROM actions WHERE created_at < ?", (before(keep),)).rowcount,
+        "errors": state._exec("DELETE FROM errors WHERE created_at < ?", (before(2 * keep),)).rowcount,
+        "webhook events": state._exec("DELETE FROM webhook_events WHERE received_at < ? AND status != 'processing'",
+                                      (before(WEBHOOK_KEEP_DAYS),)).rowcount,
+        "contact log": state._exec("DELETE FROM contact_log WHERE sent_at < ?", (before(CONTACT_KEEP_DAYS),)).rowcount,
+    }
+
+
+def rotate_audit(cfg: Any, now: datetime) -> int:
+    from tools.dispatcher import AUDIT_FILE
+
+    data = Path(cfg.data_dir)
+    path = data / AUDIT_FILE
+    rotated = 0
+    if path.exists() and path.stat().st_size > AUDIT_ROTATE_BYTES:
+        target = data / f"{path.stem}-{now:%Y%m%d}{path.suffix}.gz"
+        with open(path, "rb") as src, gzip.open(target, "ab") as dst:
+            shutil.copyfileobj(src, dst)
+        path.write_bytes(b"")
+        target.chmod(0o600)
+        rotated = 1
+    cutoff = now - timedelta(days=ARCHIVE_KEEP_DAYS)
+    for old in data.glob(f"{Path(AUDIT_FILE).stem}-*.gz"):
+        try:
+            if datetime.strptime(old.name.split("-")[-1][:8], "%Y%m%d").replace(tzinfo=now.tzinfo) < cutoff:
+                old.unlink()
+        except ValueError:
+            continue
+    return rotated
+
+
+def prune_versions(state: Any, files: Any, keep: int) -> list[str]:
+    """Delete files of old dataset versions nobody bought and nothing else uses. Returns removed paths."""
+    from strategies.freshness_guard import niche_of
+
+    assets = state.list_assets()  # newest first
+    sold = {r["asset_id"] for r in state._all("SELECT DISTINCT asset_id FROM orders WHERE asset_id IS NOT NULL")}
+    rank: dict[tuple[str, str], int] = {}
+    protected: set[str] = set()
+    candidates = []
+    for a in assets:
+        key = (niche_of(state, a), a["kind"])
+        rank[key] = rank.get(key, 0) + 1
+        if a["kind"] != "lead_directory" or rank[key] <= keep or a["id"] in sold:
+            protected.add(str(a["path"]))
+        else:
+            candidates.append(a)
+    removed = []
+    for a in candidates:
+        path = str(a["path"])
+        if path in protected or not path or not files.exists(path):
+            continue
+        files.resolve(path).unlink()
+        version_dir = f"assets/{niche_of(state, a)}/v{a['version']}"
+        if files.exists(version_dir):
+            shutil.rmtree(files.resolve(version_dir), ignore_errors=True)
+        removed.append(path)
+    return removed
+
+
+class Housekeeping(Strategy):
+    name = "housekeeping"
+    tasks = ("housekeeping",)
+
+    def run(self, task: str, ctx: TaskContext) -> TaskResult:
+        tools, cfg, state = ctx.tools, ctx.tools.config, ctx.tools.state
+        last = (state.get(KEY) or {}).get("at")
+        if last and state.clock() - datetime.fromisoformat(last) < timedelta(hours=23):
+            return TaskResult(True, f"housekeeping done {last[:16]}", {})
+        try:
+            pruned = prune_logs(state, cfg)
+            rotated = rotate_audit(cfg, state.clock())
+            removed = prune_versions(state, tools.files, int(cfg.keep_versions))
+            state._exec("PRAGMA optimize")
+        except Exception as exc:  # noqa: BLE001 - tidying must never stop the agent
+            state.log_error("housekeeping", f"housekeeping failed: {exc!r}")
+            return TaskResult(True, f"housekeeping failed: {exc!r}"[:200], {})
+        record = {"at": state.now(), "rows": pruned, "audit_rotated": rotated, "old_versions": removed}
+        state.set(KEY, record)
+        parts = [f"{n} {k}" for k, n in pruned.items() if n] + ([f"{len(removed)} old version file(s)"] if removed else []) \
+            + (["audit log archived"] if rotated else [])
+        return TaskResult(True, "housekeeping: " + (", ".join(parts) or "nothing to tidy"), {"removed": len(removed), **pruned})

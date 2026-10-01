@@ -13,6 +13,7 @@ code that decides whether and how it edits itself. Order of gates:
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta
@@ -76,6 +77,10 @@ class EvolutionStrategy(Strategy):
             return TaskResult(True, f"{head}; nothing to evolve", metrics)
         hyp = ready[0]
         elog.set_kv("last_attempt_at", state.now())
+        from agent.backup import safety_backup
+
+        if not os.environ.get("AM_NO_SELF_UPDATE"):  # sandboxes never write real backups
+            safety_backup(cfg, repo, state.clock(), "pre-evolution")
         outcome = Evolver(repo, elog, cfg, run=self._run, checks=self._checks, clock=state.clock).attempt(hyp)
         metrics.update(attempt_id=outcome.attempt_id, outcome=outcome.status, commit=outcome.commit_sha)
         state.log_action(int(state.get("iteration", 0)), ctx.hypothesis["id"], f"evolution:{outcome.status}",

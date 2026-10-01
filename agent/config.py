@@ -296,6 +296,12 @@ class Config:
     bounce_pause_rate: float = 0.05          # pause marketing email for a week above this hard-bounce rate
     offer_tuning: bool = True                # adjust offer discounts from their measured sales
 
+    # Housekeeping and disk (Phases 47-48)
+    log_keep_days: int = 90                  # actions kept this long, errors twice as long
+    keep_versions: int = 3                   # dataset versions kept per niche (sold ones always kept)
+    disk_warn_gb: float = 2.0
+    disk_critical_gb: float = 0.5            # below this, housekeeping runs at once and builds pause
+
     # Heartbeat, release gate, refresh offers, launch codes (Phases 28-31)
     heartbeat_url: str = ""                  # e.g. https://hc-ping.com/<uuid>: emails you if the agent goes quiet
     release_gate_max_drop: float = 0.5       # hold a new version that lost more than this share of rows
