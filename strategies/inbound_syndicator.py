@@ -417,6 +417,14 @@ class InboundSyndicator(Strategy):
         for rel, stub in retired_stubs(tools.state, set(out), shell).items():  # Phase 241: old links still land somewhere
             out[rel] = stub
             tools.files.write_text(f"site/{rel}", stub)
+        from tools import site_perf
+
+        before = {rel: body for rel, body in out.items() if rel.endswith((".html", ".xml"))}
+        size_report = site_perf.optimise(out, cfg.pages_base_url)  # Phases 310-314
+        for rel, body in out.items():
+            if rel.endswith((".html", ".xml")) and before.get(rel) != body:
+                tools.files.write_text(f"site/{rel}", body)
+        site_perf.check(tools.state, size_report)
         from tools.site_audit import audit_site, record
 
         audit = audit_site(out, cfg.pages_base_url)

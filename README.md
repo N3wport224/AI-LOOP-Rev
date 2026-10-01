@@ -2369,6 +2369,21 @@ From `tools/chat.py`:
 * **Phase 309, visible:** `automonetize features` and doctor show whether chat notifications are on
   and which service is used. The address itself is never printed.
 
+## A fast, light site at any size (Phases 310-314)
+
+Applied to every site build before it's checked and published (`tools/site_perf.py`).
+
+* **Phase 310, smaller pages:** HTML loses indentation and blank lines. Text inside `pre`,
+  `textarea`, `script` and `style` is left exactly as it is.
+* **Phase 311, a size budget per page:** a page over 200 KB is named in the site audit and raises
+  one alert a day.
+* **Phase 312, faster checkout:** pages with a Stripe checkout link ask the browser to connect to
+  Stripe early.
+* **Phase 313, sitemaps that scale:** past 45,000 addresses the sitemap is split into
+  `sitemap-1.xml`, `sitemap-2.xml` and so on, and `sitemap.xml` becomes their index.
+* **Phase 314, the whole site:** total size and file count are recorded. Past 800 MB (GitHub Pages
+  allows 1 GB) or 50,000 files you get one alert a day.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
