@@ -24,6 +24,7 @@
     <button role="tab" data-tab="products" aria-selected="false">Products</button>
     <button role="tab" data-tab="marketing" aria-selected="false">Marketing <span id="marketing-count" class="muted"></span></button>
     <button role="tab" data-tab="money" aria-selected="false">Money</button>
+    <button role="tab" data-tab="trends" aria-selected="false">Trends</button>
     <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
     <button role="tab" data-tab="logs" aria-selected="false">Logs</button>
     <button id="logout" class="link">Sign out</button>
@@ -183,8 +184,38 @@
       <ul id="leaky-list"></ul>
     </div>
     <div class="card">
+      <h2>Plan and insights</h2>
+      <ul id="factory-plan"></ul>
+      <ul id="factory-insights" class="muted"></ul>
+    </div>
+    <div class="card">
+      <h2>Catalog</h2>
+      <p><label for="catalog-q">Find</label> <input id="catalog-q" type="search" placeholder="title, technology or type" autocomplete="off">
+        <select id="catalog-status" aria-label="Status"><option value="">all</option><option value="live">on sale</option><option value="staged">waiting</option><option value="retired">retired</option></select>
+        <span class="message" id="catalog-message" role="status"></span></p>
+      <div class="table-wrap"><table id="catalog-table"><thead><tr><th>Product</th><th>Type</th><th>Status</th><th>Price</th><th>Orders (90d)</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
       <h2>Products by revenue <span class="muted">(90 days)</span></h2>
       <div class="table-wrap"><table id="products-table"><thead><tr><th>Product</th><th>Orders</th><th>Revenue</th><th>Last sale</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="tab-trends" class="tab" hidden>
+    <div class="card">
+      <h2>Rising technologies</h2>
+      <div class="table-wrap"><table id="trends-rising"><thead><tr><th>Technology</th><th>Change</th><th>Before</th><th>Last 2 weeks</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Cooling</h2>
+      <div class="table-wrap"><table id="trends-falling"><thead><tr><th>Technology</th><th>Change</th><th>Before</th><th>Last 2 weeks</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Kinds of role, countries, pairs <span class="muted">(last 4 weeks)</span></h2>
+      <ul id="trends-families"></ul>
+      <ul id="trends-countries"></ul>
+      <ul id="trends-pairs"></ul>
+      <p class="muted" id="trends-at"></p>
     </div>
   </section>
 

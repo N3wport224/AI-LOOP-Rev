@@ -2545,6 +2545,18 @@ there's something worth making. With `factory_adaptive` on, the factory may go f
   interval.
 * **Phase 359, visible:** doctor and the control panel show the current pace and why.
 
+## The catalog in the control panel (Phases 360-364)
+
+* **Phase 360, trends data:** `GET /api/trends` returns the numbers behind the site's trends page.
+* **Phase 361, a Trends tab:** shows rising and cooling technologies, kinds of role, countries and
+  technology pairs.
+* **Phase 362, a searchable catalog:** the Products tab lists the catalog, searchable by title,
+  technology or type and filtered by status (`GET /api/catalog`).
+* **Phase 363, actions on each product:** pin or unpin, hide or show, rebuild, set a price, or retire
+  (with a confirmation).
+* **Phase 364, plan and insights:** the Products tab shows the catalog plan, what the catalog teaches
+  and the factory's current pace.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

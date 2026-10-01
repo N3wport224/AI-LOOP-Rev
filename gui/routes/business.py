@@ -84,6 +84,51 @@ async def get_products(request: web.Request) -> web.Response:
     return _json(await _run(products, ctx(request)))
 
 
+def catalog_list(gctx: Any, q: str = "", status: str = "") -> dict[str, Any]:
+    """Phase 362: the catalog, searchable (title, slug, technology, type), at most 200 rows."""
+    from strategies.catalog_insight import rows
+    from strategies.product_controls import hidden, pinned
+
+    state = gctx.state
+    q = " ".join(str(q or "").lower().split())[:60]
+    out = []
+    unlisted = hidden(state)
+    for r in reversed(rows(state)):
+        if status and r["status"] != status:
+            continue
+        if q and q not in f"{r['title']} {r['slug']} {r['technology']} {r['type']}".lower():
+            continue
+        out.append({**{k: r[k] for k in ("slug", "title", "type", "technology", "status", "rows", "price_cents", "orders_90d",
+                                         "revenue_cents_90d")},
+                    "pinned": pinned(state, r["slug"]), "hidden": r["slug"] in unlisted})
+        if len(out) >= 200:
+            break
+    return {"items": out}
+
+
+async def get_catalog(request: web.Request) -> web.Response:
+    return _json(await _run(catalog_list, ctx(request), request.query.get("q", ""), request.query.get("status", "")))
+
+
+def trends_data(gctx: Any) -> dict[str, Any]:
+    """Phase 360: the same numbers as the site's trends page."""
+    from strategies.market_trends import trends
+    from strategies.product_factory import label
+
+    t = trends(gctx.state)
+    def rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"tech": label(r["tech"]), "growth_pct": round(r["growth"] * 100), "before": r["before"], "recent": r["recent"]}
+                for r in items[:15]]
+    return {"rising": rows(t.get("rising") or []), "falling": rows(t.get("falling") or []),
+            "families": {k: sum(v[-4:]) for k, v in (t.get("families") or {}).items()},
+            "countries": [list(c) for c in t.get("countries") or []], "pairs": [list(p) for p in t.get("pairs") or []],
+            "at": t.get("at", "")}
+
+
+async def get_trends(request: web.Request) -> web.Response:
+    return _json(await _run(trends_data, ctx(request)))
+
+
 async def get_products_csv(request: web.Request) -> web.Response:
     """Phase 237: the whole catalog as a spreadsheet."""
     from strategies.catalog_insight import catalog_csv
@@ -200,6 +245,7 @@ async def post_affiliate(request: web.Request) -> web.Response:
 
 def routes() -> list[web.RouteDef]:
     return [web.get("/api/products", get_products), web.get("/api/products.csv", get_products_csv),
+            web.get("/api/catalog", get_catalog), web.get("/api/trends", get_trends),
             web.post("/api/products/make", post_make), web.post("/api/products/action", post_action),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),

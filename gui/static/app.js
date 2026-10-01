@@ -65,6 +65,7 @@
     if (name === "products") loadProducts();
     if (name === "marketing") loadMarketing();
     if (name === "money") loadMoney();
+    if (name === "trends") loadTrends();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
   }
 
@@ -253,9 +254,60 @@
     const leaks = d.leaky || [];
     $("#leaky-card").hidden = !leaks.length;
     $("#leaky-list").replaceChildren(...leaks.map((r) => el("li", { text: `${r.title}: ${r.checkouts} checkouts, no sale` })));
+    $("#factory-plan").replaceChildren(...((d.plan && d.plan.lines) || []).map((l) => el("li", { text: l })));
+    $("#factory-insights").replaceChildren(...((d.insights && d.insights.lines) || []).map((l) => el("li", { text: l })));
+    if (d.pace) $("#factory-summary").textContent += ` Now: ${d.pace}.`;
+    loadCatalog();
     $("#products-table tbody").replaceChildren(...(d.leaderboard || []).map((r) => el("tr", {},
       el("td", { text: r.title }), el("td", { text: String(r.orders) }), el("td", { text: money(r.revenue_cents) }),
       el("td", { text: r.never_sold ? "never sold" : r.last_sale }))));
+  }
+
+  // ------------------------------------------------------------------ catalog (Phases 362-363)
+  let catalogTimer = null;
+  async function loadCatalog() {
+    const q = encodeURIComponent($("#catalog-q").value || ""), status = encodeURIComponent($("#catalog-status").value || "");
+    let d;
+    try { d = await api(`/api/catalog?q=${q}&status=${status}`); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const action = (slug, act, text) => el("button", { "data-product": slug, "data-act": act, text });
+    $("#catalog-table tbody").replaceChildren(...(d.items || []).map((r) => el("tr", {},
+      el("td", { text: r.title + (r.pinned ? " (pinned)" : "") + (r.hidden ? " (hidden)" : "") }), el("td", { text: r.type }),
+      el("td", { text: r.status }), el("td", { text: money(r.price_cents) }), el("td", { text: String(r.orders_90d) }),
+      el("td", {}, ...(r.status === "live" ? [
+        action(r.slug, r.pinned ? "unpin" : "pin", r.pinned ? "Unpin" : "Pin"), " ",
+        action(r.slug, r.hidden ? "show" : "hide", r.hidden ? "Show" : "Hide"), " ",
+        action(r.slug, "rebuild", "Rebuild"), " ", action(r.slug, "price", "Price…"), " ", action(r.slug, "retire", "Retire")] : [])))));
+  }
+
+  async function productAction(slug, act) {
+    let value = "";
+    if (act === "price") {
+      value = window.prompt("New price (e.g. $9 or 900 cents):", "") || "";
+      if (!value) return;
+    }
+    if (act === "retire" && !window.confirm("Close this product's checkout and take it off the site?")) return;
+    const msg = $("#catalog-message");
+    msg.textContent = "Working…";
+    const r = await api("/api/products/action", { method: "POST", body: { slug, action: act, value } });
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+    loadCatalog();
+  }
+
+  // ------------------------------------------------------------------ trends (Phases 360-361)
+  async function loadTrends() {
+    let d;
+    try { d = await api("/api/trends"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const row = (r) => el("tr", {}, el("td", { text: r.tech }), el("td", { text: (r.growth_pct > 0 ? "+" : "") + r.growth_pct + "%" }),
+      el("td", { text: String(r.before) }), el("td", { text: String(r.recent) }));
+    $("#trends-rising tbody").replaceChildren(...(d.rising || []).map(row));
+    $("#trends-falling tbody").replaceChildren(...(d.falling || []).map(row));
+    $("#trends-families").replaceChildren(...Object.entries(d.families || {}).map(([k, v]) => el("li", { text: `${k}: ${v} new postings` })));
+    $("#trends-countries").replaceChildren(...(d.countries || []).map((c) => el("li", { text: `${c[0]}: ${c[1]}` })));
+    $("#trends-pairs").replaceChildren(...(d.pairs || []).map((p) => el("li", { text: `${p[0]}: ${p[1]} postings` })));
+    $("#trends-at").textContent = d.at ? "Updated " + shortTime(d.at) : "No dated postings yet.";
   }
 
   async function makeProduct() {
@@ -586,6 +638,12 @@
     });
     $("#health-refresh").addEventListener("click", loadHealth);
     $("#factory-make").addEventListener("click", makeProduct);
+    $("#catalog-q").addEventListener("input", () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(loadCatalog, 250); });
+    $("#catalog-status").addEventListener("change", loadCatalog);
+    $("#catalog-table").addEventListener("click", (e) => {  // delegated: the table is re-rendered
+      const b = e.target.closest("[data-product]");
+      if (b) productAction(b.dataset.product, b.dataset.act);
+    });
     $("#drafts-list").addEventListener("click", (e) => {
       const b = e.target.closest("[data-mark]");
       if (b) markDraft(b.dataset.id, b.dataset.mark);
