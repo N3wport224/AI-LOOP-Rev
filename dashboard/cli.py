@@ -831,6 +831,18 @@ def cmd_quiet(args: argparse.Namespace, console: Console) -> int:
     return quiet_main(([args.mode] if args.mode else []) + (["--days", str(args.days)] if args.days else []))
 
 
+def cmd_forecast(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import forecast_main
+
+    return forecast_main([])
+
+
+def cmd_price_history(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import price_history_main
+
+    return price_history_main([])
+
+
 def cmd_deps(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import deps_main
 
@@ -1122,6 +1134,10 @@ def build_parser() -> argparse.ArgumentParser:
     ti = sub.add_parser("timings", help="how long each task takes (runs, average, slowest) over the last days")
     ti.add_argument("--days", type=int, default=7)
     ti.set_defaults(func=cmd_timings)
+    fc = sub.add_parser("forecast", help="where this month's revenue is heading at the recent pace")
+    fc.set_defaults(func=cmd_forecast)
+    ph2 = sub.add_parser("price-history", help="every price change, newest first")
+    ph2.set_defaults(func=cmd_price_history)
     de = sub.add_parser("deps", help="check the installed libraries are new enough for this version")
     de.set_defaults(func=cmd_deps)
     cd = sub.add_parser("config-docs", help="every setting with its default and what it does, read from the code")

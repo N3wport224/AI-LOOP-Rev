@@ -240,6 +240,7 @@ class OwnerReports(Strategy):
         since = (state.clock() - timedelta(hours=24)).isoformat(timespec="seconds")
         problems = grouped_problems(state, since)
         cycles = int(state._one("SELECT COUNT(DISTINCT cycle) AS n FROM actions WHERE created_at >= ?", (since,))["n"])
+        from strategies.money_insight import describe_forecast, forecast
         from strategies.owner_todo import as_text as todo_text, todo
 
         owner_items = todo(state, cfg)
@@ -249,6 +250,7 @@ class OwnerReports(Strategy):
             f"Last 7 days: {money(week)} net · MRR {money(mrr)}",
             describe(state.get("stripe_finance")),
             describe_pace(state.get("goal_pace")),
+            describe_forecast(forecast(state, cfg)),
             f"Agent: {cycles} cycles in the last 24 hours",
             "",
             f"On sale ({len(products)}):" if products else "On sale: nothing yet. Run `automonetize go-live` (see the README).",
@@ -289,6 +291,11 @@ class OwnerReports(Strategy):
             asks = request_summary(state)
             if asks:
                 lines += ["", asks]
+            from strategies.money_insight import abandoned, describe_abandoned, describe_trends, niche_trends
+
+            for line in (describe_trends(niche_trends(state)), describe_abandoned(abandoned(state))):
+                if line:
+                    lines += ["", line]
             from tools.timings import describe as describe_timings
             from tools.timings import timings
 

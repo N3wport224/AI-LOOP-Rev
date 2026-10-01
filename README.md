@@ -1563,7 +1563,9 @@ Two changes elsewhere:
   `digest_push = false`.
 * **Phase 112, quiet for a while:** `automonetize quiet on --days 7` holds marketing email for a
   week, then lets it go out again by itself.
-* **Phase 113, task timings:** `automonetize timings [--days N]` shows how long each task takes.
+* **Phase 113, task timings:** `automonetize forecast                     # where this month is heading at the recent pace
+automonetize price-history                # every price change, newest first
+automonetize timings [--days N]` shows how long each task takes.
   Monday's report names the three slowest.
 * **Phase 114, milestones:** you get one email (and a phone buzz) for each milestone, sent once:
   * your first sale;
@@ -1630,6 +1632,19 @@ consistency checks, and both test suites (Python 3.11 and 3.13). Fixed:
   security reports and expires after a year; every build refreshes it.
   * It's only built when a contact address is set.
   * A `.nojekyll` file makes GitHub Pages serve it.
+
+## Money insight (Phases 125-129)
+
+* **Phase 125, forecast:** the daily report says where the month is heading, at the last 14 days'
+  pace, against the month's goal. `automonetize forecast` shows the same.
+* **Phase 126, price history:** every price change is recorded, whether the pricing strategy made
+  it or you did. `automonetize price-history` lists them.
+* **Phase 127, refund guard:** if more than `refund_alert_rate` (10%) of the last 30 days' orders
+  were refunded or disputed (with at least 5 orders), "Look into refunds" goes on the to-do list.
+* **Phase 128, abandoned checkouts:** Monday's report counts checkouts started but not paid in the
+  last week, and what they were worth.
+* **Phase 129, niche trends:** Monday's report compares each niche's last 14 days with the 14
+  before.
 
 ## Autonomous code evolution (`agent/evolution/`, opt-in)
 

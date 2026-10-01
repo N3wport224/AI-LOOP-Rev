@@ -303,6 +303,7 @@ class Config:
     payout_watch_days: int = 30              # alert if money sits in Stripe this long without a payout
 
     # Site trust (Phases 80-84)
+    refund_alert_rate: float = 0.10          # to-do when more than this share of 30 days' orders is refunded
     refund_policy_days: int = 14             # stated on the refunds page and in the FAQ
     google_site_verification: str = ""       # the code Google Search Console gives you
     bing_site_verification: str = ""         # the code Bing Webmaster Tools gives you

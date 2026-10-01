@@ -173,6 +173,29 @@ def export_all_main(argv: list[str]) -> int:
     return 0
 
 
+def forecast_main(argv: list[str]) -> int:
+    """`automonetize forecast` (Phase 125)."""
+    from strategies.money_insight import describe_forecast, forecast
+
+    config, state, _ = _setup()
+    print(describe_forecast(forecast(state, config)))
+    return 0
+
+
+def price_history_main(argv: list[str]) -> int:
+    """`automonetize price-history` (Phase 126)."""
+    from strategies.money_insight import money, price_history
+
+    _, state, _ = _setup()
+    rows = price_history(state)
+    if not rows:
+        print("No price changes recorded yet.")
+    for r in rows:
+        print(f"{r['at'][:16].replace('T', ' ')}  {r['title'] or 'asset ' + str(r['asset_id'])}: "
+              f"{money(r['old_cents'])} → {money(r['new_cents'])}")
+    return 0
+
+
 def deps_main(argv: list[str]) -> int:
     """`automonetize deps` (Phase 115)."""
     from tools.deps import FIX, check, describe, requirements

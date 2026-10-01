@@ -758,8 +758,16 @@ class StateStore:
             raise ValueError(f"cannot update asset fields {sorted(bad)}")
         if not fields:
             return
+        old_price = None
+        if "price_cents" in fields:
+            row = self._one("SELECT price_cents FROM assets WHERE id = ?", (asset_id,))
+            old_price = row["price_cents"] if row else None
         cols = ", ".join(f"{k} = ?" for k in fields)
         self._exec(f"UPDATE assets SET {cols} WHERE id = ?", (*fields.values(), asset_id))
+        if old_price is not None:
+            from strategies.money_insight import record_price_change
+
+            record_price_change(self, asset_id, old_price, int(fields["price_cents"]))
 
     def asset_for_product(self, product_ref: str) -> dict[str, Any] | None:
         """The newest asset carrying ``product_ref``, only if the ref is unambiguous across hypotheses.

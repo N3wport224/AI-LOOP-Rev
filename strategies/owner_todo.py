@@ -90,6 +90,13 @@ def todo(state: Any, cfg: Any) -> list[dict[str, Any]]:
         if gone:
             add(3, "Re-run the tunnel setup", f"download and rating links ({', '.join(gone)}) don't reach the agent yet", 2,
                 "bash deploy/tunnel/setup_tunnel.sh <your hostname>")
+    from strategies.money_insight import refund_problem
+
+    refunds = refund_problem(state, cfg)
+    if refunds:
+        add(3, "Look into refunds", f"{refunds['refunded']} of {refunds['orders']} orders in 30 days were refunded or disputed "
+            f"({refunds['rate'] * 100:.0f}%); usually one dataset has a problem", 15,
+            "automonetize orders list --status refunded, then read the buyers' messages")
     from strategies.ratings import unhappy
 
     sad = unhappy(state)
