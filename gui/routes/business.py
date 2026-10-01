@@ -59,7 +59,14 @@ def products(gctx: Any) -> dict[str, Any]:
     return {"catalog": pf.catalog(state), "interval_minutes": int(cfg.factory_interval_seconds) // 60,
             "factory_on": bool(cfg.product_factory),
             "next": {"title": cand["title"], "rows": len(cand["rows"]) if cand.get("rows") else 0} if cand else None,
-            "leaderboard": leaderboard(state)[:30], "leaky": leaky(state)}
+            "leaderboard": leaderboard(state)[:30], "leaky": leaky(state), "plan": _plan(state, cfg)}
+
+
+def _plan(state: Any, cfg: Any) -> dict[str, Any]:
+    from strategies.growth_plan import describe, plan
+
+    p = plan(state, cfg)
+    return {**p, "lines": describe(p)}
 
 
 async def get_products(request: web.Request) -> web.Response:

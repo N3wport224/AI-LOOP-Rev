@@ -1574,7 +1574,7 @@ automonetize qa                           # quality checks: downloads, rows, pag
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
-automonetize factory [--now|--next|--types|--csv]  # the catalog; make one now; preview the next; by type; spreadsheet
+automonetize factory [--now|--next|--types|--csv|--plan]  # the catalog; make one; next; by type; spreadsheet; plan
 automonetize audit                        # every self-check in one report; exit 1 if anything failed
 automonetize explain TASK                 # what a task does and its last runs
 automonetize what-changed [--days N]      # settings, prices, versions, updates, resting tasks, mutes
@@ -2418,6 +2418,25 @@ One subscription for everything about a technology (`strategies/tech_passes.py`)
 * **Phase 323, offered where it matters:** product pages about the technology show "Every dataset on
   this technology, updated weekly: $19.00/month" next to their own price.
 * **Phase 324, counted:** Monday's report shows pass subscribers and their monthly revenue.
+
+## The catalog plan (Phases 325-329)
+
+Goal pacing (`automonetize pace`) says how far the last week is from your daily target. This looks at
+the catalog itself (`strategies/growth_plan.py`):
+
+* **Phase 325, what a product earns:** revenue per product per day over the last 30 days, from factory
+  products at least 7 days old.
+* **Phase 326, where it's heading:** the catalog and its daily revenue in 30 and 90 days, at the
+  factory's pace over the last week (made minus retired), capped at `factory_max_live`.
+* **Phase 327, what it takes:** how many products the daily target needs at today's earnings, and how
+  many days that is at the current pace.
+  * It says plainly when the cap or a stalled catalog makes the target unreachable.
+  * It then points at the other lever: earning more per product.
+* **Phase 328, where to focus:** product types earning at least twice the average per product are
+  named. So are types that sold nothing from 5 or more products in 30 days, with the
+  `factory_types` line to stop making them. This is advice only; nothing changes by itself.
+* **Phase 329, where you see it:** `automonetize factory --plan`, a line in Monday's report, and the
+  control panel's Products tab.
 
 ## Safety and consistency (Phases 140-144)
 

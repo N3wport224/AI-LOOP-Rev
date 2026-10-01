@@ -899,7 +899,8 @@ def cmd_factory(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import factory_main
 
     return factory_main((["--now"] if args.now else []) + (["--next"] if args.next else [])
-                        + (["--types"] if args.types else []) + (["--csv"] if args.csv else []))
+                        + (["--types"] if args.types else []) + (["--csv"] if args.csv else [])
+                        + (["--plan"] if args.plan else []))
 
 
 def cmd_audit(args: argparse.Namespace, console: Console) -> int:
@@ -1270,11 +1271,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("rest", nargs="*")
     sp.set_defaults(func=cmd_sponsor)
     fa = sub.add_parser("factory", help="the product factory's catalog; --now makes one product now, --next previews it, "
-                                        "--types shows results by product type, --csv exports the catalog")
+                                        "--types shows results by product type, --csv exports the catalog, --plan the growth plan")
     fa.add_argument("--now", action="store_true")
     fa.add_argument("--next", action="store_true")
     fa.add_argument("--types", action="store_true")
     fa.add_argument("--csv", action="store_true")
+    fa.add_argument("--plan", action="store_true")
     fa.set_defaults(func=cmd_factory)
     au = sub.add_parser("audit", help="every self-check in one report: security, settings, libraries, tunnel, site, backups")
     au.set_defaults(func=cmd_audit)

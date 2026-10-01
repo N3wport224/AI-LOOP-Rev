@@ -411,6 +411,12 @@ def factory_main(argv: list[str]) -> int:
     from tools.circuit_breaker import CircuitBreaker
 
     config, state, _ = _setup()
+    if "--plan" in argv:  # Phase 329
+        from strategies.growth_plan import describe as describe_plan, plan
+
+        for line in describe_plan(plan(state, config)):
+            print(line)
+        return 0
     if "--types" in argv:
         from strategies.catalog_insight import describe_types
 
