@@ -293,12 +293,16 @@ class Config:
             values.update(raw.get("automonetize", raw))
 
         known = {f.name: f for f in fields(cls)}
+        prefixed: set[str] = set()
         for name, f in known.items():
             key = ENV_PREFIX + name.upper()
             if key in env:
                 values[name] = _coerce(env[key], None if f.default is MISSING else f.default, name)
+                prefixed.add(name)
         for env_key, name in _PLAIN_ENV.items():
-            if env_key in env and name not in values:
+            # Conventional names (.env, the GUI) override the TOML file, as the precedence order says;
+            # an AUTOMONETIZE_* variable still wins, and a blank .env line never wipes a TOML value.
+            if env_key in env and name not in prefixed and (env[env_key].strip() or name not in values):
                 values[name] = _coerce(env[env_key], known[name].default, name)
 
         unknown = set(values) - set(known)

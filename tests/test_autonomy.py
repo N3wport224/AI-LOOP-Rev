@@ -815,3 +815,17 @@ def test_env_parser_reads_inline_comments_like_the_shell():
     assert env == {"A": "", "B": "#literal", "C": "value", "D": "", "E": "quoted # kept", "F": "x#y"}
     example = parse_env((Path(__file__).resolve().parents[1] / ".env.example").read_text())
     assert example["STRIPE_WEBHOOK_SECRET"] == "" and example["PUBLIC_WEBHOOK_URL"] == ""
+
+
+def test_env_values_override_the_blank_toml_template(tmp_path):
+    from agent.config import Config
+
+    # A regression: `automonetize init` writes smtp_host = "" etc., and those blanks used to
+    # shadow the SMTP/CAN-SPAM values saved to .env from the control panel.
+    cfg_file = tmp_path / "a.toml"
+    cfg_file.write_text('[automonetize]\nsmtp_host = ""\nsender_postal_address = ""\nsmtp_port = 2525\n')
+    cfg = Config.load(cfg_file, env={"SMTP_HOST": "smtp.gmail.com", "CAN_SPAM_POSTAL_ADDRESS": "1 Main St, Springfield",
+                                     "SMTP_PORT": ""})
+    assert cfg.smtp_host == "smtp.gmail.com" and cfg.sender_postal_address == "1 Main St, Springfield"
+    assert cfg.smtp_port == 2525  # a blank .env line keeps the TOML value
+    assert Config.load(cfg_file, env={"SMTP_HOST": "a.example", "AUTOMONETIZE_SMTP_HOST": "b.example"}).smtp_host == "b.example"
