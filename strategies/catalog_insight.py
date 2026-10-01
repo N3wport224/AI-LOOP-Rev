@@ -11,7 +11,7 @@
 * **Phase 238, weekly line:** Monday's report says how many products were made, retired and
   repriced in the past week and which type earns most per product.
 * **Phase 239, choose the product types:** ``factory_types`` lists the types the factory makes
-  (default: all of ``product_types.TYPES``). Leave one out to stop making it; what's on sale stays
+  (empty, the default: every kind in ``product_types.TYPES``). Leave one out to stop making it; what's on sale stays
   on sale and keeps refreshing.
 """
 
@@ -64,7 +64,9 @@ def by_type(state: Any) -> list[dict[str, Any]]:
             g[r["status"]] += 1
         g["orders"] += r["orders_90d"]
         g["revenue_cents"] += r["revenue_cents_90d"]
-    out = [{"type": t, "name": TYPE_NAMES.get(t, t), **g, "per_product_cents": g["revenue_cents"] // max(1, g["live"] + g["retired"])}
+    from strategies.product_kinds import KINDS
+
+    out = [{"type": t, "name": TYPE_NAMES.get(t) or (KINDS[t].display if t in KINDS else t), **g, "per_product_cents": g["revenue_cents"] // max(1, g["live"] + g["retired"])}
            for t, g in groups.items()]
     return sorted(out, key=lambda r: (-r["per_product_cents"], -r["live"], r["type"]))
 

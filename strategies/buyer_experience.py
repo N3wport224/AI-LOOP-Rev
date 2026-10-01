@@ -220,7 +220,9 @@ def mount(app: Any, tools: Any, run: Any, client_ip: Any, limiter: Any) -> None:
 
 
 def file_list_html(kind: str) -> str:
-    files = FILE_LIST.get(kind) or []
+    from strategies.product_kinds import KINDS
+
+    files = FILE_LIST.get(kind) or (KINDS[kind].files if kind in KINDS else [])
     if not files:
         return ""
     return "<p class=\"muted\"><b>In the download:</b> " + ", ".join(html.escape(f) for f in files) + "</p>"

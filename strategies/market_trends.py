@@ -90,8 +90,11 @@ def trends(state: Any, force: bool = False) -> dict[str, Any]:
         return cached
     from strategies.b2b_lead_aggregator import POOL_NICHE
 
-    counts = weekly_counts(state.leads_for_niche(POOL_NICHE), now)
-    out = {"at": state.now(), "counts": counts, **classify(counts)}
+    leads = state.leads_for_niche(POOL_NICHE)
+    counts = weekly_counts(leads, now)
+    from strategies.kinds_roles import family_counts
+
+    out = {"at": state.now(), "counts": counts, "families": family_counts(leads, now, WEEKS), **classify(counts)}
     state.set(KEY, out)
     return out
 
@@ -123,9 +126,20 @@ def trends_page(state: Any, shell: Any) -> str:
             f"{MIN_RECENT} postings in the last two weeks and up {round(RISE * 100)}% or more on the two weeks before.</p>"
             "<h2>Rising</h2>" + items(t.get("rising") or [], "+") + "<h2>Cooling</h2>" + items(t.get("falling") or [], "−")
             + "<h2>The busiest technologies</h2><div style=\"overflow-x:auto\"><table><thead><tr><th>Technology</th>" + head
-            + "</tr></thead><tbody>" + rows + f"</tbody></table></div><p class=\"muted\">Updated {html.escape(t['at'][:10])}.</p>")
+            + "</tr></thead><tbody>" + rows + "</tbody></table></div>" + _families_table(t.get("families") or {}, head)
+            + f"<p class=\"muted\">Updated {html.escape(t['at'][:10])}.</p>")
     return shell("Hiring trends by technology", body, "Which technologies companies are hiring for more, and less, week by week, "
                                                       "from public job postings.")
+
+
+def _families_table(families: dict[str, list[int]], head: str) -> str:
+    """Phase 249: new postings per role family, week by week."""
+    if not families:
+        return ""
+    rows = "".join(f"<tr><td>{html.escape(name)}</td>" + "".join(f"<td>{n}</td>" for n in weeks) + "</tr>"
+                   for name, weeks in sorted(families.items(), key=lambda kv: (-sum(kv[1]), kv[0])))
+    return ("<h2>By kind of role</h2><div style=\"overflow-x:auto\"><table><thead><tr><th>Role</th>" + head
+            + "</tr></thead><tbody>" + rows + "</tbody></table></div>")
 
 
 # ------------------------------------------------------------------ Phase 223

@@ -318,6 +318,8 @@ def build(tools: Any, cand: dict[str, Any]) -> dict[str, Any]:
 
 
 def _describe(filters: dict[str, str]) -> str:
+    if filters.get("describe"):  # Phases 245-269: kinds describe their own postings
+        return str(filters["describe"])
     bits = [f"roles mentioning {label(filters['tech'])}"]
     if filters.get("level"):
         bits.append(f"{filters['level']} level")

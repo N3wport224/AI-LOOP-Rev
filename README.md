@@ -2107,7 +2107,7 @@ What the factory is making, and what of it sells (`strategies/catalog_insight.py
 * **Phase 238, weekly line:** Monday's report says how many products were made, retired and
   repriced in the past week, and which type earns most per product.
 * **Phase 239, choose the product types:** `factory_types` lists the types the factory makes
-  (default: all six).
+  (default: empty, meaning every type, including the ones added later).
   * Leave one out to stop making it.
   * What's already on sale stays on sale and keeps refreshing.
 
@@ -2151,6 +2151,26 @@ Fixed:
   It is now taken off sale an hour later, with an alert.
 * The "What's new" page linked retired products, whose pages are gone. They are now named without
   a link.
+
+## Role families (Phases 245-249)
+
+New product types run on a small shared framework (`strategies/product_kinds.py`). Each type
+registers there and the factory rotates, refreshes and retires it like the others. This batch adds
+products by kind of job (`strategies/kinds_roles.py`):
+
+* **Phase 245, role families:** a posting's title puts it in one or more families, matched on whole
+  words only:
+  * AI & Machine Learning, Data, DevOps & SRE, Security;
+  * Mobile, Frontend, Backend, QA & Testing;
+  * Engineering Management.
+* **Phase 246, role datasets** (`role-<family>`): every current posting in a family, e.g. "Companies
+  Hiring AI & Machine Learning Engineers".
+* **Phase 247, by region** (`role-<family>-us|europe|remote`): the same, narrowed to a region when
+  there are enough postings.
+* **Phase 248, top employers by family** (`role-employers-<family>`, $9): one row per company,
+  ranked by open roles (at least 10 companies).
+* **Phase 249, family trends:** the trends page also shows new postings per role family, week by
+  week.
 
 ## Safety and consistency (Phases 140-144)
 

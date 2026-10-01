@@ -28,7 +28,9 @@ from datetime import datetime, timedelta
 from statistics import median, quantiles
 from typing import Any
 
-TYPES = ("slice", "salary", "top", "remote_first", "fast_hiring", "pack")
+from strategies.product_kinds import KINDS  # noqa: E402 - Phases 245-269: more kinds, registered there
+
+TYPES = ("slice", "salary", "top", "remote_first", "fast_hiring", "pack") + tuple(KINDS)
 TURN = "factory_turn"
 SALARY_MIN_ROWS = 15
 TOP_MIN_COMPANIES = 25
@@ -268,7 +270,8 @@ def _build_fast(cand: dict[str, Any], cfg: Any, now: datetime) -> dict[str, Any]
     return build_fast_hiring(cand, cfg, now)
 
 
-BUILDERS = {"salary": build_salary, "top": build_company_list, "remote_first": build_company_list, "fast_hiring": _build_fast}
+BUILDERS = {"salary": build_salary, "top": build_company_list, "remote_first": build_company_list, "fast_hiring": _build_fast,
+            **{name: kind.build for name, kind in KINDS.items()}}
 
 
 # ------------------------------------------------------------------ rotation
@@ -284,6 +287,9 @@ def all_candidates(state: Any, cfg: Any) -> dict[str, list[dict[str, Any]]]:
                "pack": pack_candidates(state)}
     for kind in ("salary", "top", "remote_first", "fast_hiring", "pack"):
         by_type[kind].sort(key=lambda c: (-c["score"], c["slug"]))
+    from strategies.product_kinds import all_candidates as kind_candidates
+
+    by_type.update(kind_candidates(tagged, cfg, state))
     rising = rising_techs(state)  # Phase 223: within each type, rising technologies first (slices: a score bonus)
     return {kind: cands if kind == "slice" else favour_rising(cands, rising) for kind, cands in by_type.items()}
 
