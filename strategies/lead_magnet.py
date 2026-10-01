@@ -364,7 +364,8 @@ def dossier_links(config: Any, signals: list[dict[str, Any]], email: str, live: 
 
 
 def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, Any]], links: dict[str, str],
-                 unsubscribe: str, dossiers: dict[str, str] | None = None) -> tuple[str, str, str]:
+                 unsubscribe: str, dossiers: dict[str, str] | None = None, extra_text: list[str] | None = None,
+                 extra_html: str = "") -> tuple[str, str, str]:
     dossiers = dossiers or {}
     price = f"${config.dossier_price_cents / 100:.0f}"
     label = niche_title(niche)
@@ -381,6 +382,7 @@ def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, A
         text += ["", f"Every company, every week ({links['subscription_price']}/month): {links['subscription']}"]
     if links.get("dataset"):
         text += [f"The full dataset now ({links['dataset_price']}): {links['dataset']}"]
+    text += list(extra_text or [])  # Phase 183: new datasets this week
     text += ["", _footer_text(config, unsubscribe)]
 
     def button(url: str, label_: str, color: str) -> str:
@@ -412,7 +414,7 @@ def render_pulse(config: Any, niche: str, period: str, signals: list[dict[str, A
     body_html = (f'<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#111">'
                  f"<h2 style=\"margin-bottom:4px\">Weekly Tech Pulse: {html.escape(label)}</h2>"
                  f"<p style=\"color:#666;margin-top:0\">{html.escape(period)} &middot; three buying signals from this week's hiring data</p>"
-                 f"<ol style=\"padding-left:20px\">{items}</ol><p>{buttons}</p>"
+                 f"<ol style=\"padding-left:20px\">{items}</ol><p>{buttons}</p>{extra_html}"
                  f"<p style=\"color:#777;font-size:12px;border-top:1px solid #eee;padding-top:10px\">{'<br>'.join(footer)}</p></div>")
     return subject, "\n".join(text), body_html
 
@@ -468,6 +470,9 @@ class LeadMagnet(Strategy):
         state, cfg = tools.state, tools.config
         paying = {s["email"] for s in state.list_subscribers(("active", "trialing")) if s.get("email")}
         report = {"period": period, "sent": 0, "dry_run": 0, "failed": 0, "skipped": 0}
+        from strategies.content_engine import newsletter_section
+
+        new_text, new_html = newsletter_section(state, cfg, f"pulse_{period}")
         by_niche: dict[str, list[dict[str, Any]]] = {}
         attempts = 0
         for sub in state.list_subscribers("active", tier=FREE):
@@ -493,7 +498,7 @@ class LeadMagnet(Strategy):
             from strategies.dossier_engine import dossier_asset
 
             dossiers = dossier_links(cfg, signals, sub["email"], dossier_asset(state) is not None)
-            subject, text, body_html = render_pulse(cfg, niche, period, signals, links, unsub, dossiers)
+            subject, text, body_html = render_pulse(cfg, niche, period, signals, links, unsub, dossiers, new_text, new_html)
             email = Email(to=sub["email"], subject=subject, body=text, html=body_html, kind="nurture",
                           headers=_list_unsubscribe(cfg, unsub))
             try:

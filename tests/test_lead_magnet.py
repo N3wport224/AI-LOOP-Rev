@@ -183,7 +183,7 @@ def test_weekly_pulse_goes_to_confirmed_leads_once_a_week(kit, state, config, cl
     assert [m["To"] for m in pulses] == ["ada@example.com"]
     msg = pulses[0]
     html = msg.get_body(("html",)).get_content()
-    assert html.count("<li") == 3 and "Co00" in html
+    assert html.split("</ol>")[0].count("<li") == 3 and "Co00" in html  # the 3 signals (a "New this week" list may follow)
     assert "https://buy.stripe.com/sub?client_reference_id=am--leadmagnet--pulse_2026_w40" in html.replace("&amp;", "&")
     assert "prefilled_email=ada%40example.com" in html.replace("&amp;", "&") and "$10.00/mo" in html
     assert config.sender_postal_address in html and "Unsubscribe with one click" in html

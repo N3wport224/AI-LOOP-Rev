@@ -155,9 +155,25 @@ PLAYBOOK: dict[str, dict[str, Any]] = {
 }
 
 
-def register(key: str, name: str, channel: str, every_days: float, module: str, func: str) -> None:
-    """Later phases add auto strategies here (SEO, content, distribution)."""
-    PLAYBOOK[key] = {"name": name, "channel": channel, "mode": "auto", "every_days": every_days, "make": _auto(module, func)}
+def register(key: str, name: str, channel: str, every_days: float, module: str, func: str, measurable: bool = True) -> None:
+    """Later phases add auto strategies here (SEO, content, distribution). ``measurable=False``:
+    its effect can't be tied to sales (organic search, the blog), so it's never paused for lack of them."""
+    PLAYBOOK[key] = {"name": name, "channel": channel, "mode": "auto", "every_days": every_days, "make": _auto(module, func),
+                     "measurable": measurable}
+
+
+def register_draft(key: str, name: str, channel: str, every_days: float, module: str, func: str, minutes: int = 5) -> None:
+    import importlib
+
+    def make(tools: Any, play_id: int) -> dict[str, Any] | None:
+        return getattr(importlib.import_module(module), func)(tools, play_id)
+
+    PLAYBOOK[key] = {"name": name, "channel": channel, "mode": "draft", "every_days": every_days, "minutes": minutes, "make": make}
+
+
+register("blog_post", "Blog post on your site", "blog", 1, "strategies.content_engine", "write_post", measurable=False)
+register("weekly_roundup", "Weekly new-datasets roundup (syndicated)", "devto", 7, "strategies.content_engine", "weekly_roundup")
+register_draft("weekly_thread", "Weekly X / LinkedIn thread", "x", 7, "strategies.content_engine", "weekly_thread")
 
 
 # ------------------------------------------------------------------ Phase 172: scoring
@@ -169,11 +185,12 @@ def scores(state: Any, days: int = SCORE_DAYS) -> dict[str, dict[str, Any]]:
     for key, s in PLAYBOOK.items():
         plays = int(state._one("SELECT COUNT(*) AS n FROM marketing_plays WHERE strategy = ? AND created_at >= ? "
                                "AND status IN ('done', 'posted')", (key, since))["n"])
-        if s["mode"] == "draft":
-            like, args = "AND campaign LIKE 'mkt%'", (s["channel"], since)
+        if s["mode"] == "draft":  # only this strategy's own plays (several strategies may share a channel)
+            ids = [f"mkt{r['id']}" for r in state._all("SELECT id FROM marketing_plays WHERE strategy = ?", (key,))] or ["-"]
+            like, args = f"AND campaign IN ({','.join('?' * len(ids))})", (s["channel"], *ids, since)
         else:
             like, args = "", (s["channel"], since)
-        orders = state._one(f"SELECT COUNT(*) AS n, COALESCE(SUM(gross_cents), 0) AS gross FROM orders WHERE channel = ? {like} "
+        orders = state._one(f"SELECT COUNT(*) AS n, COALESCE(SUM(gross_cents), 0) AS gross FROM orders WHERE channel = ? {like} "  # noqa: S608
                             "AND occurred_at >= ? AND status NOT IN ('refunded', 'disputed')", args)
         checkouts = int(state._one(f"SELECT COUNT(*) AS n FROM checkout_sessions WHERE channel = ? {like} AND updated_at >= ?",
                                    args)["n"])
@@ -197,7 +214,7 @@ def pause_losers(state: Any) -> list[str]:
     current = dict(state.get(PAUSED) or {})
     newly = []
     for key, row in scores(state).items():
-        if PLAYBOOK[key]["mode"] == "tracked" or key in paused(state):
+        if PLAYBOOK[key]["mode"] == "tracked" or not PLAYBOOK[key].get("measurable", True) or key in paused(state):
             continue
         if row["plays"] >= PAUSE_AFTER_PLAYS and not row["checkouts"] and not row["orders"]:
             current[key] = (state.clock() + timedelta(days=PAUSE_DAYS)).isoformat(timespec="seconds")

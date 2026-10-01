@@ -1851,6 +1851,27 @@ working.
 
 The site audit checks all of these pages, and the sitemap lists them.
 
+## Content (Phases 180-184)
+
+* **Phase 180, blog (daily):** a post on your site (`blog/<slug>/`) about the technology with the
+  freshest data not covered in 30 days.
+  * It covers how many companies are hiring, who has the most roles, remote share and seniority
+    mix, plus salaries when postings state them.
+  * It links to the technology hub and goes into the RSS feed.
+* **Phase 181, weekly roundup:** "New hiring datasets this week" is syndicated through the usual
+  publishers at their normal cadence, with links tagged per platform:
+  * Dev.to, Hashnode and GitHub Discussions;
+  * RSS and the Substack export.
+* **Phase 182, weekly thread:** a ready-to-post X / LinkedIn thread of the week's new products,
+  among your drafts.
+* **Phase 183, newsletter:** the weekly Tech Pulse goes only to people who confirmed the free sample.
+  It now ends with "New this week": up to 5 new datasets, links tagged `utm_source=newsletter`.
+* **Phase 184, new-products feed:** `feeds/products.xml` lists the newest 50 products. The home page
+  advertises it.
+
+Draft strategies are now scored by their own plays only, even when two share a channel.
+Automatic plays whose effect can't be measured, such as the blog, are never paused for lack of sales.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
