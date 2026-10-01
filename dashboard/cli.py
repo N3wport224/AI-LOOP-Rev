@@ -747,6 +747,12 @@ def cmd_evolution(args: argparse.Namespace, console: Console) -> int:
     return 0
 
 
+def cmd_go_live(args: argparse.Namespace, console: Console) -> int:
+    from cli.go_live import main as go_live
+
+    return go_live(["--link"] if args.link else [])
+
+
 def cmd_test_full_loop(args: argparse.Namespace, console: Console) -> int:
     from cli.test_loop import run
 
@@ -897,6 +903,11 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--json", action="store_true")
     evs.add_parser("resume", help="clear a halt (after a failed rollback) and the cooldown")
     ev.set_defaults(func=cmd_evolution, evolution_cmd="status", json=False)
+
+    gl = sub.add_parser("go-live", help="switch to real payments: checks the live Stripe key and email, saves, restarts, "
+                        "prints your checkout link")
+    gl.add_argument("--link", action="store_true", help="just print the live checkout link(s)")
+    gl.set_defaults(func=cmd_go_live)
 
     tl = sub.add_parser("test-full-loop", help="end-to-end rehearsal in a sandbox: postings → intel → pages → four simulated "
                         "purchases → signed webhooks → deliveries → dashboard ≥ $10/day (never touches your data)")
