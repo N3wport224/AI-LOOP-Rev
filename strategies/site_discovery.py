@@ -150,9 +150,11 @@ def status_page(state: Any, cfg: Any, shell: Any) -> str:
 # ------------------------------------------------------------------ Phase 229
 def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
     from strategies.money_insight import price_history
+    from strategies.product_controls import hidden
     from strategies.product_factory import ensure
 
     ensure(state)
+    unlisted = hidden(state)
     now = state.clock()
     start = now - timedelta(days=7 * weeks)
     out = []
@@ -176,8 +178,8 @@ def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
     for r in state._all("SELECT slug, title, status, published_at, retired_at FROM factory_products "
                         "WHERE published_at IS NOT NULL"):
         b = bucket(r["published_at"])
-        if b is not None:  # a retired product's page is gone: named, not linked
-            b["added"].append((r["slug"] if r["status"] == "live" else "", r["title"]))
+        if b is not None:  # a retired or hidden product has no page: named, not linked
+            b["added"].append((r["slug"] if r["status"] == "live" and r["slug"] not in unlisted else "", r["title"]))
         if r["retired_at"]:
             b = bucket(r["retired_at"])
             if b is not None:
@@ -186,7 +188,7 @@ def changes(state: Any, weeks: int = CHANGE_WEEKS) -> list[dict[str, Any]]:
 
     for slug, title, d in refreshes(state, start.isoformat(timespec="seconds")):  # Phase 279
         b = bucket(d["at"])
-        if b is not None:
+        if b is not None and slug not in unlisted:
             b["updated"].append((slug, title, d))
     for p in price_history(state, 200):
         b = bucket(p["at"])

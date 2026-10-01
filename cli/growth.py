@@ -274,6 +274,22 @@ def products_main(argv: list[str]) -> int:
     return 0
 
 
+def product_main(argv: list[str]) -> int:
+    """`automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild` (Phases 280-284)."""
+    from strategies.product_controls import apply
+    from tools import build_toolkit
+    from tools.circuit_breaker import CircuitBreaker
+
+    config, state, _ = _setup()
+    tools = build_toolkit(config, state, CircuitBreaker(1000, 1000, 1000))
+    try:
+        say(GREEN, "✔ " + apply(tools, argv[0], argv[1], argv[2] if len(argv) > 2 else ""))
+    except (ValueError, IndexError) as exc:
+        say(RED, str(exc))
+        return 2
+    return 0
+
+
 def sponsor_main(argv: list[str]) -> int:
     """`automonetize sponsor [list] | approve ORDER_ID "line" https://url` (Phase 157)."""
     from strategies.revenue_models import SPONSORS, active_sponsor, approve_sponsor

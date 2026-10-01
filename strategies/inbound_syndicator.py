@@ -121,6 +121,9 @@ def site_pages(tools) -> list[ProductPage]:
     from strategies.upsells import Index, bought_together_html
 
     index = Index(tools.state, cfg)
+    from strategies.product_controls import hidden
+
+    unlisted = hidden(tools.state)  # Phase 283
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
@@ -128,7 +131,7 @@ def site_pages(tools) -> list[ProductPage]:
             continue
         if kind in ("custom_request", "pay_what_you_want", "sponsorship", "lifetime", "gift"):
             continue  # offers have their own page (more/), not a product page
-        if kind == "micro" and (asset.get("status") != "published" or not asset.get("checkout_url")):
+        if kind == "micro" and (asset.get("status") != "published" or not asset.get("checkout_url") or niche in unlisted):
             continue  # factory products appear once they can be bought; retired ones disappear
         seen.add((niche, kind))
         base = f"assets/{niche}/v{asset['version']}" if kind == "dataset" else f"assets/{niche}/{kind}-v{asset['version']}"

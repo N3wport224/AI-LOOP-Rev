@@ -75,6 +75,20 @@ async def get_products_csv(request: web.Request) -> web.Response:
                         headers={"Cache-Control": "no-store", "Content-Disposition": 'attachment; filename="catalog.csv"'})
 
 
+async def post_action(request: web.Request) -> web.Response:
+    """Phases 280-284: pin, retire, price, hide, rebuild one product."""
+    from strategies.product_controls import apply
+
+    data = await _body(request)
+    gctx = ctx(request)
+    try:
+        message = await _run(apply, _tools(gctx), str(data.get("slug") or ""), str(data.get("action") or ""),
+                             str(data.get("value") or ""))
+    except ValueError as exc:
+        return _json({"ok": False, "message": str(exc)}, 400)
+    return _json({"ok": True, "message": message})
+
+
 async def post_make(request: web.Request) -> web.Response:
     from strategies import product_factory as pf
 
@@ -168,7 +182,7 @@ async def post_affiliate(request: web.Request) -> web.Response:
 
 def routes() -> list[web.RouteDef]:
     return [web.get("/api/products", get_products), web.get("/api/products.csv", get_products_csv),
-            web.post("/api/products/make", post_make),
+            web.post("/api/products/make", post_make), web.post("/api/products/action", post_action),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),
             web.post("/api/affiliate/add", post_affiliate)]

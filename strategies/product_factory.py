@@ -390,7 +390,9 @@ def retire_unsold(tools: Any) -> list[str]:
     for row in state._all("SELECT * FROM factory_products WHERE status = 'live' AND published_at < ?", (cutoff,)):
         sold = state._one("SELECT COUNT(*) AS n FROM orders o JOIN assets a ON a.id = o.asset_id WHERE a.niche = ? "
                           "AND o.status NOT IN ('refunded', 'disputed')", (row["slug"],))["n"]  # any version counts
-        if sold:
+        from strategies.product_controls import pinned
+
+        if sold or pinned(state, row["slug"]):  # Phase 280: pinned products stay
             continue
         asset = state.get_asset(int(row["asset_id"])) or {}
         ref = str(asset.get("product_ref") or "")

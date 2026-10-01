@@ -32,7 +32,7 @@ INTEGRITY_KEY = "factory_integrity_at"
 MISSING_KEY = "factory_missing_files"
 
 
-def take_off_sale(tools: Any, slug: str) -> None:
+def take_off_sale(tools: Any, slug: str, reason: str = "") -> None:
     """Close the checkout and retire a product that can't be delivered."""
     state = tools.state
     row = state._one("SELECT asset_id FROM factory_products WHERE slug = ?", (slug,))
@@ -43,8 +43,11 @@ def take_off_sale(tools: Any, slug: str) -> None:
     if asset:
         state.update_asset(int(asset["id"]), status="retired")
     state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), slug))
-    state.log_error("product_factory", f"{slug} was taken off sale: its download is missing and couldn't be rebuilt "
-                                       "(its postings are gone).", kind="alert")
+    if reason:
+        state.log_action(int(state.get("iteration", 0)), None, "product_retired", "ok", f"{slug}: {reason}")
+    else:
+        state.log_error("product_factory", f"{slug} was taken off sale: its download is missing and couldn't be rebuilt "
+                                           "(its postings are gone).", kind="alert")
 
 
 # ------------------------------------------------------------------ Phase 241

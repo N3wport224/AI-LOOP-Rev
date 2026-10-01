@@ -1566,6 +1566,7 @@ Two changes elsewhere:
 * **Phase 113, task timings:** `automonetize marketplace-export          # listing kits to upload to Gumroad / Lemon Squeezy / data marketplaces
 automonetize affiliate [add EMAIL | paid CODE]   # affiliates and what you owe them
 automonetize products                     # every product ranked by revenue
+automonetize product SLUG pin|unpin|retire|price CENTS|hide|show|rebuild  # one product, by hand
 automonetize marketing [plan|scores|report|done ID|skip ID]   # drafts to post, the week's plan, what works
 automonetize marketing directories [done NAME]        # where to list the catalog, and what's done
 automonetize sponsor [list] | sponsor approve ORDER_ID "line" URL   # sponsorships (you approve each one)
@@ -2267,6 +2268,22 @@ Each weekly refresh says what's new (`strategies/version_diffs.py`).
 * **Phase 278, on the product page:** "Updated weekly. Last update (date): +N new postings, +M
   companies".
 * **Phase 279, on the What's new page:** each week lists the refreshes that added something.
+
+## Your hands on single products (Phases 280-284)
+
+`automonetize product <slug> <action>`, or the control panel (`POST /api/products/action`)
+(`strategies/product_controls.py`):
+
+* **Phase 280, pin / unpin:** a pinned product is never retired for not selling and never repriced
+  automatically.
+* **Phase 281, retire:** closes the checkout and takes the product off the site now.
+* **Phase 282, price:** sets a new price, e.g. `900` (cents) or `$9`, between $1 and $500.
+  * It creates a new checkout and closes the old link.
+  * The change shows in the price history.
+* **Phase 283, hide / show:** hide takes the product off the site (pages, catalog, search) but keeps
+  its checkout working for links you've already shared. Show brings it back.
+* **Phase 284, rebuild:** rebuilds the download from the latest postings now, instead of waiting
+  for the weekly refresh.
 
 ## Safety and consistency (Phases 140-144)
 

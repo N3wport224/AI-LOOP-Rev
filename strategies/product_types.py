@@ -334,7 +334,9 @@ def refresh_due(tools: Any, limit: int = REFRESH_PER_TICK) -> list[str]:
         current = int(asset.get("price_cents") or made["price_cents"])
         made["price_cents"] = current  # same checkout, same price...
         checkout = {"checkout_url": asset.get("checkout_url") or "", "product_ref": asset.get("product_ref")}
-        higher = ch.next_price(state, row["slug"], current)
+        from strategies.product_controls import pinned
+
+        higher = current if pinned(state, row["slug"]) else ch.next_price(state, row["slug"], current)  # Phase 280
         if higher > current and asset.get("checkout_url"):  # ...unless it's selling well (Phase 212)
             new = ch.reprice(tools, asset, row["title"], made["summary"], higher)
             if new:

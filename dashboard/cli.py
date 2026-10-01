@@ -853,6 +853,12 @@ def cmd_affiliate(args: argparse.Namespace, console: Console) -> int:
     return affiliate_main(args.rest)
 
 
+def cmd_product(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import product_main
+
+    return product_main([args.slug, args.action] + ([args.value] if args.value else []))
+
+
 def cmd_products(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import products_main
 
@@ -1219,6 +1225,11 @@ def build_parser() -> argparse.ArgumentParser:
     af = sub.add_parser("affiliate", help="affiliates: what you owe; add EMAIL approves one; paid CODE records a payout")
     af.add_argument("rest", nargs="*")
     af.set_defaults(func=cmd_affiliate)
+    pc = sub.add_parser("product", help="one product: pin|unpin|retire|price CENTS|hide|show|rebuild")
+    pc.add_argument("slug")
+    pc.add_argument("action", choices=["pin", "unpin", "retire", "price", "hide", "show", "rebuild"])
+    pc.add_argument("value", nargs="?", default="")
+    pc.set_defaults(func=cmd_product)
     pr = sub.add_parser("products", help="every product ranked by revenue, with the ones that never sold")
     pr.set_defaults(func=cmd_products)
     sp = sub.add_parser("sponsor", help="sponsorships: list, or approve ORDER_ID \"line\" https://url to put one live")
