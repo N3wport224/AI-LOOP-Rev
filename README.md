@@ -1965,6 +1965,24 @@ Three new tabs in `automonetize gui`:
 
 Every action needs the panel's sign-in and CSRF token. The panel only listens on this Mac.
 
+## Buyer experience (Phases 205-209)
+
+* **Phase 205, your library:** on the site's `library/` page, a buyer enters their email and
+  everything they bought is re-sent to that address.
+  * It uses the existing order-recovery endpoint, with its limits: 3 requests per network per hour,
+    3 emails per address per day, and the same answer whether or not the address bought anything.
+  * A person using the form now gets a readable page back; scripts still get JSON.
+* **Phase 206, free sample:** every product page links `sample.csv`, the same 5 public rows as a
+  file.
+* **Phase 207, real ratings:** from 3 ratings by verified buyers (the 1-click ratings), a product
+  page shows the counts and carries `AggregateRating` data. Below that nothing is shown, and nothing
+  is ever made up.
+* **Phase 208, request a dataset:** the site's `request/` page posts to `/v1/requests` (rate-limited).
+  * Requests count towards what the factory builds next.
+  * With "email me when it's ready" ticked, the address is used for one email when a matching
+    product goes on sale, then forgotten (or after 90 days).
+* **Phase 209, what's in the download:** factory product pages list the files in the zip.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.
@@ -2051,6 +2069,7 @@ and shows its last runs.
 | 52 | `nurture_leads` | Send free-sample subscribers their weekly sample. |
 | 53 | `follow_up_buyers` | One "did it arrive?" email per order, with 1-click ratings. |
 | 53 | `serve_passes` | Weekly new-dataset email to lifetime-pass holders; end expired sponsorships. |
+| 54 | `notify_requests` | Email people who requested a dataset once it's on sale (one email, then the address is forgotten). |
 | 54 | `create_launch_promos` | Create a launch discount code for a new dataset. |
 | 55 | `announce_releases` | Tell past buyers about a new version. |
 | 55 | `collect_metrics` | Record views, impressions and purchases per niche. |

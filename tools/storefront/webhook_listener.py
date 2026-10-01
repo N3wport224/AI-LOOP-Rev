@@ -495,6 +495,10 @@ def build_app(processor: WebhookProcessor, path: str = "/webhook", fulfil: Calla
                                                                "Access-Control-Allow-Origin": "*"})
 
     app.router.add_get("/v1/catalog", catalog)  # Phase 167 (before the API's /v1 catch-all)
+    from strategies import buyer_experience
+
+    buyer_experience.mount(app, processor.tools, run_in_pool, client_ip,
+                           CaptureLimiter(buyer_experience.REQUESTS_PER_IP_HOUR))  # Phase 208: /v1/requests
     dossier_engine.mount(app, processor.tools, run_in_pool, client_ip)
     if processor.tools.config.api_enabled:
         from api.server import mount

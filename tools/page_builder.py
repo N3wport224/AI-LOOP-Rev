@@ -97,6 +97,9 @@ class ProductPage:
     extra_jsonld: str = ""         # breadcrumbs / Dataset markup (tools/seo_scale.py)
     hub_href: str = ""             # "More <tech> datasets" (relative)
     hub_label: str = ""
+    ratings_html: str = ""         # verified-buyer ratings, shown from 3 ratings (strategies/buyer_experience.py)
+    aggregate_rating: dict[str, Any] | None = None
+    files_html: str = ""           # what's in the download
     popular: bool = False          # "Most popular" badge on the home and pricing pages
 
     @property
@@ -150,6 +153,8 @@ def product_jsonld(page: ProductPage, url: str, brand: str) -> dict[str, Any]:
         data["image"] = f"{url}og.png"
     if page.updated_at:
         data["offers"]["priceValidUntil"] = page.updated_at[:4] + "-12-31"
+    if page.aggregate_rating:
+        data["aggregateRating"] = page.aggregate_rating
     if page.subscription_url and page.subscription_price_cents:
         sub_offer = {
             "@type": "Offer",
@@ -343,6 +348,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {headline_html}
 <p class="lede">{html.escape(page.summary)}</p>
 {page.insight_html}
+{page.ratings_html}
 {proof_html}
 <p><img src="radar-badge.svg" alt="{html.escape(str((page.metrics or {}).get("roles") or 0))} hiring signals tracked" height="20"></p>
 <div class="kpis">{kpi_html}</div>
@@ -351,7 +357,9 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {lead_form_html(page.lead_capture_url, page.niche, page.slug)}
 {page.related_html}
 {faq_html(page.faq)}
+{page.files_html}
 <h2>Free 5-record preview</h2>
+<p class="muted"><a href="sample.csv" download>Download the free sample (CSV)</a></p>
 <div class="wrap"><table><thead><tr>{head_cells}</tr></thead><tbody>
 {rows}
 </tbody></table></div>
@@ -637,7 +645,8 @@ def render_matrix_index(pages: list[MatrixPage], base_url: str, site_title: str)
 
 def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_extra: str = "", sponsor: str = "",
                  more: bool = False, best: str = "", hubs: bool = False, blog: bool = False, products_feed: bool = False,
-                 heatmap: bool = False, embed: bool = False, sources: bool = False) -> str:
+                 heatmap: bool = False, embed: bool = False, sources: bool = False, library: bool = False,
+                 request: bool = False) -> str:
     items = "\n".join(
         f'<li><a href="{html.escape(p.slug)}/">{html.escape(p.title)}</a>{POPULAR_BADGE if p.popular else ""}: '
         f'{html.escape(p.summary[:160])} '
@@ -657,7 +666,7 @@ def render_index(pages: list[ProductPage], base_url: str, site_title: str, head_
 <ul>
 {items}
 </ul>
-<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="sources/">Data sources</a> ·' if sources else ""}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
+<p class="muted"><a href="pricing/">Pricing</a> · <a href="compare/">Compare datasets</a> ·{' <a href="hiring/">By technology</a> ·' if hubs else ""}{' <a href="blog/">Blog</a> ·' if blog else ""}{' <a href="tools/hiring-heatmap/">Hiring heatmap</a> ·' if heatmap else ""}{' <a href="embed/">Embed badges</a> ·' if embed else ""}{' <a href="sources/">Data sources</a> ·' if sources else ""}{' <a href="library/">Your library</a> ·' if library else ""}{' <a href="request/">Request a dataset</a> ·' if request else ""}{' <a href="feeds/products.xml">New datasets (RSS)</a> ·' if products_feed else ""}{' <a href="more/">Custom datasets, lifetime pass &amp; gifts</a> ·' if more else ""} <a href="intel/">Hiring intel by technology</a> · <a href="feeds/radar.xml">Subscribe via RSS</a></p>
 <p class="muted">{footer_links("")}</p>
 </body></html>
 """
@@ -752,6 +761,9 @@ class SiteBuilder:
             out[f"{p.slug}/index.html"] = render_product_page(p, self.base_url, cfg.site_title)
             label = f"{p.niche.split('-')[0]} radar"
             out[f"{p.slug}/radar-badge.svg"] = badge_for(label, p.metrics or {})
+            from strategies.buyer_experience import sample_csv
+
+            out[f"{p.slug}/sample.csv"] = sample_csv(p.sample_columns, p.sample_rows)  # Phase 206
             price = f"${p.price_cents / 100:.2f}"
             out[f"{p.slug}/og.svg"] = render_og_svg(p.title, p.metrics or {}, price)
             png = render_og_png(p.title, p.metrics or {}, price) if cfg.og_images and p.kind != "micro" else None
@@ -772,7 +784,8 @@ class SiteBuilder:
                                          products_feed="feeds/products.xml" in (extra or {}),
                                          heatmap="tools/hiring-heatmap/index.html" in (extra or {}),
                                          embed="embed/index.html" in (extra or {}),
-                                         sources="sources/index.html" in (extra or {}))
+                                         sources="sources/index.html" in (extra or {}),
+                                         library="library/index.html" in (extra or {}), request="request/index.html" in (extra or {}))
         out.update(extra or {})  # e.g. more/ (strategies/revenue_models.py)
         out[site_more.COMPARE] = site_more.compare_page(pages, lambda title, body, desc: _shell(
             title, body, cfg.site_title, description=desc))

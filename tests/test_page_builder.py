@@ -147,21 +147,18 @@ def test_site_builder_writes_and_publishes_to_pages_branch(config, toolkit, tran
     out = b.build([page()], [], NOW)
     config.og_images = False  # PNG cards are covered in test_seo_assets
     out = b.build([page()], [], NOW)
-    assert set(out) == {"python-remote/index.html", "index.html", "thanks/index.html", "pricing/index.html", "sitemap.xml",
-                        "robots.txt", "feeds/radar.xml", "intel/index.html", "404.html", "contact/index.html",
-                        "legal/terms/index.html", "legal/privacy/index.html", "legal/refunds/index.html",
-                        "python-remote/radar-badge.svg", "python-remote/og.svg", "radar-badge.svg", "compare/index.html",
-                        "llms.txt", ".nojekyll", ".well-known/security.txt"}
+    essentials = {"python-remote/index.html", "index.html", "thanks/index.html", "pricing/index.html", "sitemap.xml",
+                  "robots.txt", "feeds/radar.xml", "intel/index.html", "404.html", "contact/index.html",
+                  "legal/terms/index.html", "legal/privacy/index.html", "legal/refunds/index.html",
+                  "python-remote/radar-badge.svg", "python-remote/og.svg", "radar-badge.svg", "compare/index.html",
+                  "llms.txt", ".nojekyll", ".well-known/security.txt", "python-remote/sample.csv"}
+    assert essentials <= set(out) and "python-remote/og.png" not in out  # og_images off
     assert toolkit.files.exists("site/feeds/radar.xml")
     assert "Sitemap: https://me.github.io/sitemap.xml" in out["robots.txt"]
-    assert b.publish(out) == 20
+    assert b.publish(out) == len(out)  # every built file goes out
     puts = transport.calls_to("https://api.github.com/repos/me/me.github.io/contents/", "PUT")
     paths = sorted(c["url"].split("/contents/")[1] for c in puts)
-    assert paths == [".nojekyll", ".well-known/security.txt", "404.html", "compare/index.html", "contact/index.html",
-                     "feeds/radar.xml", "index.html", "intel/index.html", "legal/privacy/index.html",
-                     "legal/refunds/index.html", "legal/terms/index.html", "llms.txt", "pricing/index.html", "python-remote/index.html",
-                     "python-remote/og.svg", "python-remote/radar-badge.svg", "radar-badge.svg", "robots.txt", "sitemap.xml",
-                     "thanks/index.html"]
+    assert paths == sorted(out)
     assert all(json.loads(c["body"])["branch"] == "gh-pages" for c in puts)
 
 

@@ -153,6 +153,12 @@ def site_pages(tools) -> list[ProductPage]:
         page.testimonials = approved_for(tools.state, niche) if kind == "dataset" else []
         page.refund_days = int(cfg.refund_policy_days or 0)
         page.related_html = bought_together_html(index, asset) if kind in ("dataset", "micro") else ""
+        from strategies import buyer_experience as bx
+
+        counts = bx.ratings_for(tools.state, niche)
+        page.ratings_html, page.aggregate_rating = bx.ratings_html(counts), bx.aggregate_rating(counts)
+        if kind == "micro":
+            page.files_html = bx.file_list_html((listing.get("filters") or {}).get("type", "slice"))
         if kind == "micro":
             from strategies.marketing_optimizer import display_title
             from strategies.product_factory import label as tech_label
@@ -358,6 +364,11 @@ class InboundSyndicator(Strategy):
         from strategies.job_sources import sources_page
 
         extra["sources/index.html"] = sources_page(cfg, shell)
+        from strategies.buyer_experience import library_page, request_page
+
+        extra["library/index.html"] = library_page(cfg, shell)
+        if request_page(cfg, shell):
+            extra["request/index.html"] = request_page(cfg, shell)
         from strategies.content_engine import PRODUCTS_FEED, blog_pages, products_feed
 
         extra.update(blog_pages(tools.state, lambda title, body, desc, depth=1: _shell(

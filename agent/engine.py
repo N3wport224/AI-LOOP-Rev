@@ -49,7 +49,8 @@ PLAN: list[tuple[str, int]] = [
     ("package_asset", 20),
     ("run_factory", 21),
     ("publish_offers", 39),  # custom datasets, name your price, sponsorship, lifetime pass, gift cards
-    ("serve_passes", 53),  # weekly lifetime-pass emails, sponsorship expiry  # new products from slices of all postings (catch-up when no factory worker runs)
+    ("serve_passes", 53),
+    ("notify_requests", 54),  # "it's ready" to people who requested a dataset  # weekly lifetime-pass emails, sponsorship expiry  # new products from slices of all postings (catch-up when no factory worker runs)
     ("publish_listing", 25),
     ("publish_showcase", 30),
     ("tune_copy", 29),

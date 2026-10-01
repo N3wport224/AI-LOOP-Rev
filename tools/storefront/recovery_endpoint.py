@@ -234,6 +234,12 @@ def mount(app: Any, tools: Any, run: Callable[..., Any], client_ip: Callable[[An
             fut = asyncio.get_running_loop().run_in_executor(executor, held, after)
             pending.add(fut)
             fut.add_done_callback(pending.discard)
+        if "json" not in request.headers.get("Content-Type", "") and "text/html" in request.headers.get("Accept", ""):
+            from strategies.buyer_experience import recovery_page  # Phase 205: a person used the site's form
+
+            message = body.get("message") or (body.get("error") or {}).get("message", "")
+            return web.Response(status=status, text=recovery_page(status, message), content_type="text/html",
+                                headers={"Cache-Control": "no-store", **headers})
         return respond(status, body, headers)
 
     def page(title: str, text: str, form: str = "", status: int = 200) -> web.Response:
