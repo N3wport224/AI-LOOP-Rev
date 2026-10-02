@@ -434,34 +434,71 @@ def _checkout_text(meta: dict[str, Any], asset: dict[str, Any], cfg: Any) -> str
     return checkout_description(f, str(asset.get("created_at") or ""), int(cfg.refund_policy_days or 0))
 
 
+def _sold(state: Any, slug: str) -> int:
+    return int(state._one("SELECT COUNT(*) AS n FROM orders o JOIN assets a ON a.id = o.asset_id WHERE a.niche = ? "
+                          "AND o.status NOT IN ('refunded', 'disputed')", (slug,))["n"])  # any version counts
+
+
+def _retire(tools: Any, row: dict[str, Any], reason: str) -> bool:
+    """Close one product's checkout and take it off sale. False when Stripe couldn't be reached (retried later)."""
+    state = tools.state
+    asset = state.get_asset(int(row["asset_id"])) or {}
+    ref = str(asset.get("product_ref") or "")
+    if ref.startswith("plink_") and hasattr(tools.storefront, "deactivate"):
+        try:
+            tools.storefront.deactivate(ref)
+        except Exception as exc:  # noqa: BLE001 - retried next time
+            state.log_error("product_factory", f"couldn't retire {row['slug']}: {exc!r}")
+            return False
+        from strategies.catalog_hygiene import archive
+
+        archive(tools, ref)  # Phase 211: the Stripe product too, best effort
+    state.update_asset(int(row["asset_id"]), status="retired")
+    state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), row["slug"]))
+    from strategies.factory_insights import set_reason
+
+    set_reason(state, row["slug"], reason)  # Phase 337
+    return True
+
+
 def retire_unsold(tools: Any) -> list[str]:
     state, cfg = tools.state, tools.config
     cutoff = (state.clock() - timedelta(days=int(cfg.factory_retire_days))).isoformat(timespec="seconds")
     retired = []
+    from strategies.product_controls import pinned
+
     for row in state._all("SELECT * FROM factory_products WHERE status = 'live' AND published_at < ?", (cutoff,)):
-        sold = state._one("SELECT COUNT(*) AS n FROM orders o JOIN assets a ON a.id = o.asset_id WHERE a.niche = ? "
-                          "AND o.status NOT IN ('refunded', 'disputed')", (row["slug"],))["n"]  # any version counts
-        from strategies.product_controls import pinned
-
-        if sold or pinned(state, row["slug"]):  # Phase 280: pinned products stay
+        if _sold(state, row["slug"]) or pinned(state, row["slug"]):  # Phase 280: pinned products stay
             continue
-        asset = state.get_asset(int(row["asset_id"])) or {}
-        ref = str(asset.get("product_ref") or "")
-        if ref.startswith("plink_") and hasattr(tools.storefront, "deactivate"):
-            try:
-                tools.storefront.deactivate(ref)
-            except Exception as exc:  # noqa: BLE001 - retried next time
-                state.log_error("product_factory", f"couldn't retire {row['slug']}: {exc!r}")
-                continue
-            from strategies.catalog_hygiene import archive
+        if _retire(tools, row, "unsold"):
+            retired.append(row["slug"])
+    return retired
 
-            archive(tools, ref)  # Phase 211: the Stripe product too, best effort
-        state.update_asset(int(row["asset_id"]), status="retired")
-        state._exec("UPDATE factory_products SET status = 'retired', retired_at = ? WHERE slug = ?", (state.now(), row["slug"]))
-        from strategies.factory_insights import set_reason
 
-        set_reason(state, row["slug"], "unsold")  # Phase 337
-        retired.append(row["slug"])
+TRIM_PER_RUN = 10
+
+
+def trim_to_cap(tools: Any) -> list[str]:
+    """Phase 418: more products on sale than ``factory_max_live`` (focus mode lowers it): keep the
+    strongest and retire the rest, a few per run. Products that sold and pinned ones always stay;
+    then bigger and newer ones are kept first."""
+    state, cfg = tools.state, tools.config
+    from strategies.product_controls import pinned
+
+    live = state._all("SELECT * FROM factory_products WHERE status = 'live'")
+    extra = len(live) - int(cfg.factory_max_live)
+    if extra <= 0:
+        return []
+    keep_first = sorted(live, key=lambda r: (_sold(state, r["slug"]) > 0 or pinned(state, r["slug"]), int(r["rows"] or 0),
+                                             str(r["published_at"] or r["created_at"] or "")), reverse=True)
+    retired = []
+    for row in reversed(keep_first):  # weakest first
+        if len(retired) >= min(extra, TRIM_PER_RUN):
+            break
+        if _sold(state, row["slug"]) or pinned(state, row["slug"]):
+            continue
+        if _retire(tools, row, "focus"):
+            retired.append(row["slug"])
     return retired
 
 
@@ -490,7 +527,7 @@ def _tick(tools: Any, force: bool = False) -> dict[str, Any]:
     ensure(state)
     published = [r["slug"] for r in state._all("SELECT slug FROM factory_products WHERE status = 'staged'")
                  if publish(tools, r["slug"]) == "live"]
-    retired = retire_unsold(tools)
+    retired = retire_unsold(tools) + trim_to_cap(tools)
     from strategies.catalog_reliability import check_integrity, too_many_waiting
     from strategies.product_types import refresh_due
 

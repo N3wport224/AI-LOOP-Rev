@@ -382,7 +382,13 @@ class LeadAggregator(Strategy):
         http = ConditionalHttp(tools.http, tools.state, tools.files)  # Phase 295
 
         # Phase 199: some boards ask for a few requests a day; those wait their turn (not a failure).
-        sources = [s for s in tools.config.lead_sources if s in self.fetchers and due(tools.state, s)]
+        from strategies.job_sources import allowed, purge_restricted
+
+        if purge_restricted(tools.state, tools.config):  # Phase 421
+            tools.state.log_action(int(tools.state.get("iteration", 0)), None, "sources", "ok",
+                                   "removed postings from boards whose terms forbid reselling them")
+        sources = [s for s in tools.config.lead_sources if s in self.fetchers and due(tools.state, s)
+                   and allowed(tools.config, s)]  # Phase 420
         if ctx.degraded and len(sources) > 1:
             # On retry, drop sources that failed last attempt to reduce the blast radius.
             failed = set(ctx.payload.get("failed_sources", []))

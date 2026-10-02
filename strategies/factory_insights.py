@@ -22,7 +22,8 @@ from statistics import median
 from typing import Any
 
 AGE_BUCKETS = ((7, "first week"), (28, "weeks 2-4"), (60, "month 2"), (10**6, "older"))
-REASONS = {"unsold": "no sale in time", "owner": "retired by you", "missing_download": "download couldn't be rebuilt"}
+REASONS = {"unsold": "no sale in time", "owner": "retired by you", "missing_download": "download couldn't be rebuilt",
+           "focus": "focus mode: kept the strongest products"}
 
 
 def _dt(iso: str) -> datetime:

@@ -2860,6 +2860,50 @@ locations, the remote share) and carries one tracked link, so a sale is credited
 **Copy launch post** puts it on your clipboard. After you publish it, press **Mark as posted**:
 the path check and the marketing scores then count it as a way in.
 
+## Focus mode and data-source terms (Phases 417-421)
+
+**Focus mode (Phase 417), on by default.** With no sales yet, the extras add moving parts without
+adding buyers. `focus_mode = true` changes these defaults:
+
+* the factory makes about 4 products a day (not one every 10 minutes);
+* it keeps at most 20 products on sale, each with at least 40 postings from 15 companies;
+* it switches off:
+  * the Developer API and company dossiers;
+  * name-your-price, sponsorships, lifetime passes, gift cards, team licenses and yearly plans;
+  * copy A/B tests, offer tuning and the extra niches;
+  * source discovery and self-evolution;
+  * the sale, win-back, upgrade, sample-offer, related, refresh and referral emails.
+
+What stays on is the core: products, checkouts, delivery, the site, articles, marketing drafts,
+custom datasets built to order, weekly-update subscriptions and the bundle. Anything you set
+yourself still wins. Set `focus_mode = false` in `automonetize.toml` to get everything back.
+
+**Trimming to the strongest (Phases 418-419).** Above the cap, the weakest products are retired, 10
+per run. Products that sold and pinned ones always stay; bigger and newer ones are kept first.
+Insights show the reason as "focus mode".
+
+**Job-board terms (Phases 420-421).** Each board's terms about building products from its listings
+were checked on 2026-10-02. Terms change, so reread them before relying on this:
+
+| Board | Terms | Used |
+|---|---|---|
+| Remote OK | link back to each job and name Remote OK | yes |
+| Arbeitnow | commercial use allowed with a link back | yes |
+| Hacker News "Who is hiring?" | public posts via the public API | yes |
+| Jobicy | use in your own products, credit Jobicy, keep each job's URL | yes |
+| Remotive | forbids redistributing listings and commercial use | **no** |
+| We Work Remotely | forbids copying, saving or storing its data | **no** |
+| Himalayas | not a license to republish employer content | **no** |
+
+The datasets keep every row's source and original posting link. The site's sources page credits
+each board, with "Jobs powered by Jobicy". Postings already collected from the three restricted
+boards are deleted at the next collection, so new versions of products no longer contain them.
+`allow_restricted_sources = true` brings them back, at your own risk.
+
+**First sales (`docs/first-sales-playbook.md`).** Who is most likely to pay first, where to find
+them, the rules (by hand, one person at a time, never more than the data shows), and 10 short
+messages to adapt and send yourself.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

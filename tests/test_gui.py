@@ -57,7 +57,7 @@ def gui(tmp_path, config, state):
     env_file.write_text(ENV)
     env_file.chmod(0o600)
     toml = tmp_path / "a.toml"
-    toml.write_text(f'[automonetize]\ndata_dir = "{config.data_dir}"\nnetwork_check_hosts = []\n')
+    toml.write_text(f'[automonetize]\ndata_dir = "{config.data_dir}"\nnetwork_check_hosts = []\nfocus_mode = false\n')
     preflights = []
 
     def preflight(cfg):

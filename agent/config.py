@@ -57,8 +57,9 @@ class Config:
     platform_fee_fixed_cents: int = 50   # marketplace fixed fee per sale (cents)
 
     # Strategies
-    lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring", "remotive", "jobicy",
-                                                             "himalayas", "weworkremotely"])
+    # Phase 420: only boards whose terms allow building products from their listings (strategies/job_sources.py TERMS)
+    lead_sources: list[str] = field(default_factory=lambda: ["remoteok", "arbeitnow", "hn_hiring", "jobicy"])
+    allow_restricted_sources: bool = False   # true = also use boards whose terms forbid reselling their listings (your risk)
     niches: list[dict[str, Any]] = field(default_factory=lambda: [dict(n) for n in DEFAULT_NICHES])
     min_leads_for_asset: int = 10
     asset_price_cents: int = 900  # legacy (Phase 1); starting prices now come from price_tiers. Kept so old configs still load.
@@ -154,6 +155,7 @@ class Config:
     schedule_wake: bool = True               # ask pmset to wake the Mac for the next cycle (needs sudo -n)
     digest_push: bool = True                 # one-line daily summary to your phone (needs ntfy_topic)
     # Product factory (strategies/product_factory.py)
+    focus_mode: bool = True                  # Phase 417: fewer, better products and only the core features (see FOCUS)
     product_factory: bool = True             # make new products from slices of the collected postings
     factory_interval_seconds: int = 600      # one new product this often (the factory worker under supervise)
     factory_min_rows: int = 20               # a product needs at least this many postings...
@@ -442,6 +444,10 @@ class Config:
         unknown = set(values) - set(known)
         if unknown:
             raise ValueError(f"unknown config keys: {sorted(unknown)}")
+        if values.get("focus_mode", _default(known["focus_mode"])):
+            # Phase 417: focus mode changes defaults only; anything you set yourself still wins.
+            for name, value in FOCUS.items():
+                values.setdefault(name, value)
         if "data_dir" in values:
             values["data_dir"] = Path(values["data_dir"])
         return cls(**values)
@@ -449,6 +455,25 @@ class Config:
     def ensure_dirs(self) -> None:
         for d in (self.data_dir, self.workspace_dir):
             d.mkdir(parents=True, exist_ok=True)
+
+
+# Phase 417: focus mode. With no sales yet, the extras add moving parts without adding buyers. These
+# defaults (each overridable by setting it yourself) keep a small catalog of stronger products and
+# switch off the upsells, experiments and expansions that only pay once there's traffic.
+FOCUS: dict[str, Any] = {
+    "factory_interval_seconds": 6 * 3600,   # about 4 new products a day, not 144
+    "factory_adaptive": False,
+    "factory_max_live": 20,                 # the strongest 20 on sale; the rest are retired a few at a time
+    "factory_min_rows": 40,                 # meatier products only
+    "factory_min_companies": 15,
+    "api_enabled": False, "dossier_price_cents": 0,
+    "offer_pay_what_you_want": False, "offer_sponsorship": False, "offer_lifetime": False, "offer_gift": False,
+    "team_license": False, "annual_plan": False,
+    "copy_bandit_enabled": False, "offer_tuning": False, "source_discovery_enabled": False, "max_active_niches": 1,
+    "seasonal_sale": False, "winback": False, "bundle_upgrade": False, "sample_offer": False, "related_offers": False,
+    "refresh_offers": False, "referrals": False,
+    "enable_autonomous_code_evolution": False,
+}
 
 
 # Conventional, unprefixed variable names accepted for secrets and the dry-run switch.

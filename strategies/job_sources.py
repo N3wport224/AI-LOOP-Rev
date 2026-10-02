@@ -39,6 +39,38 @@ CREDITS = {
 }
 
 
+# Phase 420: what each board's terms say about building products from its listings (checked
+# 2026-10-02; terms change, so reread them before relying on this). "attribution": allowed when the
+# source is credited and every row keeps the link to its original posting (the datasets do both,
+# and the site's sources page credits each board). "restricted": the terms forbid reselling,
+# redistributing or storing the listings, so the agent doesn't collect them unless you set
+# allow_restricted_sources.
+TERMS = {
+    "remoteok": ("attribution", "link back to each job (followed link) and name Remote OK as the source"),
+    "arbeitnow": ("attribution", "commercial use allowed with a link back to Arbeitnow"),
+    "hn_hiring": ("attribution", "public Hacker News posts via the public API; each row links to its post"),
+    "jobicy": ("attribution", "use in your own products allowed; credit Jobicy, keep each job's Jobicy URL, no feeding job "
+                              "aggregators"),
+    "remotive": ("restricted", "terms forbid redistributing listings, commercial use and building a database of them"),
+    "weworkremotely": ("restricted", "terms forbid scraping, copying, saving or storing their data beyond the live feed"),
+    "himalayas": ("restricted", "the API is not a license to republish employer content"),
+}
+
+
+def allowed(cfg: Any, source: str) -> bool:
+    return TERMS.get(source, ("attribution", ""))[0] != "restricted" or bool(getattr(cfg, "allow_restricted_sources", False))
+
+
+def purge_restricted(state: Any, cfg: Any) -> int:
+    """Phase 421: postings already collected from restricted boards are deleted, so no product is
+    built from them again (products are rebuilt from the pool)."""
+    gone = [s for s in TERMS if not allowed(cfg, s)]
+    if not gone:
+        return 0
+    marks = ",".join("?" * len(gone))
+    return state._exec(f"DELETE FROM leads WHERE json_extract(data, '$.source') IN ({marks})", tuple(gone)).rowcount
+
+
 def _money(text: Any) -> list[int]:
     """"$80k - $100k" / "80,000-100,000 USD" → [80000, 100000]."""
     out = []
@@ -192,8 +224,9 @@ def fetched(state: Any, source: str) -> None:
 
 def sources_page(cfg: Any, shell: Any) -> str:
     rows = "".join(f'<li><a href="{html.escape(url)}" rel="noopener">{html.escape(name)}</a></li>'
-                   for key, (name, url) in CREDITS.items() if key in cfg.lead_sources)
+                   for key, (name, url) in CREDITS.items() if key in cfg.lead_sources and allowed(cfg, key))
+    powered = ' <p>Jobs powered by <a href="https://jobicy.com" rel="noopener">Jobicy</a>.</p>' if "jobicy" in cfg.lead_sources else ""
     body = ("<h1>Where the data comes from</h1><p>Every dataset is built from public job postings on these boards. Every row "
-            "keeps its source and a link to the original posting. Thank you to them.</p><ul>" + rows + "</ul>")
+            "keeps its source and a link to the original posting. Thank you to them.</p><ul>" + rows + "</ul>" + powered)
     return shell("Data sources", body, "The public job boards our hiring datasets are built from, with links: every row "
                                        "keeps its source.")

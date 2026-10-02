@@ -5,6 +5,14 @@ from strategies.b2b_lead_aggregator import FETCHERS, LeadAggregator, enrich_lead
 from strategies.base import TaskContext
 from tools.http_client import Response
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _parsers_of_every_board(config):
+    """These tests check each board's parser; the default leaves out boards whose terms forbid reselling (Phase 420)."""
+    config.allow_restricted_sources = True
+
 REMOTIVE = {"jobs": [{"id": 1, "url": "https://remotive.com/j/1", "title": "Senior Rust Engineer", "company_name": "Acme",
                       "category": "Software Development", "tags": ["rust", "aws"], "publication_date": "2026-09-28T10:00:00",
                       "candidate_required_location": "Europe", "salary": "$80k - $100k", "description": "<p>Rust</p>"},
@@ -81,3 +89,30 @@ def test_a_failing_board_also_waits_its_turn(toolkit, state, config, transport, 
     assert calls >= 1
     agg.run("aggregate_leads", TaskContext(toolkit, hyp, {}))
     assert len(transport.calls_to("https://remotive.com/")) == calls  # not hammered every cycle
+
+
+
+# ------------------------------------------------------------------ Phases 420-421
+def test_boards_whose_terms_forbid_reselling_are_left_out(toolkit, state, config, transport, make_hypothesis):
+    import json
+
+    from agent.config import Config
+
+    assert set(Config().lead_sources) == {"remoteok", "arbeitnow", "hn_hiring", "jobicy"}
+    config.allow_restricted_sources = False
+    assert not js.allowed(config, "remotive") and js.allowed(config, "jobicy") and js.allowed(config, "remoteok")
+    config.lead_sources = ["remotive"]
+    transport.add("https://remotive.com/api/remote-jobs", Response(200, "u", json.dumps(REMOTIVE).encode(), {}))
+    state.upsert_lead("old-remotive", "_pool", {"company": "Acme", "title": "Rust", "source": "remotive"})
+    state.upsert_lead("old-remoteok", "_pool", {"company": "Beta", "title": "Go", "source": "remoteok"})
+    LeadAggregator().run("aggregate_leads", TaskContext(toolkit, make_hypothesis(keywords=["rust"]), {}))
+    assert not transport.calls_to("https://remotive.com")  # not even fetched
+    keys = {r["dedupe_key"] for r in state._all("SELECT dedupe_key FROM leads")}
+    assert "old-remotive" not in keys and "old-remoteok" in keys  # collected earlier: deleted
+
+
+def test_the_sources_page_credits_jobicy():
+    from agent.config import Config
+
+    page = js.sources_page(Config(), lambda title, body, desc: body)
+    assert "Jobs powered by" in page and "Remotive" not in page and "Remote OK" in page
