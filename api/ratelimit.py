@@ -85,6 +85,8 @@ class FailureLimiter:
         """Seconds until this client may try again (0 when not blocked)."""
         now = self.clock()
         with self._lock:
+            if (ip or "unknown") not in self._hits:  # checked on every request: never adds an entry
+                return 0.0
             q = self._window(ip, now)
             return max(1.0, 3600 - (now - q[0])) if len(q) >= self.limit else 0.0
 
@@ -92,6 +94,9 @@ class FailureLimiter:
         now = self.clock()
         with self._lock:
             self._window(ip, now).append(now)
-            if len(self._hits) > 20_000:
-                for k in [k for k, v in self._hits.items() if not v][:10_000]:
+            if len(self._hits) > 20_000:  # age every queue first: one that stopped failing keeps old stamps
+                for k in [k for k in list(self._hits) if not self._window(k, now)][:10_000]:
                     del self._hits[k]
+                if len(self._hits) > 20_000:  # all recent: keep the most recent half
+                    keep = sorted(self._hits, key=lambda k: self._hits[k][-1], reverse=True)[:10_000]
+                    self._hits = {k: self._hits[k] for k in keep}

@@ -58,7 +58,7 @@ def export(state: Any, config: Any, email: str) -> dict[str, Any]:
                 audit.append({k: rec.get(k) for k in ("ts", "kind", "subject", "result")})
     return {
         "email": email,
-        "orders": state._all("SELECT order_id, gross_cents, status, occurred_at, product_ref FROM orders WHERE email = ?", one),
+        "orders": state._all("SELECT order_id, gross_cents, status, occurred_at, product_ref FROM orders WHERE lower(email) = ?", one),
         "subscriptions": state._all("SELECT tier, niche, price_cents, interval, subscription_status, started_at, canceled_at "
                                     "FROM subscribers WHERE lower(email) = ?", one),
         "checkout_sessions": state._all("SELECT session_id, status, amount_cents, updated_at FROM checkout_sessions "
@@ -67,11 +67,19 @@ def export(state: Any, config: Any, email: str) -> dict[str, Any]:
         "sales_emails": state._all("SELECT subject, status, created_at FROM outreach_queue WHERE lower(recipient) = ?", one),
         "emails_sent": audit,
         "contact_log": state._all("SELECT kind, sent_at FROM contact_log WHERE email = ?", one),
+        "download_links": _download_links(state, email),
         "testimonials": [t for t in (state.get("testimonials") or []) if t.get("email") == email],
         "referral_link": any(v == email for v in (state.get("referral_tokens") or {}).values()),
         "suppressed": state.is_suppressed(email),
         **_extra_export(state, email),  # Phase 390
     }
+
+
+def _download_links(state: Any, email: str) -> list[dict[str, Any]]:
+    from tools import download_links
+
+    download_links.ensure(state)
+    return state._all("SELECT path, created_at, expires_at, downloads FROM download_tokens WHERE lower(email) = ?", (email,))
 
 
 def _extra_export(state: Any, email: str) -> dict[str, Any]:
@@ -104,10 +112,18 @@ def forget(state: Any, config: Any, email: str) -> dict[str, int]:
     run("sales emails deleted", "DELETE FROM outreach_queue WHERE lower(recipient) = ?", (email,))
     run("recovery tokens deleted", "DELETE FROM recovery_tokens WHERE lower(email) = ?", (email,))
     run("contact log deleted", "DELETE FROM contact_log WHERE email = ?", (email,))
+    from tools import download_links
+
+    download_links.ensure(state)  # the links keep working (they were paid for); the address goes
+    run("download links anonymised", "UPDATE download_tokens SET email = ? WHERE lower(email) = ?", (anon, email))
     for table, column in (("errors", "message"), ("actions", "detail"), ("webhook_events", "detail"),
                           ("dunning_cases", "detail"), ("subscription_deliveries", "detail")):
-        run("log lines redacted", f"UPDATE {table} SET {column} = replace({column}, ?, '[deleted]') "
-                                  f"WHERE instr(lower({column}), ?) > 0", (email, email))
+        # matched case-insensitively in Python: SQLite's replace() is case-sensitive, so "Bob@X.com"
+        # in a log line would have survived an erase of bob@x.com
+        for r in state._all(f"SELECT rowid AS rid, {column} AS text FROM {table} WHERE instr(lower({column}), ?) > 0", (email,)):
+            state._exec(f"UPDATE {table} SET {column} = ? WHERE rowid = ?",
+                        (re.sub(re.escape(email), "[deleted]", r["text"], flags=re.I), r["rid"]))
+            done["log lines redacted"] = done.get("log lines redacted", 0) + 1
     rows = state._all("SELECT id, data FROM leads WHERE instr(lower(data), ?) > 0", (email,))
     for r in rows:
         state._exec("UPDATE leads SET data = ? WHERE id = ?", (re.sub(re.escape(email), "[deleted]", r["data"], flags=re.I), r["id"]))
@@ -144,9 +160,10 @@ def forget(state: Any, config: Any, email: str) -> dict[str, int]:
 
 
 def note_request(state: Any, email: str, subject: str) -> bool:
+    email = email.strip().lower()
     requests = dict(state.get(REQUESTS) or {})
     if email in requests:
         return False
-    requests[email.lower()] = {"at": state.now(), "subject": subject[:120]}
+    requests[email] = {"at": state.now(), "subject": subject[:120]}
     state.set(REQUESTS, requests)
     return True

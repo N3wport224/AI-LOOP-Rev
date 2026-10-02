@@ -130,7 +130,7 @@ def verify_zip(data: bytes) -> bool:
                 digest, _, name = line.partition("  ")
                 if hashlib.sha256(zf.read(prefix + name)).hexdigest() != digest:
                     return False
-    except (zipfile.BadZipFile, KeyError, OSError):
+    except (zipfile.BadZipFile, KeyError, OSError, ValueError):  # ValueError: a SHA256SUMS that isn't UTF-8
         return False
     return True
 

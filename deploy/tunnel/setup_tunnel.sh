@@ -15,7 +15,8 @@
 #   2. logs in once (skipped if ~/.cloudflared/cert.pem exists)
 #   3. creates the tunnel (or reuses the existing one with the same name)
 #   4. routes DNS: HOSTNAME CNAME -> <tunnel id>.cfargotunnel.com
-#   5. writes ~/.cloudflared/automonetize.yml: only /webhook and /healthz are forwarded to
+#   5. writes ~/.cloudflared/automonetize.yml: only the public routes (webhook, health check, forms,
+#      API, download and rating links; agent/tunnel.py EXPOSED_PATHS) are forwarded to
 #      127.0.0.1:<webhook_port>; everything else gets a 404 at Cloudflare's edge
 #   6. saves PUBLIC_WEBHOOK_URL=https://HOSTNAME/webhook to .env and data/tunnel.json
 #   7. installs and starts the com.automonetize.tunnel launchd job

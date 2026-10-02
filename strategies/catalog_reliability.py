@@ -101,6 +101,7 @@ def _verified(tools: Any, state: Any, path: str) -> bool:
 
 
 _VERIFIED_KEY = "factory_verified_this_hour"
+SENTINEL = "1970-01-01T00:00:00+00:00"  # "refresh me first": the weekly refresh orders by refreshed_at
 
 
 
@@ -112,16 +113,23 @@ def check_integrity(tools: Any) -> list[str]:
         return []
     state.set(INTEGRITY_KEY, state.now())
     state.set(_VERIFIED_KEY, 0)
-    missing = []
-    for r in state._all("SELECT f.slug AS slug, a.path AS path FROM factory_products f JOIN assets a ON a.id = f.asset_id "
-                        "WHERE f.status = 'live' ORDER BY RANDOM()"):  # a different sample of checksums each hour
+    missing, tried = [], set()
+    for r in state._all("SELECT f.slug AS slug, a.path AS path, f.refreshed_at AS refreshed FROM factory_products f "
+                        "JOIN assets a ON a.id = f.asset_id WHERE f.status = 'live' ORDER BY RANDOM()"):  # new checksum sample hourly
         if not r["path"] or not tools.files.exists(r["path"]) or not _verified(tools, state, r["path"]):
             missing.append(r["slug"])
-            state._exec("UPDATE factory_products SET refreshed_at = '1970-01-01T00:00:00+00:00' WHERE slug = ?", (r["slug"],))
+            if not str(r["refreshed"] or "").startswith(SENTINEL[:4]):
+                tried.add(r["slug"])  # the refresh ran since it was flagged (it clears the mark) and made nothing
     flagged = set(state.get(MISSING_KEY) or [])
-    for slug in [s for s in missing if s in flagged]:  # still missing an hour after a rebuild: nothing to sell
+    # Retire only what a rebuild was really tried for: after a disk restore with many files gone, the refresh
+    # queue (a few per run) can take longer than an hour, and a product still in the queue must not go.
+    gone = [s for s in missing if s in flagged and s in tried]
+    for slug in gone:
         take_off_sale(tools, slug)
-    state.set(MISSING_KEY, [s for s in missing if s not in flagged])
+    for slug in missing:
+        if slug not in gone:
+            state._exec("UPDATE factory_products SET refreshed_at = ? WHERE slug = ?", (SENTINEL, slug))
+    state.set(MISSING_KEY, [s for s in missing if s not in gone])
     if missing:
         from agent.ops_checks import _daily
 

@@ -2712,6 +2712,81 @@ File writes were already atomic: written to a temporary file, then renamed. This
 * The score shows at the end of `automonetize doctor`, in the control panel's Health tab, and in
   Monday's report (the last score).
 
+## Audit after Phase 400
+
+Every application file was read line by line: `agent/`, `strategies/`, `tools/`, `gui/`, `api/`,
+`dashboard/`, `cli/`, `deploy/` and `cli.py`. Each bug below is fixed. Where marked "test", a
+regression test fails on the old code and passes now.
+
+**Money and orders**
+
+* A dispute you won after the 30-day look-back was never recorded: the order stayed "disputed"
+  for good. Open disputes are now tracked and re-checked until Stripe closes them; a win puts the
+  order back to "delivered" (test).
+* A gift card whose email failed could never be delivered: every retry drew a new code under the
+  same Stripe idempotency keys, which Stripe refuses. The code and expiry are now kept per order
+  (test).
+* Buyers of an offer (lifetime pass, gift) couldn't recover any purchase with the recovery form,
+  and a referral of an offer errored every cycle. Offers have no file, and that case crashed
+  (test).
+* The Developer API and dossiers counted as datasets: lifetime-pass emails got download links for
+  them, and "new datasets" roundups listed them (test).
+* Hidden products were still advertised (products feed, `/v1/catalog`, marketing drafts,
+  roundups, teasers), all linking to pages that are no longer built (test).
+
+**Catalog and files**
+
+* Crash-safety cleanup treated `assets/bundles/` (and any folder named differently from its
+  product) as an orphan and deleted it (test).
+* A product flagged for a missing download was retired an hour later, before its rebuild had
+  even been tried. That retired good products after a disk restore (test).
+* The file sandbox refused writes over 10 MB, so the all-datasets bundle couldn't be written. The
+  limit is now 200 MB.
+
+**Privacy and secrets**
+
+* `privacy forget` missed an address logged in mixed case ("Jo@Acme.example"), and skipped download
+  links, which store the buyer's address; `privacy export` missed both too (tests).
+* The Slack/Discord webhook address went into the settings change log in plain text. Evolution
+  checks also received it, along with the phone-notification topic and the heartbeat URL. Logs now
+  redact webhook and heartbeat addresses (tests).
+
+**Robustness**
+
+* Two memory leaks under traffic from many networks: the public forms' spam guard and the API's
+  failed-login limiter kept an entry per client forever (tests).
+* The terminal dashboard read logged text as Rich markup, so "[redacted]" vanished and a stray
+  "[/x]" crashed it. Its MRR row never showed (test). `outreach list` had the same markup problem
+  with the drafts you approve.
+* Settings: list settings set from the environment (`AUTOMONETIZE_FACTORY_TYPES`) were split into
+  single characters, and a blank number line (`SMTP_PORT=`) stopped the agent from starting
+  (tests).
+* Careers-page checks could be pointed at private addresses by a scraped link (SSRF), and are now
+  limited to public hosts. Other fixes:
+  * `factory_types` now applies when set from the environment.
+  * The daily dead-link check now runs without a factory worker.
+  * A failing draft no longer stops the marketing plan.
+  * One failed "it's ready" email or pass digest no longer stops the others.
+  * Phone pushes now respect `sale_alerts`.
+  * The daily email lists 25 products, not every product.
+* Deploy: `deploy/crontab.example` sourced `.env` without exporting it, so a cron-run agent had
+  no keys. Smaller fixes:
+  * `goal 0` is refused.
+  * `go-live` no longer prints a traceback when offline.
+  * Exports go to the configured data folder.
+  * Malformed JSON sent to the control panel gets a 400 instead of a 500.
+  * `uninstall` points out a start-at-boot job it can't remove without sudo.
+
+**Known limitations**, deliberately not changed:
+
+* A price change back to a price used for the same product within 24 hours reuses Stripe's
+  idempotency key, so Stripe returns the earlier, now-inactive link. The pricing engine doesn't
+  step back that quickly.
+* `GET /v1/companies/{domain}` scans the job-posting pool to list a company's open roles. It's
+  fine at today's size; an index would help past a few hundred thousand postings.
+* Other `automonetize` commands print a few error messages as Rich markup. Text containing "[/x]"
+  could garble that one line; nothing is stored or sent wrongly.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

@@ -98,8 +98,12 @@ class Guard:
                 if not busy:
                     q.append(now)
             if len(self._posts) > MAX_TRACKED:
-                for key in [k for k, v in self._posts.items() if not v][: MAX_TRACKED // 2]:
+                # age each queue first: a network that stopped posting keeps its old stamps until windowed
+                for key in [k for k, v in self._posts.items() if not self._window(v, now)][: MAX_TRACKED // 2]:
                     del self._posts[key]
+                if len(self._posts) > MAX_TRACKED:  # all recent: keep the most recent half
+                    keep = sorted(self._posts, key=lambda k: self._posts[k][-1], reverse=True)[: MAX_TRACKED // 2]
+                    self._posts = defaultdict(deque, {k: self._posts[k] for k in keep})
         if blocked:
             self._count("blocked")
             return "blocked"

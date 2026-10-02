@@ -13,6 +13,7 @@ from typing import Sequence
 
 from rich.console import Console
 from rich.live import Live
+from rich.markup import escape
 from rich.table import Table
 
 from agent.config import Config
@@ -374,10 +375,11 @@ def cmd_outreach(args: argparse.Namespace, console: Console) -> int:
     if args.outreach_cmd == "list":
         rows = state.list_outreach(args.status, limit=args.limit)
         for r in rows:
-            console.rule(f"#{r['id']} [{r['status']}] {r['channel']} → {r['recipient']} (score {r['score']:.2f})")
-            console.print(f"[bold]{r['subject']}[/]")
+            # a draft is shown exactly as it would be sent: its text is never read as Rich markup
+            console.rule(escape(f"#{r['id']} [{r['status']}] {r['channel']} → {r['recipient']} (score {r['score']:.2f})"))
+            console.print(f"[bold]{escape(r['subject'])}[/]")
             if args.full:
-                console.print(r["body"])
+                console.print(r["body"], markup=False, highlight=False)
         if not rows:
             console.print("no drafts")
         return 0

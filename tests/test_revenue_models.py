@@ -162,3 +162,13 @@ def test_custom_fields_from_checkout_reach_the_order(kit, state, config):
                        "custom_fields": [{"key": "request", "text": {"value": "Kotlin, remote"}}]})
     meta = json.loads(state.get_order("stripe", "cs_cf")["meta"])
     assert meta == {"kind": "custom_request", "field:request": "Kotlin, remote"}
+
+
+def test_order_recovery_works_for_buyers_of_offers(offers_live, state):
+    # Audit after Phase 400: an offer's path is "" (the data folder itself); recovery used to try to read
+    # it as a file and crash, so a lifetime-pass or gift buyer couldn't recover anything.
+    from tools.storefront.recovery_endpoint import RecoveryService
+
+    order = buy(state, "gift", email="giver@co.example")
+    state.set_order_status(order["id"], "delivered")
+    assert RecoveryService(offers_live).dispatch("giver@co.example")["sent"] is True

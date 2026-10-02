@@ -1,7 +1,7 @@
 """`automonetize bench` (Phase 369): how fast the factory and the site are on this machine.
 
 Runs in a throwaway sandbox (a temporary folder and database, nothing sent anywhere): seeds synthetic
-postings, makes products back to back and builds the site from them, then prints the timings. Use
+postings, makes products back to back, then prints the timings. Use
 it after a big change, or when doctor says factory runs are slow.
 """
 

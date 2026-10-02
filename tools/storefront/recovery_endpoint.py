@@ -107,7 +107,7 @@ class RecoveryService:
                     files.append(Attachment(name, content, "application/pdf"))
                     notes.append(f"Executive dossier: {meta.get('company_id', 'company')} (order {order['order_id'][-8:]})")
                     seen.add(name)
-            elif tools.files.exists(asset["path"]):
+            elif tools.files.is_file(asset["path"]):  # offers (lifetime pass, gift...) have no file to re-send
                 path = tools.files.resolve(asset["path"])
                 if path.name not in seen:
                     note = f"{asset['title']} (order {order['order_id'][-8:]})"
@@ -120,7 +120,7 @@ class RecoveryService:
                     seen.add(path.name)
         for sub in found["dataset_subs"]:
             dataset = next((a for a in tools.state.list_assets() if a["kind"] == ASSET_KIND and a.get("niche") == sub.get("niche")), None)
-            if dataset and tools.files.exists(dataset["path"]):
+            if dataset and tools.files.is_file(dataset["path"]):
                 path = tools.files.resolve(dataset["path"])
                 if path.name not in seen:
                     files.append(Attachment(path.name, path.read_bytes()))

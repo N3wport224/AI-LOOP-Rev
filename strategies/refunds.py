@@ -24,6 +24,8 @@ from strategies.base import Strategy, TaskContext, TaskResult
 STRIPE_API = "https://api.stripe.com/v1"
 DISPUTE_FEE_CENTS = 1500  # Stripe's US dispute fee
 FIRST_LOOKBACK_DAYS = 30
+OPEN = "open_disputes"  # disputes not decided yet: re-read until won or lost (a later win must come back as revenue)
+CLOSED = ("won", "lost", "warning_closed", "charge_refunded")
 
 
 def _iso(ts: Any) -> str:
@@ -54,7 +56,18 @@ class Refunds(Strategy):
             state.log_error("refunds", f"couldn't read refunds/disputes from Stripe: {exc!r}")
             return TaskResult(True, f"couldn't read refunds: {exc!r}"[:200], {"refunds": 0, "disputes": 0})
         new_refunds = sum(self.refund(tools, r, get) for r in refunds if r.get("status") in ("succeeded", "pending"))
-        new_disputes = sum(self.dispute(tools, d, get) for d in disputes)
+        seen = {d.get("id") for d in disputes}
+        for did in list(state.get(OPEN) or []):  # decided after the look-back window: only a re-read sees it
+            if did in seen:
+                continue
+            try:
+                disputes.append(get(f"disputes/{did}"))
+            except Exception as exc:  # noqa: BLE001 - retried next cycle
+                state.log_error("refunds", f"couldn't re-read dispute {did}: {exc!r}")
+        new_disputes = sum(self.dispute(tools, d, get) for d in disputes if d.get("id"))
+        still_open = {str(d["id"]) for d in disputes if d.get("id") and d.get("status") not in CLOSED}
+        kept = [x for x in (state.get(OPEN) or []) if x not in {str(d.get("id")) for d in disputes}]
+        state.set(OPEN, sorted(set(kept) | still_open)[-500:])
         state.set("refunds_synced_at", now.isoformat(timespec="seconds"))
         return TaskResult(True, f"refunds: {new_refunds} new; disputes: {new_disputes} new or changed",
                           {"refunds": new_refunds, "disputes": new_disputes})
@@ -105,6 +118,9 @@ class Refunds(Strategy):
         if d.get("status") == "won" and not state._one("SELECT 1 AS x FROM revenue WHERE source = 'stripe' AND external_id = ?",
                                                        (f"dispute_won:{d['id']}",)):
             state.record_revenue("stripe", f"dispute_won:{d['id']}", amount, 0, amount, True, state.now(), note="dispute won")
+            order = self.order_for(tools, d.get("payment_intent"), get)
+            if order and order["status"] == "disputed":  # the sale stands: it counts again everywhere
+                state.set_order_status(order["id"], "delivered")
             state.log_action(int(state.get("iteration", 0)), None, "dispute", "ok", f"won: ${amount / 100:.2f} returned")
             changed = True
         return changed

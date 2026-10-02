@@ -17,7 +17,7 @@ from typing import Any
 
 SNAPSHOT = "settings_snapshot"
 HISTORY = "settings_history"
-SECRET_RE = re.compile(r"key|secret|token|password|passwd|topic|heartbeat_url", re.I)
+SECRET_RE = re.compile(r"key|secret|token|password|passwd|topic|heartbeat_url|chat_webhook_url", re.I)
 
 
 def snapshot(config: Any) -> dict[str, str]:

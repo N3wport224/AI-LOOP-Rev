@@ -56,3 +56,25 @@ def test_cli_parses():
 
     args = build_parser().parse_args(["privacy", "inventory"])
     assert args.action == "inventory" and args.email == ""
+
+
+def test_forget_redacts_an_address_logged_in_mixed_case(state, config):
+    from tools.privacy import note_request
+
+    state.log_error("support", "reply from Jo@Acme.example about an order")
+    state.log_action(1, None, "deliver", "ok", "sent to JO@ACME.EXAMPLE")
+    done = forget(state, config, "jo@acme.example")
+    assert done["log lines redacted"] == 2
+    logs = str([dict(r) for r in state._all("SELECT message FROM errors")] + [dict(r) for r in state._all("SELECT detail FROM actions")])
+    assert "acme.example" not in logs.lower() and "[deleted]" in logs
+    assert note_request(state, "Pat@Co.example", "delete my data") and not note_request(state, "pat@co.example", "again")
+
+
+def test_export_and_forget_cover_download_links(state, config):
+    from tools import download_links
+
+    config.public_webhook_url = "https://t.example/webhooks/stripe"
+    download_links.issue(state, config, "assets/py/py-v1.zip", "Jo@Acme.example")
+    assert export(state, config, "jo@acme.example")["download_links"][0]["path"] == "assets/py/py-v1.zip"
+    assert forget(state, config, "jo@acme.example")["download links anonymised"] == 1
+    assert "acme" not in str([dict(r) for r in state._all("SELECT email FROM download_tokens")])

@@ -3,7 +3,7 @@
 <!--
   launchd job for AutoMonetize (engine + webhook supervisor). Do not edit the double-underscore
   placeholders by hand: deploy/install_launchd.sh renders this into
-  ~/Library/LaunchAgents/ (starts at login) or, with sudo and -system, /Library/LaunchDaemons/
+  ~/Library/LaunchAgents/ (starts at login) or, with sudo and the system option, /Library/LaunchDaemons/
   (starts at boot, runs as your user, no login needed).
   Secrets are NOT stored here: deploy/run_agent.sh loads __WORKDIR__/.env on every start, so no
   terminal or login shell is involved.

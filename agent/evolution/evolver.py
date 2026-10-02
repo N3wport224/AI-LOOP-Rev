@@ -241,7 +241,8 @@ def default_checks(config: Any) -> list[Check]:
     return checks
 
 
-_SECRETISH = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL", re.I)
+# the notification addresses work like passwords too: anyone holding one can post as you
+_SECRETISH = re.compile(r"KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|CHAT_WEBHOOK_URL|NTFY_TOPIC|HEALTHCHECK_URL", re.I)
 
 
 def sandbox_env(worktree: Path) -> dict[str, str]:

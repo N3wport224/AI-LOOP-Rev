@@ -108,7 +108,8 @@ async def post_control(request: web.Request) -> web.Response:
         body = await request.json()
     except ValueError:
         return web.json_response({"ok": False, "message": "invalid JSON"}, status=400)
-    action = str((body or {}).get("action", ""))
+    body = body if isinstance(body, dict) else {}  # a JSON list or string is just an unknown action
+    action = str(body.get("action", ""))
     if action not in ACTIONS:
         return web.json_response({"ok": False, "message": f"unknown action {action!r}"}, status=400)
     if action == "kill" and body.get("confirm") is not True:

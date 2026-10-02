@@ -40,6 +40,8 @@ def stripe_get(key: str, path: str) -> tuple[int, dict[str, Any]]:
         except ValueError:
             body = {}
         return exc.code, body
+    except (urllib.error.URLError, OSError) as exc:  # offline, DNS, TLS: a plain message, not a traceback
+        return 0, {"error": {"message": f"couldn't reach Stripe ({getattr(exc, 'reason', exc)})"}}
 
 
 def check_stripe(key: str) -> bool:

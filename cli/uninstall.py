@@ -58,6 +58,9 @@ def main(argv: list[str], confirm: Callable[[str], str] = input, run: Callable[.
         proc = run(["/bin/bash", str(ROOT / "deploy" / "install_launchd.sh"), "uninstall"], capture_output=True, text=True)
         say(GREEN if proc.returncode == 0 else RED, ("✔ " if proc.returncode == 0 else "✘ ") + "launchd jobs removed"
             + ("" if proc.returncode == 0 else f": {(proc.stderr or proc.stdout).strip()[:200]}"))
+        if Path("/Library/LaunchDaemons/com.automonetize.agent.plist").exists():  # installed with --system (needs sudo)
+            say(YELLOW, "! A start-at-boot job is installed too; remove it with: "
+                        "sudo deploy/install_launchd.sh uninstall --system")
     if "--deactivate-links" in argv and config.stripe_secret_key:
         from tools import build_toolkit
         from tools.circuit_breaker import CircuitBreaker

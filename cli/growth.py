@@ -141,6 +141,9 @@ def goal_main(argv: list[str]) -> int:
         print(f"The daily goal is ${config.daily_target_cents / 100:,.2f}. Change it with: automonetize goal 15")
         return 0 if not argv else 1
     cents = round(float(argv[0]) * 100)
+    if cents <= 0:
+        say(RED, "The goal must be more than $0.")
+        return 1
     update_env_file(ROOT / ".env", {"AUTOMONETIZE_DAILY_TARGET_CENTS": str(cents)})
     state.set("goal_suggestion", None)
     say(GREEN, f"✔ Daily goal set to ${cents / 100:,.2f}")
@@ -385,8 +388,8 @@ def catalog_export_main(argv: list[str]) -> int:
 
     from strategies.catalog_portability import export
 
-    _, state, files = _setup()
-    path = Path(argv[0]) if argv else ROOT / "data" / "exports" / f"catalog-{state.now()[:10]}.zip"
+    config, state, files = _setup()
+    path = Path(argv[0]) if argv else config.data_dir / "exports" / f"catalog-{state.now()[:10]}.zip"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(export(state, files))
     say(GREEN, f"✔ Wrote {path} ({path.stat().st_size // 1024} KB). It has no customer data.")
@@ -463,7 +466,7 @@ def factory_main(argv: list[str]) -> int:
     if "--csv" in argv:
         from strategies.catalog_insight import catalog_csv
 
-        path = ROOT / "data" / "exports" / "catalog.csv"
+        path = config.data_dir / "exports" / "catalog.csv"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(catalog_csv(state), encoding="utf-8")
         say(GREEN, f"✔ Wrote {path}")

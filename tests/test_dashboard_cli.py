@@ -151,3 +151,14 @@ def test_config_rejects_unknown_keys(tmp_path):
     p.write_text("[automonetize]\nnot_a_key = 1\n")
     with pytest.raises(ValueError):
         Config.load(p, env={})
+
+
+def test_render_shows_logged_text_as_is_and_the_recurring_row(config, state):
+    state.log_error("support", "reply from [deleted] about [/bold] tags")
+    state.log_action(1, None, "deliver", "ok", "sent to [deleted]")
+    state.upsert_subscriber("stripe", "sub_1", email="a@b.example", price_cents=900, interval="month", status="active")
+    console = _console()
+    console.print(render_dashboard(collect_snapshot(state, config)))  # a stray closing tag used to raise MarkupError
+    out = console.export_text()
+    assert "reply from [deleted] about [/bold] tags" in out and "sent to [deleted]" in out
+    assert "MRR $9.00" in out

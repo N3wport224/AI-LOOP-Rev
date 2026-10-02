@@ -80,6 +80,24 @@ def test_a_dispute_costs_the_fee_alerts_and_a_win_comes_back(kit, state, transpo
     assert state.count_errors("alert") == 1
 
 
+def test_a_dispute_won_after_the_look_back_window_still_comes_back(kit, state, transport, clock):
+    # Audit after Phase 400: the list only covers disputes created since the last sync, so an open
+    # dispute is re-read by id until it's decided; the win returns the money and the sale counts again.
+    _, aid = dataset(kit, state, "python-remote")
+    sale(state, aid)
+    dispute = {"id": "dp_1", "amount": 1900, "reason": "fraudulent", "status": "needs_response", "payment_intent": "pi_1",
+               "created": T}
+    stripe_feeds(transport, disputes=[dispute])
+    Refunds().run("sync_refunds", ctx(kit))
+    clock.advance(days=20)
+    stripe_feeds(transport, disputes=[])  # long past the look-back window
+    transport.add_json(f"{STRIPE}/disputes/dp_1", {**dispute, "status": "won"})
+    assert Refunds().run("sync_refunds", ctx(kit)).metrics["disputes"] == 1
+    assert net_total(state) == 1815 - DISPUTE_FEE_CENTS
+    assert state.get_order("stripe", "cs_1")["status"] == "delivered"
+    assert state.get("open_disputes") == []
+
+
 def test_refunds_need_a_stripe_key(kit, config):
     config.stripe_secret_key = ""
     assert Refunds().run("sync_refunds", ctx(kit)).summary == "no Stripe key"

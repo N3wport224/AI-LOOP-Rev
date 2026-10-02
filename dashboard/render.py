@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from rich.console import Group
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
 from rich.table import Table
@@ -33,7 +34,7 @@ def _objective_panel(snap: dict[str, Any]) -> Panel:
     t.add_row("Objective", snap["objective"])
     if hyp:
         t.add_row("Hypothesis", Text(f"#{hyp['id']} {hyp['key']}", style="cyan"))
-        t.add_row("", hyp["description"])
+        t.add_row("", escape(hyp["description"] or ""))
         progress = Text(
             f"iterations {hyp['iterations']}/{hyp['pivot_after']} before zero-traction pivot · "
             f"attributed revenue {dollars(hyp['revenue_cents'])}"
@@ -71,7 +72,7 @@ def _pipeline_table(snap: dict[str, Any]) -> Table:
     t.add_row("Assets staged", str(snap["assets_total"]))
     for asset in snap["assets"][:3]:
         link = f" → {asset['product_ref']}" if asset["product_ref"] else " (not listed)"
-        t.add_row("", f"{asset['title']} v{asset['version']} · {asset['lead_count']} rows{link}")
+        t.add_row("", escape(f"{asset['title']} v{asset['version']} · {asset['lead_count']} rows{link}"))
     outreach = snap["outreach"]
     t.add_row(
         "Outreach",
@@ -114,7 +115,7 @@ def _distribution_panel(snap: dict[str, Any]) -> Panel:
     sale = d.get("last_sale")
     if sale:
         t.add_row("Last sale", f"+${sale['net_cents'] / 100:.2f} net at {sale['at'][11:19]} (today ${sale['today_net_cents'] / 100:.2f})")
-    rec = snap.get("recurring") or {}
+    rec = d.get("recurring") or {}  # collect_snapshot nests it under distribution
     if rec.get("active") or rec.get("canceled"):
         t.add_row("Recurring", f"MRR ${rec['mrr_cents'] / 100:,.2f} ({rec['mrr_cents'] * 12 / 365 / 100:,.2f}/day) · "
                   f"{rec['active']} active · {rec['past_due']} past due · {rec['canceled']} canceled")
@@ -186,7 +187,8 @@ def _health_panel(snap: dict[str, Any]) -> Panel:
     errors.add_column("kind", no_wrap=True)
     errors.add_column("message", overflow="ellipsis", no_wrap=True, ratio=1)
     for e in snap["recent_errors"]:
-        errors.add_row(e["created_at"][11:19], e["source"], e["kind"], e["message"])
+        # logged text is data, not Rich markup: "[redacted]" would vanish and a stray "[/x]" would crash the screen
+        errors.add_row(e["created_at"][11:19], escape(e["source"]), e["kind"], escape(e["message"] or ""))
     if not snap["recent_errors"]:
         errors.add_row("", "", "", Text("no errors recorded", style="green"))
     parts.append(errors)
@@ -201,7 +203,7 @@ def _actions_panel(snap: dict[str, Any]) -> Panel:
     t.add_column("detail", overflow="ellipsis", no_wrap=True, ratio=1)
     for a in snap["recent_actions"]:
         colour = {"ok": "green", "failed": "red", "skipped": "yellow"}.get(a["status"], "white")
-        t.add_row(str(a["cycle"]), a["name"], Text(a["status"], style=colour), a["detail"] or "")
+        t.add_row(str(a["cycle"]), escape(a["name"]), Text(a["status"], style=colour), escape(a["detail"] or ""))
     return Panel(t, title="Recent Actions", border_style="blue")
 
 

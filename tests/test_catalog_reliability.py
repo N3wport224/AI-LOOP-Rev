@@ -93,3 +93,16 @@ def test_a_download_that_cannot_be_rebuilt_is_taken_off_sale(kit, state, config,
     assert state._one("SELECT status FROM factory_products WHERE slug = ?", (made["slug"],))["status"] == "retired"
     assert transport.calls_to(f"{test_business_ops.STRIPE}/payment_links/{asset['product_ref']}", "POST")
     assert any("taken off sale" in a for a in alerts(state))
+
+
+def test_a_product_still_waiting_for_its_rebuild_is_not_retired(kit, state, config, clock, transport):
+    # Audit after Phase 400: after a disk restore the refresh queue (a few per run) can take longer than an
+    # hour; only a product whose rebuild was tried and found nothing is taken off sale.
+    made = made_product(kit, state, clock, transport)
+    asset = state.get_asset(made["asset_id"])
+    kit.files.resolve(asset["path"]).unlink()
+    clock.advance(hours=2)
+    assert cr.check_integrity(kit) == [made["slug"]]  # flagged; no refresh ran yet (queue busy)
+    clock.advance(hours=2)
+    cr.check_integrity(kit)
+    assert state._one("SELECT status FROM factory_products WHERE slug = ?", (made["slug"],))["status"] == "live"

@@ -17,6 +17,10 @@ SECRET_PATTERNS = [
     re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,})"),
     re.compile(r"(?i)\b(password|passwd|token|secret|api[_-]?key)(\s*[=:]\s*)(\S+)"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._-]{8,}"),
+    # addresses that work like passwords: a chat webhook, a heartbeat ping (an HTTP error names the URL)
+    re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
+    re.compile(r"https://(?:ptb\.)?discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+"),
+    re.compile(r"https://hc-ping\.com/[A-Za-z0-9/_-]+"),
 ]
 
 

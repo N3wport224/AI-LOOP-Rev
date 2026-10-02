@@ -266,8 +266,10 @@ async def post_settings(request: web.Request) -> web.Response:
         body = await request.json()
     except ValueError:
         return web.json_response({"error": "invalid JSON"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "send a JSON object"}, status=400)
     values = body.get("values") or {}
-    clear = [k for k in body.get("clear") or [] if isinstance(k, str)]
+    clear = [k for k in (body.get("clear") if isinstance(body.get("clear"), list) else []) if isinstance(k, str)]
     if not isinstance(values, dict):
         return web.json_response({"error": "values must be an object"}, status=400)
     existing = read_env_file(gctx.env_file)

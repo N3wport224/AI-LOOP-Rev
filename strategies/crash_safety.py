@@ -83,6 +83,9 @@ def orphan_folders(state: Any, files: Any, now_ts: float | None = None) -> list[
         return []
     known = {r["slug"] for r in state._all("SELECT slug FROM factory_products")}
     known |= {str(r["niche"]) for r in state._all("SELECT DISTINCT niche FROM assets WHERE niche IS NOT NULL")}
+    # Any folder a recorded file lives in is in use, whatever its name: the all-datasets bundle sits in
+    # assets/bundles/ (its niche is "bundle"), and deleting it would break a product on sale.
+    known |= {str(r["path"]).split("/")[1] for r in state._all("SELECT DISTINCT path FROM assets WHERE path LIKE 'assets/%/%'")}
     cutoff = (now_ts or time.time()) - ORPHAN_HOURS * 3600
     out = []
     for name in files.list_dir("assets"):

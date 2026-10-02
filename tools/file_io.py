@@ -14,7 +14,10 @@ from tools.errors import SandboxViolation, ToolError
 
 
 class SandboxedFileIO:
-    def __init__(self, root: str | os.PathLike[str], max_bytes: int = 10 * 1024 * 1024):
+    # 200 MB: a guard against runaway writes, not a product limit. At 10 MB the all-datasets bundle (every
+    # niche's zip in one) or a big factory product would fail to build; downloads over 8 MB already go out
+    # by private link instead of attachment (tools/download_links.py).
+    def __init__(self, root: str | os.PathLike[str], max_bytes: int = 200 * 1024 * 1024):
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max_bytes
@@ -76,6 +79,11 @@ class SandboxedFileIO:
     # -- misc ---------------------------------------------------------------
     def exists(self, relpath: str) -> bool:
         return self.resolve(relpath).exists()
+
+    def is_file(self, relpath: str) -> bool:
+        """A real file at ``relpath``. Unlike ``exists``, an empty path (the data folder itself, which
+        offers and services carry as their "path") is not one."""
+        return bool(str(relpath or "").strip()) and self.resolve(relpath).is_file()
 
     def list_dir(self, relpath: str = ".") -> list[str]:
         target = self.resolve(relpath)

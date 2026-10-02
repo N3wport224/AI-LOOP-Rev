@@ -44,7 +44,8 @@ async def post_testimonials(request: web.Request) -> web.Response:
         body = await request.json()
     except ValueError:
         return web.json_response({"ok": False, "message": "invalid JSON"}, status=400)
-    action, ids = str((body or {}).get("action", "")), (body or {}).get("ids")
+    body = body if isinstance(body, dict) else {}  # a JSON list or string is just an unknown action
+    action, ids = str(body.get("action", "")), body.get("ids")
     status = {"approve": "approved", "reject": "rejected"}.get(action)
     if not status or not isinstance(ids, list) or not ids or len(ids) > 200 \
             or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):

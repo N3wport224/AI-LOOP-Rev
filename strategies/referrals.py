@@ -87,7 +87,11 @@ class Referrals(Strategy):
                 continue  # waits for the next window
             bought = state.get_asset(o["asset_id"]) if o.get("asset_id") else None
             gift = newest_for(state, bought) if bought else None
-            if not gift or not tools.files.exists(gift["path"]):
+            if gift and not str(gift.get("path") or "").strip():  # an offer or service: no file to give
+                done.append(o["id"])
+                seen.add(o["id"])
+                continue
+            if not gift or not tools.files.is_file(gift["path"]):  # missing for now: try again next cycle
                 continue
             body = "\n".join([
                 "Hi,", "", "Someone bought through your link, thank you! As promised, here's the newest version of "
