@@ -71,6 +71,7 @@ def build_status(gctx) -> dict[str, Any]:
         "finance": state.get("stripe_finance") or {},
         "pace": state.get("goal_pace") or {},
         "todo": _todo(state, cfg),
+        "path": _path(state, cfg),
         "version": _version(),
         "dry_run": cfg.dry_run,
     }
@@ -85,6 +86,15 @@ def _version() -> str:
     if not _VERSION:  # once per GUI process: the code doesn't change under a running panel
         _VERSION["text"] = describe(info())
     return _VERSION["text"]
+
+
+def _path(state, cfg) -> dict:
+    from strategies.path_to_goal import diagnose
+
+    try:
+        return diagnose(state, cfg)
+    except Exception:  # noqa: BLE001 - the status page must render regardless
+        return {}
 
 
 def _todo(state, cfg) -> list[dict]:

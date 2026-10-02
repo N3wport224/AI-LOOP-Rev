@@ -301,6 +301,12 @@ class OwnerReports(Strategy):
         from strategies.marketing_optimizer import describe as describe_optimizer
 
         lines += ["", describe_marketing(state), *describe_optimizer(state)]
+        try:  # Phase 412: the one step that stands between today and the daily goal
+            from strategies.path_to_goal import diagnose, headline
+
+            lines += ["", headline(diagnose(state, cfg))]
+        except Exception as exc:  # noqa: BLE001 - the report goes out regardless
+            state.log_error("owner_reports", f"path to goal: {exc!r}")
         if problems:
             lines += ["", "Problems in the last 24 hours:", *[problem_line(p) for p in problems]]
         if not (cfg.github_pages_repo and cfg.pages_base_url):

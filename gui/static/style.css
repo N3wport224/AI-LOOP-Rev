@@ -85,3 +85,8 @@ body.login { display: grid; place-items: center; min-height: 100vh; }
 .product .links { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: auto; padding-top: .3rem; }
 .product .links a, .product .links button { font-size: .83rem; padding: .3rem .6rem; border-radius: 6px; border: 1px solid var(--border); text-decoration: none; color: var(--text); background: var(--card); font-weight: 600; }
 .product .links a.buy { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+
+/* Path to the daily goal (Phase 412) */
+.path { padding-left: 1.2rem; margin: .4rem 0; } .path li { margin: .25rem 0; }
+.path .ok { color: var(--ok); } .path .no { color: var(--bad); font-weight: 600; } .path .later { color: var(--muted); }
+.path .next { display: block; margin: .3rem 0 .2rem; padding: .45rem .6rem; border-radius: 6px; background: var(--warn-bg); color: var(--text); }

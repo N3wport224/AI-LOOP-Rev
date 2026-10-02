@@ -811,3 +811,15 @@ def commands_main(argv: list[str]) -> int:
     code(state, new="--new" in argv)
     print(help_text(config, state))
     return 0
+
+
+def path_main(argv: list[str]) -> int:
+    """`automonetize path` (Phases 410-414): why the daily goal isn't met yet, and the next step."""
+    from strategies.path_to_goal import describe, diagnose
+
+    config, state, _ = _setup()
+    d = diagnose(state, config)
+    say(BOLD, f"Path to ${config.daily_target_cents / 100:,.2f} a day")
+    for line in describe(d):
+        say(GREEN if line.startswith("✔") else RED if line.startswith("✘") else YELLOW if "NEXT" in line else BOLD, line)
+    return 0 if d["blocker"] is None else 1

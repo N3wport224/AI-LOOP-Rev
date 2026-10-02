@@ -225,12 +225,22 @@ def product_gallery(gctx: Any, q: str = "", status: str = "", offset: int = 0, l
             desc = OFFERS[a["kind"]][3] if a["kind"] in OFFERS else ""
         ref = str(a.get("product_ref") or "")
         slug = niche if a["kind"] in PAGE_KINDS else ""
+        page_url = f"{site}/{slug}/" if site and slug and st == "live" else ""
+        post = ""
+        if listing and st == "live" and (page_url or a.get("checkout_url")):  # Phase 415
+            from tools.attribution import add_utm, checkout_link
+
+            ftype = types.get(niche, "")
+            link = add_utm(page_url, "social", "post", niche) if page_url else checkout_link(a["checkout_url"], "social", niche)
+            post = pm.launch_post(pm.facts(a["title"], listing.get("summary", ""), listing.get("insight"),
+                                           int(a.get("lead_count") or 0), int(a.get("price_cents") or 0),
+                                           postings=pm.per_posting(a["kind"], ftype)), link)
         items.append({
             "id": a["id"], "title": a["title"], "type": label, "status": st, "price_cents": int(a.get("price_cents") or 0),
             "rows": int(a.get("lead_count") or 0), "version": a.get("version"), "created_at": a.get("created_at") or "",
             "description": desc, "checkout_url": a.get("checkout_url") or "",
             "stripe_url": f"https://dashboard.stripe.com/{'' if live_key else 'test/'}payment-links/{ref}" if ref.startswith("plink_") else "",
-            "page_url": f"{site}/{slug}/" if site and slug and st == "live" else "",
+            "page_url": page_url, "post": post,
             "previews": [n for n in (1, 2, 3) if base and any(files.exists(f"{base}/preview-{n}.{e}") for e in ("png", "svg"))],
             "can_draw": bool(base and files.exists(f"{base}/sample.json")),
         })
@@ -301,6 +311,31 @@ async def post_redraw(request: web.Request) -> web.Response:
     data = await _body(request)
     try:
         message = await _run(redraw, ctx(request), int(data.get("id")))
+    except (TypeError, ValueError) as exc:
+        return _json({"ok": False, "message": str(exc)}, 400)
+    return _json({"ok": True, "message": message})
+
+
+def mark_launch_posted(gctx: Any, aid: int) -> str:
+    """Phase 416: you published a product's launch post: it counts as a way in (path to goal, marketing scores)."""
+    from strategies.marketing_engine import ensure
+
+    state = gctx.state
+    asset = state.get_asset(aid)
+    if not asset:
+        raise ValueError("no such product")
+    ensure(state)
+    now = state.now()
+    state._exec("INSERT INTO marketing_plays (strategy, channel, mode, title, body, link, status, created_at, done_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)", ("launch_post", "social", "draft", f"Launch post: {asset['title']}"[:200], "",
+                                              asset.get("checkout_url") or "", "posted", now, now))
+    return f"Recorded: launch post for {asset['title']}. Give it a day or two, then check the Path card."
+
+
+async def post_launch_posted(request: web.Request) -> web.Response:
+    data = await _body(request)
+    try:
+        message = await _run(mark_launch_posted, ctx(request), int(data.get("id")))
     except (TypeError, ValueError) as exc:
         return _json({"ok": False, "message": str(exc)}, 400)
     return _json({"ok": True, "message": message})
@@ -393,7 +428,7 @@ def routes() -> list[web.RouteDef]:
     return [web.get("/api/products", get_products), web.get("/api/products.csv", get_products_csv),
             web.get("/api/catalog", get_catalog), web.get("/api/trends", get_trends),
             web.get("/api/products/all", get_gallery), web.get("/api/products/preview", get_preview),
-            web.post("/api/products/redraw", post_redraw),
+            web.post("/api/products/redraw", post_redraw), web.post("/api/products/posted", post_launch_posted),
             web.post("/api/products/make", post_make), web.post("/api/products/action", post_action),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),

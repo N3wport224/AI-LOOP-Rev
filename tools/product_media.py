@@ -112,6 +112,23 @@ def checkout_description(f: dict[str, Any], updated: str = "", refund_days: int 
     return out[:limit]
 
 
+def launch_post(f: dict[str, Any], link: str) -> str:
+    """Phase 415: a short post to paste where buyers are (written to be useful on its own, one link)."""
+    lines = [f["title"], ""]
+    if f["rows"] and f["companies"]:
+        noun = "job postings" if f.get("unit", "postings") == "postings" else "rows"
+        lines.append(f"I pulled together {f['rows']:,} current {noun} from {f['companies']:,} companies.")
+    if f["top_companies"]:
+        lines.append("Hiring the most right now: " + ", ".join(f"{c} ({n})" for c, n in f["top_companies"][:3]) + ".")
+    if f["top_locations"]:
+        lines.append("Top locations: " + ", ".join(p for p, _ in f["top_locations"][:3]) + ".")
+    if f["remote_pct"]:
+        lines.append(f"{f['remote_pct']}% of them are remote.")
+    lines += ["", "Built from public job postings; free 5-row preview and the full file (CSV/Excel/JSON) here:"
+              if f.get("unit", "postings") == "postings" else "Built from public job postings; the full file is here:", link]
+    return "\n".join(lines).strip() + "\n"
+
+
 # ------------------------------------------------------------------ Phase 402: drawing
 def _wrap(text: str, chars: int, lines: int) -> list[str]:
     words, out = str(text).split(), [""]

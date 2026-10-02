@@ -994,6 +994,7 @@ automonetize version                                 # which version is running
 automonetize expense add|list|delete                 # business expenses for the books
 automonetize goal [DOLLARS]                          # show or change the daily goal
 automonetize features                               # every feature: on, off, or waiting for you
+automonetize path                                   # why the daily goal is not met yet, and the one next step
 automonetize settings-log                           # what changed in the settings, and when
 automonetize export-all                              # everything as CSVs in one zip
 automonetize todo                                    # the few things only you can do, most valuable first
@@ -2830,6 +2831,34 @@ Every product now has a description written for the checkout and three preview i
   * **Redraw pictures**.
 
 Turn it off with `product_previews = false` in `automonetize.toml`.
+
+## Path to the daily goal and launch posts (Phases 410-416)
+
+**Why isn't it making $10 a day yet?** A sale needs every link of a chain. `automonetize path`, the
+top of the control panel and the daily report check each link from the agent's own records, and
+name the first broken one as the next step:
+
+1. **Real payments**: a live Stripe key and real email (not dry run).
+2. **Products on sale**: live checkout links.
+3. **A place to find them**: the public site.
+4. **Ways in (traffic)**: Dev.to articles, or posts you published in the last 14 days.
+5. **Visitors start a checkout**: checkouts started in the last 14 days.
+6. **Checkouts become sales**: sales in the last 14 days.
+7. **On goal**: the 14-day average against your daily goal.
+
+Steps only you can do are marked: the agent never creates accounts, pays for anything or posts
+under your name.
+
+It also does the arithmetic. At the average price on sale, after Stripe's fee, it works out how
+many sales a day the goal takes, and roughly how many visitors a day that needs (an estimate:
+1-2% of visitors buy a low-priced data product). At about $9-19 a product, $10 a day is 1-2 sales a
+day, which usually takes 100-200 visitors a day.
+
+**Launch posts (Phases 415-416):** every product on sale has a ready-to-paste post on its card in
+the Products tab. It's written to be useful on its own (the counts, who's hiring most, the top
+locations, the remote share) and carries one tracked link, so a sale is credited to "social".
+**Copy launch post** puts it on your clipboard. After you publish it, press **Mark as posted**:
+the path check and the marketing scores then count it as a way in.
 
 ## Safety and consistency (Phases 140-144)
 

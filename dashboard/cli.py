@@ -1052,6 +1052,12 @@ def cmd_export_all(args: argparse.Namespace, console: Console) -> int:
     return export_all_main([])
 
 
+def cmd_path(args: argparse.Namespace, console: Console) -> int:
+    from cli.growth import path_main
+
+    return path_main([])
+
+
 def cmd_features(args: argparse.Namespace, console: Console) -> int:
     from cli.growth import features_main
 
@@ -1370,6 +1376,8 @@ def build_parser() -> argparse.ArgumentParser:
     ea.set_defaults(func=cmd_export_all)
     fe = sub.add_parser("features", help="every major feature: on, off, or waiting for something from you")
     fe.set_defaults(func=cmd_features)
+    pa = sub.add_parser("path", help="why the daily goal isn't met yet, and the one next step (with the arithmetic)")
+    pa.set_defaults(func=cmd_path)
     bo = sub.add_parser("books", help="revenue spreadsheet for a month (default: last month) in data/exports/books")
     bo.add_argument("month", nargs="?", help="YYYY-MM, or YYYY for a whole year")
     bo.set_defaults(func=cmd_books)

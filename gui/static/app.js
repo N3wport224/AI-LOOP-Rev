@@ -106,6 +106,7 @@
       : `${money(fin.available_cents)} ready · ${money(fin.pending_cents)} on the way` +
         (fin.last_payout ? ` · last payout ${money(fin.last_payout.amount_cents)} (${fin.last_payout.status}, ${fin.last_payout.arrival_date})` : "");
     $("#version-line").textContent = s.version || "";
+    renderPath(s.path || {});
     const items = s.todo || [];
     $("#todo-card").hidden = !items.length;
     $("#todo-list").replaceChildren(...items.map((i) => el("li", {},
@@ -241,6 +242,29 @@
       el("pre", { class: "log", text: m.body || "" }))));
   }
 
+  // ------------------------------------------------------------------ path to the daily goal (Phase 412)
+  function renderPath(p) {
+    const steps = p.steps || [];
+    $("#path-card").hidden = !steps.length;
+    if (!steps.length) return;
+    const m = p.math || {};
+    $("#path-goal").textContent = money(m.goal_cents);
+    let blocked = false;
+    $("#path-steps").replaceChildren(...steps.map((st) => {
+      const li = el("li", {},
+        el("span", { class: st.ok ? "ok" : blocked ? "later" : "no", text: (st.ok ? "✔ " : blocked ? "… " : "✘ ") + st.name }),
+        el("span", { class: "muted", text: ": " + st.detail }));
+      if (!st.ok && !blocked) {
+        li.append(el("span", { class: "next", text: (st.you ? "Next, only you can do this: " : "Next: ") + st.fix }));
+        blocked = true;
+      }
+      return li;
+    }));
+    $("#path-math").textContent = m.sales_per_day ? `The arithmetic: about ${m.sales_per_day} sale(s) a day at ${money(m.avg_price_cents)} ` +
+      `(${money(m.net_per_sale_cents)} after Stripe's fee), which usually takes ${m.visitors_low.toLocaleString()}-` +
+      `${m.visitors_high.toLocaleString()} visitors a day (estimate: 1-2% of visitors buy).` : "";
+  }
+
   // ------------------------------------------------------------------ products (Phase 200)
   async function loadProducts() {
     let d;
@@ -291,7 +315,30 @@
         p.description ? el("details", {}, el("summary", { text: "What the checkout says" }), el("p", { text: p.description })) : null,
         el("div", { class: "links" },
           link(p.checkout_url, "Open checkout ↗", "buy"), link(p.stripe_url, "Stripe dashboard ↗"), link(p.page_url, "Product page ↗"),
-          p.can_draw ? el("button", { "data-redraw": String(p.id), text: p.previews.length ? "Redraw pictures" : "Draw pictures" }) : null)));
+          p.post ? el("button", { "data-post": String(p.id), text: "Copy launch post" }) : null,
+          p.post ? el("button", { "data-posted": String(p.id), text: "Mark as posted" }) : null,
+          p.can_draw ? el("button", { "data-redraw": String(p.id), text: p.previews.length ? "Redraw pictures" : "Draw pictures" }) : null),
+        p.post ? el("details", {}, el("summary", { text: "Launch post (paste it where your buyers are)" }), el("pre", { class: "log", text: p.post })) : null));
+  }
+
+  async function markPosted(id) {
+    const msg = $("#gallery-message");
+    const r = await api("/api/products/posted", { method: "POST", body: { id: Number(id) } });
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+  }
+
+  const posts = {};
+  async function copyPost(id) {
+    const msg = $("#gallery-message");
+    try {
+      await navigator.clipboard.writeText(posts[id] || "");
+      msg.textContent = "Copied. Paste it on LinkedIn, Reddit or a community your buyers read, attach the first picture, then press Mark as posted.";
+      msg.className = "message ok";
+    } catch (e) {
+      msg.textContent = "Couldn't copy automatically: open \"Launch post\" on the card and copy the text.";
+      msg.className = "message warn";
+    }
   }
 
   async function loadGallery(more) {
@@ -300,6 +347,7 @@
     let d;
     try { d = await api(`/api/products/all?q=${q}&status=${status}&offset=${galleryOffset}`); } catch (e) { return; }
     if (d._status !== 200) return;
+    (d.items || []).forEach((p) => { if (p.post) posts[p.id] = p.post; });
     const cards = (d.items || []).map(productCard);
     if (more) $("#gallery").append(...cards); else $("#gallery").replaceChildren(...cards);
     if (!d.total) $("#gallery").replaceChildren(el("p", { class: "muted", text: "No products match yet. The factory makes one every few minutes once postings arrive." }));
@@ -702,6 +750,10 @@
     $("#gallery").addEventListener("click", (e) => {  // delegated: the cards are re-rendered
       const b = e.target.closest("[data-redraw]");
       if (b) redrawPictures(b.dataset.redraw);
+      const c = e.target.closest("[data-post]");
+      if (c) copyPost(c.dataset.post);
+      const m = e.target.closest("[data-posted]");
+      if (m) markPosted(m.dataset.posted);
     });
     $("#catalog-table").addEventListener("click", (e) => {  // delegated: the table is re-rendered
       const b = e.target.closest("[data-product]");
