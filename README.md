@@ -1982,8 +1982,8 @@ Every action needs the panel's sign-in and CSRF token. The panel only listens on
   * It uses the existing order-recovery endpoint, with its limits: 3 requests per network per hour,
     3 emails per address per day, and the same answer whether or not the address bought anything.
   * A person using the form now gets a readable page back; scripts still get JSON.
-* **Phase 206, free sample:** every product page links `sample.csv`, the same 5 public rows as a
-  file.
+* **Phase 206, free sample:** removed in Phase 429. Files are for paying buyers only; the 5 rows
+  remain as a preview table on the page.
 * **Phase 207, real ratings:** from 3 ratings by verified buyers (the 1-click ratings), a product
   page shows the counts and carries `AggregateRating` data. Below that nothing is shown, and nothing
   is ever made up.
@@ -2904,15 +2904,21 @@ boards are deleted at the next collection, so new versions of products no longer
 them, the rules (by hand, one person at a time, never more than the data shows), and 10 short
 messages to adapt and send yourself.
 
-## First buyers, channels and product downloads (Phases 422-428)
+## First buyers, channels and product downloads (Phases 422-429)
 
 The two things only you can do (message possible buyers yourself, and post where they read) now
 have tools in the control panel. The agent still never contacts anyone or posts for you.
 
 * **Download any product (Phase 426):** every card in the Products tab has **Download product**: the
   exact zip a buyer receives, so you can check its quality before you sell or share it.
-* **Free sample (Phase 427):** **Free sample (CSV)** downloads the 5-row preview, ready to attach
-  when you message someone (`docs/first-sales-playbook.md`).
+* **Free sample (Phase 427):** **Free sample (CSV)** downloads the 5-row preview for you to look at,
+  or to send to someone yourself if you choose (`docs/first-sales-playbook.md`).
+* **Nothing downloadable for free on the public site (Phase 429):** product files reach buyers only
+  after they pay (by email or a private download link). The download buttons above are in your
+  control panel only: it runs on your Mac, listens only to this Mac, and needs your sign-in. The
+  public product page shows the 5 sample rows as a table, with no file to download. Focus mode also
+  switches off the free-sample-by-email signup (`lead_magnet_enabled = true` brings it back). A test
+  checks that every site build contains no CSV, zip, Excel, JSONL or SQL file.
 * **First buyers notebook (Phases 422-425):** in the Marketing tab, log each message you send:
   * who, where, which kind of buyer and which product;
   * then the outcome: messaged → replied → interested → bought, or not interested.

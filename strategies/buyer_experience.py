@@ -4,8 +4,8 @@
   they bought is re-sent to that address (the existing order-recovery endpoint, with its limits:
   3 requests per network per hour, 3 emails per address per day, and the same answer whether or
   not the address bought anything). A form post now gets a plain page back instead of JSON.
-* **Phase 206, free sample download:** every product page links ``sample.csv``, the same 5 public
-  rows shown on the page, as a file to open in a spreadsheet.
+* **Phase 206, free sample download** (removed in Phase 429: files are for paying buyers only; the
+  5 rows stay as a table on the page, and ``sample_csv`` now serves only your control panel).
 * **Phase 207, real ratings on pages:** once a product has ``RATINGS_MIN`` (3) ratings from
   verified buyers (the 1-click ratings, Phase 101), its page shows the counts (😀 / 😐 / ☹️) and
   carries ``AggregateRating`` data (scale 1-3). Nothing is shown below that, and nothing is ever

@@ -473,6 +473,7 @@ FOCUS: dict[str, Any] = {
     "seasonal_sale": False, "winback": False, "bundle_upgrade": False, "sample_offer": False, "related_offers": False,
     "refresh_offers": False, "referrals": False,
     "enable_autonomous_code_evolution": False,
+    "lead_magnet_enabled": False,           # Phase 429: no free sample file by email; files are for paying buyers
 }
 
 

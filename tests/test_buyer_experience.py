@@ -58,7 +58,7 @@ def test_sample_csv_and_file_list(kit, state, clock, transport):
     csv_text = bx.sample_csv(page.sample_columns, page.sample_rows)
     assert csv_text.splitlines()[0] == "company,title,location,remote,stack" and len(csv_text.splitlines()) == 6
     html = render_product_page(page)
-    assert 'href="sample.csv" download' in html and "In the download:</b> leads.csv" in html
+    assert "sample.csv" not in html and "In the download:</b> leads.csv" in html  # Phase 429: nothing free to download
 
 
 # ------------------------------------------------------------------ Phase 207

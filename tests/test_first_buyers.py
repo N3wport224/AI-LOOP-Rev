@@ -72,3 +72,19 @@ def test_the_panel_downloads_products_and_samples_and_keeps_the_notebook(gui, ki
         assert 'id="prospect-form"' in html and 'id="channel-table"' in html
 
     test_gui.run(gui, scenario)
+
+
+def test_the_public_site_never_offers_a_data_file_for_free(kit, state, clock, transport, config):
+    """Phase 429: files are for paying buyers; the downloads live only in your control panel."""
+    from strategies.inbound_syndicator import InboundSyndicator
+    from tests.test_business_ops import ctx
+
+    config.pages_base_url = "https://me.github.io/d"
+    made_product(kit, state, clock, transport)
+    InboundSyndicator().run("build_site", ctx(kit))
+    site = kit.files.resolve("site")
+    data_files = [p.relative_to(site).as_posix() for p in site.rglob("*")
+                  if p.suffix.lower() in (".csv", ".zip", ".xlsx", ".jsonl", ".sql")]
+    assert data_files == []
+    pages = " ".join(p.read_text(errors="replace") for p in site.rglob("*.html"))
+    assert " download>" not in pages and "/api/products/" not in pages

@@ -369,7 +369,6 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {faq_html(page.faq)}
 {page.files_html}
 <h2>Free 5-record preview</h2>
-<p class="muted"><a href="sample.csv" download>Download the free sample (CSV)</a></p>
 <div class="wrap"><table><thead><tr>{head_cells}</tr></thead><tbody>
 {rows}
 </tbody></table></div>
@@ -771,9 +770,7 @@ class SiteBuilder:
             out[f"{p.slug}/index.html"] = render_product_page(p, self.base_url, cfg.site_title)
             label = f"{p.niche.split('-')[0]} radar"
             out[f"{p.slug}/radar-badge.svg"] = badge_for(label, p.metrics or {})
-            from strategies.buyer_experience import sample_csv
-
-            out[f"{p.slug}/sample.csv"] = sample_csv(p.sample_columns, p.sample_rows)  # Phase 206
+            # Phase 429: no file is downloadable without paying; the preview is a table on the page only
             price = f"${p.price_cents / 100:.2f}"
             out[f"{p.slug}/og.svg"] = render_og_svg(p.title, p.metrics or {}, price)
             for name, data in p.preview_files.items():  # Phase 403

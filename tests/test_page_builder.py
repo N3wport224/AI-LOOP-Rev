@@ -151,7 +151,7 @@ def test_site_builder_writes_and_publishes_to_pages_branch(config, toolkit, tran
                   "robots.txt", "feeds/radar.xml", "intel/index.html", "404.html", "contact/index.html",
                   "legal/terms/index.html", "legal/privacy/index.html", "legal/refunds/index.html",
                   "python-remote/radar-badge.svg", "python-remote/og.svg", "radar-badge.svg", "compare/index.html",
-                  "llms.txt", ".nojekyll", ".well-known/security.txt", "python-remote/sample.csv"}
+                  "llms.txt", ".nojekyll", ".well-known/security.txt"}
     assert essentials <= set(out) and "python-remote/og.png" not in out  # og_images off
     assert toolkit.files.exists("site/feeds/radar.xml")
     assert "Sitemap: https://me.github.io/sitemap.xml" in out["robots.txt"]
