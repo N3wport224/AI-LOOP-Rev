@@ -380,8 +380,9 @@ class InboundSyndicator(Strategy):
         extra["sources/index.html"] = sources_page(cfg, shell)
         from strategies.market_trends import trends_page
 
-        if trends_page(tools.state, shell):  # Phase 222
-            extra["trends/index.html"] = trends_page(tools.state, shell)
+        trends = trends_page(tools.state, shell)  # Phase 222 (built once: it reads the whole posting pool)
+        if trends:
+            extra["trends/index.html"] = trends
         from strategies.kinds_new_employers import site_files as new_employer_files
 
         extra.update(new_employer_files(tools.state, cfg, shell))  # Phases 267-268

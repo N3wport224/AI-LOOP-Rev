@@ -33,7 +33,7 @@ def _site(cfg: Any) -> str:
 
 
 def _new_products(state: Any, days: int = 7, limit: int = 10) -> list[dict[str, Any]]:
-    from strategies.revenue_models import live_products
+    from strategies.revenue_models import listed_products as live_products
 
     since = (state.clock() - timedelta(days=days)).isoformat(timespec="seconds")
     return [a for a in live_products(state, since=since) if a.get("checkout_url")][:limit]
@@ -180,7 +180,7 @@ def products_feed(state: Any, cfg: Any, site_title: str) -> str:
     from email.utils import format_datetime
 
     from strategies.marketing_engine import product_url
-    from strategies.revenue_models import live_products
+    from strategies.revenue_models import listed_products as live_products
 
     rss = ET.Element("rss", version="2.0")
     ch = ET.SubElement(rss, "channel")

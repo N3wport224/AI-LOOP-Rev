@@ -58,7 +58,7 @@ def ensure(state: Any) -> None:
 # ------------------------------------------------------------------ catalog helpers
 def featured(state: Any, cfg: Any, n: int = 3) -> list[dict[str, Any]]:
     """Products worth promoting: best sellers first, then the newest."""
-    from strategies.revenue_models import live_products
+    from strategies.revenue_models import listed_products as live_products
     from strategies.upsells import best_sellers
 
     from strategies.refund_guard import held
@@ -282,7 +282,11 @@ def plan(tools: Any, rng: random.Random | None = None) -> dict[str, list[str]]:
         candidates.pop(i)
         weights.pop(i)
         pid = add_play(state, key, "draft", "queued")
-        out = PLAYBOOK[key]["make"](tools, pid)
+        try:
+            out = PLAYBOOK[key]["make"](tools, pid)
+        except Exception as exc:  # noqa: BLE001 - like the auto plays: one draft's failure must not stop the plan
+            state.log_error("marketing", f"{key} draft failed: {exc!r}")
+            out = None  # (and no empty "queued" row left behind for you to post)
         if not out:
             state._exec("DELETE FROM marketing_plays WHERE id = ?", (pid,))
             skipped.append(key)

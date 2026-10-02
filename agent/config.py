@@ -430,13 +430,13 @@ class Config:
         for name, f in known.items():
             key = ENV_PREFIX + name.upper()
             if key in env:
-                values[name] = _coerce(env[key], None if f.default is MISSING else f.default, name)
+                values[name] = _coerce(env[key], _default(f), name)
                 prefixed.add(name)
         for env_key, name in _PLAIN_ENV.items():
             # Conventional names (.env, the GUI) override the TOML file, as the precedence order says;
             # an AUTOMONETIZE_* variable still wins, and a blank .env line never wipes a TOML value.
             if env_key in env and name not in prefixed and (env[env_key].strip() or name not in values):
-                values[name] = _coerce(env[env_key], known[name].default, name)
+                values[name] = _coerce(env[env_key], _default(known[name]), name)
 
         unknown = set(values) - set(known)
         if unknown:
@@ -489,8 +489,18 @@ _JSON_FIELDS = {"niches", "price_tiers", "stripe_payment_links", "lemonsqueezy_v
                 "factory_prices"}
 
 
+def _default(f: Any) -> Any:
+    if f.default is not MISSING:
+        return f.default
+    if f.default_factory is not MISSING:
+        return f.default_factory()
+    return None
+
+
 def _coerce(raw: str, default: Any, name: str) -> Any:
-    if name in _LIST_FIELDS:
+    # Every plain list setting (factory_types, source_seed_feeds...) is comma-separated, not only
+    # the ones named here: a new list field must never arrive as one string of characters.
+    if name in _LIST_FIELDS or (isinstance(default, list) and name not in _JSON_FIELDS):
         return [s.strip() for s in raw.split(",") if s.strip()]
     if name in _JSON_FIELDS:
         return json.loads(raw)
@@ -505,6 +515,8 @@ def _coerce(raw: str, default: Any, name: str) -> Any:
         if value in _FALSE:
             return False
         return default
+    if isinstance(default, (int, float)) and not raw.strip():
+        return default  # a blank SMTP_PORT= line keeps the default instead of crashing start-up
     if isinstance(default, int):
         return int(raw)
     if isinstance(default, float):

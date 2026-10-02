@@ -446,7 +446,8 @@ class LeadAggregator(Strategy):
         }
         min_leads = tools.config.min_leads_for_asset
         # Only condemn the niche when sources actually answered and still produced too little.
-        starving = total < min_leads and not failed_sources and ctx.hypothesis["iterations"] >= 2
+        # A cycle where no board was due (rate-limited boards wait their turn) is no evidence either.
+        starving = total < min_leads and bool(sources) and not failed_sources and ctx.hypothesis["iterations"] >= 2
         return TaskResult(
             ok=True,
             summary=f"{new} new / {total} total leads for {ctx.niche} ({len(raw)} fetched, {len(failed_sources)} sources failed)",

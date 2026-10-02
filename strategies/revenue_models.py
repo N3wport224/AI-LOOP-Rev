@@ -279,6 +279,12 @@ def _links(tools: Any, assets: list[dict[str, Any]], email: str) -> list[str]:
     return out
 
 
+# Sold, but not a downloadable dataset: plans and subscriptions (they deliver datasets themselves), the
+# Developer API (its "path" is the docs URL) and per-company dossiers (built to order). A lifetime pass
+# must never get a download link for these, and roundups and feeds of "new datasets" leave them out.
+NOT_DATASETS = ("subscription", "subscription_annual", "team_license", "api_subscription", "dossier")
+
+
 def live_products(state: Any, since: str = "") -> list[dict[str, Any]]:
     """The newest version of every product on sale; with ``since``, only products first released
     after it (a refreshed version of an older product isn't new)."""
@@ -291,10 +297,20 @@ def live_products(state: Any, since: str = "") -> list[dict[str, Any]]:
     for a in assets:
         key = str(a.get("niche") or a["id"])
         if (a.get("status") == "published" and a.get("path") and a["kind"] not in FULFILLED and key not in seen
-                and a["kind"] not in ("subscription", "subscription_annual", "team_license") and (not since or first[key] > since)):
+                and a["kind"] not in NOT_DATASETS and (not since or first[key] > since)):
             seen.add(key)
             out.append(a)
     return out
+
+
+def listed_products(state: Any, since: str = "") -> list[dict[str, Any]]:
+    """``live_products`` minus the ones you hid from the site (Phase 283): everything that links to a
+    product page or advertises a product (marketing, feeds, the catalog API, recommendations) uses
+    this, so nothing points at a page that isn't there. Hidden products still sell from links already out."""
+    from strategies.product_controls import hidden
+
+    gone = hidden(state)
+    return [a for a in live_products(state, since) if str(a.get("niche") or "") not in gone]
 
 
 def fulfil_lifetime(tools: Any, order: dict[str, Any]) -> str:
@@ -328,10 +344,14 @@ def weekly_pass_digest(tools: Any) -> int:
         new = live_products(state, since=p["last_digest_at"])
         if new:
             links = _links(tools, new, p["email"])
-            tools.dispatcher.send_transactional(
-                Email(to=p["email"], subject=f"Your lifetime pass: {len(new)} new dataset(s) this week",
-                      body="New this week:\n\n" + "\n".join(links) + "\n\nThank you!", kind="delivery"),
-                audit_key=f"lifetime:{p['email']}:{state.now()[:10]}")
+            try:
+                tools.dispatcher.send_transactional(
+                    Email(to=p["email"], subject=f"Your lifetime pass: {len(new)} new dataset(s) this week",
+                          body="New this week:\n\n" + "\n".join(links) + "\n\nThank you!", kind="delivery"),
+                    audit_key=f"lifetime:{p['email']}:{state.now()[:10]}")
+            except Exception as exc:  # noqa: BLE001 - one bad address mustn't hold up the other passes; retried next cycle
+                state.log_error("revenue_models", f"lifetime digest to {p['email']} failed: {exc!r}")
+                continue
             sent += 1
         state._exec("UPDATE lifetime_passes SET last_digest_at = ? WHERE email = ?", (state.now(), p["email"]))
     return sent
@@ -341,8 +361,12 @@ def weekly_pass_digest(tools: Any) -> int:
 def fulfil_gift(tools: Any, order: dict[str, Any]) -> str:
     state, cfg = tools.state, tools.config
     sf = next(s for s in tools.storefronts if s.name == "stripe")
-    code = "GIFT-" + secrets.token_hex(4).upper()
-    expires = int((datetime.now(timezone.utc) + timedelta(days=GIFT_DAYS)).timestamp())
+    # Kept per order: a retry (the email failed after Stripe made the code) must send the same code with
+    # the same parameters, or Stripe refuses the reused idempotency key and the buyer never gets a code.
+    saved = state.get(f"gift_code:{order['id']}") or {}
+    code = saved.get("code") or "GIFT-" + secrets.token_hex(4).upper()
+    expires = int(saved.get("expires") or (state.clock() + timedelta(days=GIFT_DAYS)).timestamp())
+    state.set(f"gift_code:{order['id']}", {"code": code, "expires": expires})
     coupon = sf.client._post("/coupons", {"duration": "once", "amount_off": int(order["gross_cents"]), "currency": cfg.currency,
                                           "redeem_by": expires, "name": f"Gift {order['id']}"[:40]}, f"gift-coupon-{order['id']}")
     sf.client._post("/promotion_codes", {"coupon": coupon["id"], "code": code, "max_redemptions": 1, "expires_at": expires},

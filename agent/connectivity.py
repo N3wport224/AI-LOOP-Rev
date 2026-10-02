@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 
 def _targets(hosts: list[str]) -> list[tuple[str, int]]:
+    if not hosts:
+        return []  # an empty list switches the check off, proxy or not
     proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     if proxy:
         # Behind a proxy the proxy is the only thing we need to reach.

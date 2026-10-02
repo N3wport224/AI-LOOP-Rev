@@ -33,6 +33,9 @@ from strategies.base import Strategy, TaskContext, TaskResult
 from tools.dispatcher import Email
 
 
+DIGEST_PRODUCTS = 25  # a factory catalog runs to hundreds of products: the email lists the first few
+
+
 def money(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
@@ -127,8 +130,9 @@ class OwnerReports(Strategy):
         from tools.notify import push
 
         first = state.get_asset(orders[0]["asset_id"]) if orders and orders[0].get("asset_id") else None
-        push(tools.http, tools.config, subject.replace("💰 ", ""), (first or {}).get("title") or "subscription", state=state,
-             tags="moneybag")
+        if tools.config.sale_alerts == "each":  # "daily" and "off" mean no per-sale notification, phone included
+            push(tools.http, tools.config, subject.replace("💰 ", ""), (first or {}).get("title") or "subscription", state=state,
+                 tags="moneybag")
         if tools.config.sale_alerts != "each":  # "daily": the digest has them; "off": no sale emails at all
             if orders:
                 state.set("owner_last_order_id", int(orders[-1]["id"]))
@@ -269,7 +273,8 @@ class OwnerReports(Strategy):
             f"Agent: {cycles} cycles in the last 24 hours",
             "",
             f"On sale ({len(products)}):" if products else "On sale: nothing yet. Run `automonetize go-live` (see the README).",
-            *[f"- {p['title']}  {money(p['price_cents'])}  {p['url']}" for p in products],
+            *[f"- {p['title']}  {money(p['price_cents'])}  {p['url']}" for p in products[:DIGEST_PRODUCTS]],
+            *([f"- ...and {len(products) - DIGEST_PRODUCTS} more (control panel → Products)"] if len(products) > DIGEST_PRODUCTS else []),
             "",
             f"Free-sample leads: {leads.get('active', 0)} confirmed, {leads.get('pending', 0)} pending",
         ]

@@ -37,10 +37,10 @@ TEASERS_PER_CYCLE = 10
 TEASER_FIELDS = ["company", "title", "location", "remote", "seniority", "stack", "posted_at", "url"]
 
 
-def _live(state: Any) -> list[dict[str, Any]]:
-    from strategies.revenue_models import live_products
+def _live(state: Any, include_hidden: bool = False) -> list[dict[str, Any]]:
+    from strategies.revenue_models import listed_products, live_products
 
-    return [a for a in live_products(state) if a.get("checkout_url")]
+    return [a for a in (live_products if include_hidden else listed_products)(state) if a.get("checkout_url")]
 
 
 def product_url(cfg: Any, asset: dict[str, Any]) -> str:
@@ -212,7 +212,7 @@ class SalesChannels(Strategy):
 def leaderboard(state: Any, days: int = 90) -> list[dict[str, Any]]:
     since = (state.clock() - timedelta(days=days)).isoformat(timespec="seconds")
     out = []
-    for a in _live(state):
+    for a in _live(state, include_hidden=True):  # your view: hidden products still sell
         row = state._one("SELECT COUNT(*) AS n, COALESCE(SUM(o.gross_cents), 0) AS gross, MAX(o.occurred_at) AS last FROM orders o "
                          "JOIN assets x ON x.id = o.asset_id WHERE x.niche = ? AND o.occurred_at >= ? "
                          "AND o.status NOT IN ('refunded', 'disputed')", (a["niche"], since))

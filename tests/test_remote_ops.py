@@ -47,6 +47,18 @@ def test_sales_and_alerts_buzz_the_phone(kit, state, config, transport):
     assert all(b"buyer@co.example" not in b for b in bodies)  # no customer addresses leave the Mac
 
 
+def test_daily_sale_alerts_dont_buzz_the_phone_per_sale(kit, state, config, transport):
+    # Audit after Phase 400: "daily (digest only)" and "off" mean no per-sale notification, the phone included.
+    config.ntfy_topic, config.owner_email, config.sale_alerts = "am-testtopic123456", "owner@me.example", "daily"
+    transport.add("https://ntfy.sh/am-testtopic123456", Response(200, "x", b"{}", {}))
+    OwnerReports().run("report_owner", ctx(kit))
+    _, aid = dataset(kit, state, "python-remote")
+    state.record_order("stripe", "cs_1", "buyer@co.example", 1900, None, aid, None, status="delivered")
+    OwnerReports().run("report_owner", ctx(kit))
+    bodies = [c["body"] for c in transport.calls_to("https://ntfy.sh/am-testtopic123456", "POST")]
+    assert not any(b"python-remote Tech Stack Intel" in b for b in bodies)
+
+
 # ------------------------------------------------------------------ Phase 63: preferences
 def test_sale_emails_and_digest_follow_preferences(kit, state, config, clock):
     config.owner_email = "owner@me.example"

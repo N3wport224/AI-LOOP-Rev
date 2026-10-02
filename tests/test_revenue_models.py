@@ -142,6 +142,17 @@ def test_a_gift_card_is_a_one_time_code_worth_what_was_paid(offers_live, state, 
     assert promo["code"][0] in body(FakeSMTP.sent[-1])
 
 
+def test_a_retried_gift_sends_the_same_code_with_the_same_stripe_parameters(offers_live, state, transport):
+    # Audit after Phase 400: a retry (email failed after Stripe made the code) reuses the idempotency key,
+    # so the parameters must match or Stripe refuses it and the buyer never gets a code.
+    order = buy(state, "gift")
+    rm.fulfil_gift(offers_live, order)
+    rm.fulfil_gift(offers_live, order)
+    coupons = [parse_qs(c["body"].decode()) for c in transport.calls_to(f"{STRIPE}/coupons", "POST")][-2:]
+    promos = [parse_qs(c["body"].decode()) for c in transport.calls_to(f"{STRIPE}/promotion_codes", "POST")][-2:]
+    assert coupons[0] == coupons[1] and promos[0] == promos[1]
+
+
 def test_custom_fields_from_checkout_reach_the_order(kit, state, config):
     from tools.storefront.webhook_listener import WebhookProcessor
 

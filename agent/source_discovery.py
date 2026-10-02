@@ -421,9 +421,12 @@ def autodiscover(tools: Any, registry: SourceRegistry, limit: int = 2, resolver:
     added = 0
     for host, home in list(hosts.items())[:limit]:
         tried.add(host)
-        if url_problem(home, resolver) or not tools.http.allowed_by_robots(home):
+        if url_problem(home, resolver):
             continue
         try:
+            # Inside the try: an unreachable robots.txt on one scraped host must not fail the whole task.
+            if not tools.http.allowed_by_robots(home):
+                continue
             page = tools.http.get(home, check_robots=False, attempts=1).text
         except CircuitOpenError:
             raise

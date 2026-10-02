@@ -52,7 +52,7 @@ class Index:
     would otherwise cost a query per pair)."""
 
     def __init__(self, state: Any, cfg: Any):
-        from strategies.revenue_models import live_products
+        from strategies.revenue_models import listed_products as live_products  # never recommend a hidden page
 
         self.state, self.cfg = state, cfg
         self.live = [a for a in live_products(state) if a.get("checkout_url")]

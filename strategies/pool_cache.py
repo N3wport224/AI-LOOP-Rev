@@ -25,7 +25,10 @@ def pool(state: Any) -> list[dict[str, Any]]:
     row = state._one("SELECT COUNT(*) AS n, MAX(id) AS mx, MAX(last_seen) AS ls, SUM(LENGTH(data)) AS sz FROM leads "
                      "WHERE niche = ?", (POOL_NICHE,))
     sig = (row["n"], row["mx"], row["ls"], row["sz"])
-    key = str(getattr(state, "db_path", id(state)))
+    path = str(getattr(state, "db_path", "") or "")
+    # Every in-memory database is called ":memory:": key those by the store itself, or two of them
+    # with the same signature (both empty, say) would share one cached pool.
+    key = path if path and path != ":memory:" else f"mem:{id(state)}"
     with _LOCK:
         hit = _CACHE.get(key)
         if hit and hit[0] == sig:

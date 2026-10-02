@@ -417,7 +417,11 @@ class TechStackIntel(Strategy):
     tasks = ("build_intel",)
 
     def _verify(self, ctx: TaskContext, record: dict[str, Any], cache: dict[str, bool], budget: list[int]) -> None:
+        from strategies.posting_hygiene import public_url
+
         for url in record.pop("careers_candidates"):
+            if not public_url(url):
+                continue  # links come from scraped postings: never fetch localhost, a private network or a bare IP
             if url in cache:
                 ok = cache[url]
             elif budget[0] <= 0:

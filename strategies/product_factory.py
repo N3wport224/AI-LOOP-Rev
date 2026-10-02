@@ -556,6 +556,12 @@ class ProductFactory(Strategy):
         due = 1 if not last else int((state.clock() - datetime.fromisoformat(last)).total_seconds()
                                      // effective(state, cfg)["seconds"])
         made, why = [], ""
+        if due:
+            # tick(force=True) skips the daily link check (it keeps "make one now" quick); without a
+            # factory worker (``automonetize run``) this catch-up is the only scheduled tick, so run it here.
+            from strategies.posting_hygiene import check_links
+
+            check_links(tools)
         for _ in range(min(6, due)):
             out = tick(tools, force=True)
             if not out.get("made"):

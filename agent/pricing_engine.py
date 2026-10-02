@@ -306,7 +306,7 @@ class PricingEngine:
             out.writestr(f"{niche}-deep-dive/tech_radar.json", json.dumps(records, indent=2))
         zip_rel = f"assets/{niche}/{niche}-premium-v{version}.zip"
         files.write_bytes(zip_rel, buf.getvalue())
-        price = max(self.cfg.premium_price_cents, *self.cfg.price_matrix)
+        price = max([self.cfg.premium_price_cents, *self.cfg.price_matrix])
         summary = f"Per-company profiles for {min(40, len(records))} {niche_title(niche)} companies: full stack by category, every open role, intent signals and verified careers pages."
         files.write_json(f"{base}/listing.json", {"name": title, "summary": summary, "price_cents": price, "file": zip_rel})
         top = [{"company": r["company"], "urgency_score": r["urgency_score"], "openings": r["openings"],

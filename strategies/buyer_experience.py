@@ -157,7 +157,7 @@ def record_request(state: Any, cfg: Any, text: str, email: str = "", notify: boo
 
 def notify_watchers(tools: Any) -> int:
     """One email per request when a matching product is on sale; requests older than 90 days lapse."""
-    from strategies.revenue_models import live_products
+    from strategies.revenue_models import listed_products as live_products
     from strategies.upsells import Index
     from tools.dispatcher import Email
 
@@ -179,11 +179,16 @@ def notify_watchers(tools: Any) -> int:
             continue
         from strategies.marketing_engine import product_url
 
-        tools.dispatcher.send_transactional(Email(
-            to=w["email"], subject=f"It's ready: {match['title']}", kind="delivery",
-            body=(f"You asked for this dataset, and it's on sale now:\n\n{match['title']}: {product_url(cfg, match)}\n\n"
-                  "This is the only email we send for that request; your address isn't kept.")),
-            audit_key=f"request-ready:{w['email']}:{match['niche']}")
+        try:
+            tools.dispatcher.send_transactional(Email(
+                to=w["email"], subject=f"It's ready: {match['title']}", kind="delivery",
+                body=(f"You asked for this dataset, and it's on sale now:\n\n{match['title']}: {product_url(cfg, match)}\n\n"
+                      "This is the only email we send for that request; your address isn't kept.")),
+                audit_key=f"request-ready:{w['email']}:{match['niche']}")
+        except Exception as exc:  # noqa: BLE001 - kept and retried next cycle; the others still go out
+            state.log_error("buyer_experience", f"\"it's ready\" email failed: {exc!r}")
+            keep.append(w)
+            continue
         sent += 1
     state.set(WATCH, keep)
     return sent
