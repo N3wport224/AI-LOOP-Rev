@@ -237,6 +237,26 @@
 
   <section id="tab-marketing" class="tab" hidden>
     <div class="card">
+      <h2>First buyers <span class="muted" id="prospect-count"></span></h2>
+      <p class="muted">Log each person you message yourself (see docs/first-sales-playbook.md): attach a product's free sample from the Products tab, then record what happened here. After 20-30 messages this shows which kind of buyer says yes.</p>
+      <form id="prospect-form" class="prospect-form">
+        <label>Who <input name="name" required placeholder="name or handle" autocomplete="off"></label>
+        <label>Where <input name="where" placeholder="LinkedIn, r/freelance..." autocomplete="off"></label>
+        <label>Buyer type <select name="buyer" id="prospect-buyer"></select></label>
+        <label>Product <input name="product" placeholder="which product you offered" autocomplete="off"></label>
+        <label>Note <input name="note" placeholder="optional" autocomplete="off"></label>
+        <button class="primary" type="submit">Log message</button>
+      </form>
+      <p class="message" id="prospect-message" role="status"></p>
+      <ul id="prospect-lines" class="muted"></ul>
+      <div class="table-wrap"><table id="prospect-table"><thead><tr><th>Who</th><th>Where</th><th>Buyer</th><th>Product</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Where checkouts come from <span class="muted">(30 days, tracked links)</span></h2>
+      <p class="muted">Post 2-3 times a week on one channel, then keep whichever one shows checkouts here.</p>
+      <div class="table-wrap"><table id="channel-table"><thead><tr><th>Channel</th><th>Checkouts started</th><th>Sales</th><th>Net</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
       <h2>Drafts for you to post</h2>
       <p class="muted">The agent can't post these itself (your account, or the community's rules). Copy, post, then mark it posted so its sales are counted.</p>
       <p class="message" id="marketing-message" role="status"></p>

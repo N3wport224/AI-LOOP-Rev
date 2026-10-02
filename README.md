@@ -2904,6 +2904,27 @@ boards are deleted at the next collection, so new versions of products no longer
 them, the rules (by hand, one person at a time, never more than the data shows), and 10 short
 messages to adapt and send yourself.
 
+## First buyers, channels and product downloads (Phases 422-428)
+
+The two things only you can do (message possible buyers yourself, and post where they read) now
+have tools in the control panel. The agent still never contacts anyone or posts for you.
+
+* **Download any product (Phase 426):** every card in the Products tab has **Download product**: the
+  exact zip a buyer receives, so you can check its quality before you sell or share it.
+* **Free sample (Phase 427):** **Free sample (CSV)** downloads the 5-row preview, ready to attach
+  when you message someone (`docs/first-sales-playbook.md`).
+* **First buyers notebook (Phases 422-425):** in the Marketing tab, log each message you send:
+  * who, where, which kind of buyer and which product;
+  * then the outcome: messaged → replied → interested → bought, or not interested.
+
+  It counts, per kind of buyer, how many you messaged, how many replied, how many were interested
+  and how many bought. People who replied and haven't heard back for 3 days are flagged "follow up".
+  After 20-30 messages it shows which kind of buyer says yes; tell me, and I'll point the factory
+  at them.
+* **Where checkouts come from (Phase 428):** for the last 30 days, the checkouts started, the sales
+  and the net revenue for each channel, from the tracked links in launch posts, articles and the
+  site. Post 2-3 times a week on one channel, then keep whichever one shows checkouts.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

@@ -243,6 +243,8 @@ def product_gallery(gctx: Any, q: str = "", status: str = "", offset: int = 0, l
             "page_url": page_url, "post": post,
             "previews": [n for n in (1, 2, 3) if base and any(files.exists(f"{base}/preview-{n}.{e}") for e in ("png", "svg"))],
             "can_draw": bool(base and files.exists(f"{base}/sample.json")),
+            "download": bool(a.get("path") and files.is_file(a["path"])),  # Phase 426: what a buyer receives
+            "sample": bool(base and files.exists(f"{base}/sample.json")),
         })
     return {"items": items, "total": len(rows), "offset": offset, "limit": limit, "counts": counts}
 
@@ -280,6 +282,48 @@ async def get_preview(request: web.Request) -> web.StreamResponse:
             return web.Response(body=await _run(files.read_bytes, rel), content_type=ctype,
                                 headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
     raise web.HTTPNotFound()
+
+
+def _asset_or_404(gctx: Any, request: web.Request) -> dict[str, Any]:
+    try:
+        asset = gctx.state.get_asset(int(request.query.get("id", "")))
+    except ValueError:
+        asset = None
+    if not asset:
+        raise web.HTTPNotFound()
+    return asset
+
+
+async def get_download(request: web.Request) -> web.StreamResponse:
+    """Phase 426: the product's download, exactly what a buyer receives, to check its quality."""
+    gctx = ctx(request)
+    asset = _asset_or_404(gctx, request)
+    files = _files(gctx)
+    if not (asset.get("path") and files.is_file(asset["path"])):
+        raise web.HTTPNotFound()
+    path = files.resolve(asset["path"])
+    return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="{path.name}"',
+                                           "Cache-Control": "no-store"})
+
+
+async def get_sample(request: web.Request) -> web.Response:
+    """Phase 427: the free 5-row sample as CSV: the thing to attach when you message someone."""
+    import re as _re
+
+    from strategies.buyer_experience import sample_csv
+    from tools import product_media as pm
+
+    gctx = ctx(request)
+    asset = _asset_or_404(gctx, request)
+    files = _files(gctx)
+    base = pm._asset_base(asset) if asset.get("niche") else ""
+    if not (base and files.exists(f"{base}/sample.json")):
+        raise web.HTTPNotFound()
+    sample = files.read_json(f"{base}/sample.json")
+    name = _re.sub(r"[^a-z0-9-]+", "-", str(asset.get("niche") or "product").lower()).strip("-") or "product"
+    return web.Response(text=sample_csv(sample.get("fields", []), sample.get("rows", [])), content_type="text/csv",
+                        charset="utf-8", headers={"Content-Disposition": f'attachment; filename="{name}-free-sample.csv"',
+                                                  "Cache-Control": "no-store"})
 
 
 def redraw(gctx: Any, aid: int) -> str:
@@ -339,6 +383,53 @@ async def post_launch_posted(request: web.Request) -> web.Response:
     except (TypeError, ValueError) as exc:
         return _json({"ok": False, "message": str(exc)}, 400)
     return _json({"ok": True, "message": message})
+
+
+# ------------------------------------------------------------------ Phases 422-425, 428: first buyers, channels
+def prospects_data(gctx: Any) -> dict[str, Any]:
+    from strategies import prospects as pr
+
+    state = gctx.state
+    items = [{**e, "follow_up": pr.follow_up(state, e)} for e in reversed(pr.entries(state))][:300]
+    return {"items": items, "summary": pr.summary(state), "lines": pr.describe(pr.summary(state)),
+            "buyers": list(pr.BUYERS), "statuses": list(pr.STATUSES), "channels": channels(gctx)}
+
+
+def channels(gctx: Any) -> list[dict[str, Any]]:
+    """Phase 428: where checkouts and sales came from in the last 30 days (tracked links)."""
+    from dashboard.analytics import compute
+
+    try:
+        report = compute(gctx.state, gctx.fresh_config(), "30d")
+    except Exception:  # noqa: BLE001 - the card shows what it can
+        return []
+    return [{"channel": k, "started": v.get("checkouts_started", 0), "sales": v["orders"], "net_cents": v["net_cents"]}
+            for k, v in report["by_channel"].items()]
+
+
+async def get_prospects(request: web.Request) -> web.Response:
+    return _json(await _run(prospects_data, ctx(request)))
+
+
+async def post_prospects(request: web.Request) -> web.Response:
+    from strategies import prospects as pr
+
+    data = await _body(request)
+    state = ctx(request).state
+    action = str(data.get("action") or "add")
+    try:
+        if action == "add":
+            e = await _run(pr.add, state, str(data.get("name") or ""), str(data.get("where") or ""),
+                           str(data.get("buyer") or ""), str(data.get("product") or ""), str(data.get("note") or ""))
+            return _json({"ok": True, "message": f"Logged {e['name']}."})
+        if action == "update":
+            e = await _run(pr.update, state, int(data.get("id")), data.get("status"), data.get("note"))
+            return _json({"ok": True, "message": f"{e['name']}: {e['status']}."})
+        if action == "remove":
+            return _json({"ok": await _run(pr.remove, state, int(data.get("id"))), "message": "Removed."})
+    except (TypeError, ValueError) as exc:
+        return _json({"ok": False, "message": str(exc)}, 400)
+    return _json({"ok": False, "message": "action is add, update or remove"}, 400)
 
 
 # ------------------------------------------------------------------ Phase 201: marketing
@@ -429,6 +520,8 @@ def routes() -> list[web.RouteDef]:
             web.get("/api/catalog", get_catalog), web.get("/api/trends", get_trends),
             web.get("/api/products/all", get_gallery), web.get("/api/products/preview", get_preview),
             web.post("/api/products/redraw", post_redraw), web.post("/api/products/posted", post_launch_posted),
+            web.get("/api/products/download", get_download), web.get("/api/products/sample", get_sample),
+            web.get("/api/prospects", get_prospects), web.post("/api/prospects", post_prospects),
             web.post("/api/products/make", post_make), web.post("/api/products/action", post_action),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),

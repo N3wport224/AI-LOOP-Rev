@@ -90,3 +90,8 @@ body.login { display: grid; place-items: center; min-height: 100vh; }
 .path { padding-left: 1.2rem; margin: .4rem 0; } .path li { margin: .25rem 0; }
 .path .ok { color: var(--ok); } .path .no { color: var(--bad); font-weight: 600; } .path .later { color: var(--muted); }
 .path .next { display: block; margin: .3rem 0 .2rem; padding: .45rem .6rem; border-radius: 6px; background: var(--warn-bg); color: var(--text); }
+
+/* First buyers (Phase 424) */
+.prospect-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: .5rem; align-items: end; }
+.prospect-form label { display: flex; flex-direction: column; font-size: .85rem; font-weight: 600; gap: .2rem; }
+.prospect-form input, .prospect-form select, #prospect-table select { font: inherit; padding: .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); }

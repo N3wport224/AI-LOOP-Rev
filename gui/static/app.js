@@ -63,7 +63,7 @@
     if (name === "health") loadHealth();
     if (name === "sent") loadSent();
     if (name === "products") loadProducts();
-    if (name === "marketing") loadMarketing();
+    if (name === "marketing") { loadMarketing(); loadProspects(); }
     if (name === "money") loadMoney();
     if (name === "trends") loadTrends();
     try { localStorage.setItem("am_tab", name); } catch (e) { /* private mode */ }
@@ -315,6 +315,8 @@
         p.description ? el("details", {}, el("summary", { text: "What the checkout says" }), el("p", { text: p.description })) : null,
         el("div", { class: "links" },
           link(p.checkout_url, "Open checkout ↗", "buy"), link(p.stripe_url, "Stripe dashboard ↗"), link(p.page_url, "Product page ↗"),
+          p.download ? el("a", { href: `/api/products/download?id=${p.id}`, text: "Download product ⤓" }) : null,
+          p.sample ? el("a", { href: `/api/products/sample?id=${p.id}`, text: "Free sample (CSV) ⤓" }) : null,
           p.post ? el("button", { "data-post": String(p.id), text: "Copy launch post" }) : null,
           p.post ? el("button", { "data-posted": String(p.id), text: "Mark as posted" }) : null,
           p.can_draw ? el("button", { "data-redraw": String(p.id), text: p.previews.length ? "Redraw pictures" : "Draw pictures" }) : null),
@@ -420,6 +422,37 @@
     msg.textContent = r.message || "";
     msg.className = "message " + (r.ok ? "ok" : "warn");
     loadProducts();
+  }
+
+  // ------------------------------------------------------------------ first buyers and channels (Phases 422-428)
+  async function loadProspects() {
+    let d;
+    try { d = await api("/api/prospects"); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const sel = $("#prospect-buyer");
+    if (!sel.options.length) sel.replaceChildren(...d.buyers.map((b) => el("option", { value: b, text: b })));
+    $("#prospect-count").textContent = d.summary.total ? `(${d.summary.total} messaged)` : "";
+    $("#prospect-lines").replaceChildren(...(d.lines || []).map((l) => el("li", { text: l })));
+    $("#prospect-table tbody").replaceChildren(...(d.items || []).map((p) => {
+      const status = el("select", { "data-prospect": String(p.id), "aria-label": "Status" },
+        ...d.statuses.map((s) => el("option", { value: s, text: s, selected: s === p.status })));
+      return el("tr", {},
+        el("td", {}, p.name, p.follow_up ? el("span", { class: "badge warn", text: " follow up" }) : null),
+        el("td", { text: p.where }), el("td", { text: p.buyer }), el("td", { text: p.product }), el("td", {}, status),
+        el("td", { text: p.note }), el("td", {}, el("button", { class: "link", "data-remove-prospect": String(p.id), text: "Remove" })));
+    }));
+    $("#channel-table tbody").replaceChildren(...((d.channels || []).length ? d.channels.map((c) => el("tr", {},
+      el("td", { text: c.channel }), el("td", { text: String(c.started) }), el("td", { text: String(c.sales) }),
+      el("td", { text: money(c.net_cents) }))) : [el("tr", {}, el("td", { text: "No checkouts yet: post a launch post, then check back." }))]));
+  }
+
+  async function prospectSend(body) {
+    const r = await api("/api/prospects", { method: "POST", body });
+    const msg = $("#prospect-message");
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+    loadProspects();
+    return r;
   }
 
   // ------------------------------------------------------------------ marketing (Phase 201)
@@ -747,6 +780,21 @@
     $("#gallery-q").addEventListener("input", () => { clearTimeout(galleryTimer); galleryTimer = setTimeout(() => loadGallery(), 250); });
     $("#gallery-status").addEventListener("change", () => loadGallery());
     $("#gallery-more").addEventListener("click", () => loadGallery(true));
+    $("#prospect-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target.elements;  // form.name would be the form's own name, not the field
+      const r = await prospectSend({ action: "add", name: f.name.value, where: f.where.value, buyer: f.buyer.value,
+        product: f.product.value, note: f.note.value });
+      if (r.ok) { f.name.value = ""; f.note.value = ""; }
+    });
+    $("#prospect-table").addEventListener("change", (e) => {
+      const s = e.target.closest("[data-prospect]");
+      if (s) prospectSend({ action: "update", id: Number(s.dataset.prospect), status: s.value });
+    });
+    $("#prospect-table").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-remove-prospect]");
+      if (b && window.confirm("Remove this entry?")) prospectSend({ action: "remove", id: Number(b.dataset.removeProspect) });
+    });
     $("#gallery").addEventListener("click", (e) => {  // delegated: the cards are re-rendered
       const b = e.target.closest("[data-redraw]");
       if (b) redrawPictures(b.dataset.redraw);
