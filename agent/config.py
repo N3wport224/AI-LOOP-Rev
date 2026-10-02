@@ -201,6 +201,7 @@ class Config:
     hn_tracker_enabled: bool = True
     hn_gist_refresh_hours: int = 24
     og_images: bool = True                   # PNG OpenGraph cards (needs Pillow); SVG badges always
+    product_previews: bool = True            # Phases 401-405: 3 preview images per product, on its page and Stripe checkout
 
     # Recurring subscriptions (Stripe)
     subscription_price_cents: int = 1000     # 0 disables the subscription tier

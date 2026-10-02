@@ -2787,6 +2787,35 @@ regression test fails on the old code and passes now.
 * Other `automonetize` commands print a few error messages as Rich markup. Text containing "[/x]"
   could garble that one line; nothing is stored or sent wrongly.
 
+## Product descriptions and preview images (Phases 401-405)
+
+Every product now has a description written for the checkout and three preview images
+(`tools/product_media.py`).
+
+* **Description (Phase 401):** what Stripe's checkout page shows. It covers the number of
+  postings and companies, what the product covers, the companies hiring most, the share that's
+  remote, that every row links to its public posting, the formats, the update date and the refund
+  window. Every number comes from the product's own data, and it fits Stripe's 500 characters.
+  New checkouts get it when they're created.
+* **Three preview images (Phase 402):**
+  1. a cover with the title, the counts, the price and the formats;
+  2. five real sample rows (the same public facts as the free preview);
+  3. a bar chart of the companies with the most open roles, or the top locations, or the fields in
+     every row.
+  They're drawn once per product and kept next to its files: as SVG always, and as PNG when Pillow
+  is installed (`pip install -e '.[dev]'` or `'.[images]'` installs it).
+* **On the product page (Phase 403):** a gallery under the summary. The first image is also the
+  page's preview when the link is shared on social media.
+* **On the Stripe checkout (Phase 404):** once the public site has published a product's PNGs,
+  the agent sets them as the Stripe product's images, together with the description. It updates
+  5 products per cycle, each once, and again if its preview changes. This needs Stripe and the
+  public site (`automonetize connect-marketing`); without the site there's no public address for
+  Stripe to load the images from.
+* **Existing products (Phase 405):** they get their previews over the next site builds, 40 per
+  build, so a large catalog catches up in a few cycles.
+
+Turn it off with `product_previews = false` in `automonetize.toml`.
+
 ## Safety and consistency (Phases 140-144)
 
 * **Phase 140, email lint:** a last check before any email leaves.

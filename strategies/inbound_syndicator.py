@@ -124,6 +124,9 @@ def site_pages(tools) -> list[ProductPage]:
     from strategies.product_controls import hidden
 
     unlisted = hidden(tools.state)  # Phase 283
+    from tools import product_media
+
+    preview_budget = [product_media.PER_BUILD]  # Phase 405: a large catalog catches up over a few builds
     for asset in tools.state.list_assets():  # newest first
         niche = asset.get("niche") or ""
         kind = {"lead_directory": "dataset"}.get(asset["kind"], asset["kind"])
@@ -192,6 +195,16 @@ def site_pages(tools) -> list[ProductPage]:
                                                                              page.title, niche))
             page.extra_jsonld = scripts
             page.metrics = {**(page.metrics or {}), "rows": data.get("rows")}
+        if cfg.product_previews and kind in ("dataset", "micro") and sample.get("rows"):  # Phases 402-403
+            try:
+                f = product_media.facts(page.title, listing.get("summary", ""), listing.get("insight"),
+                                        int(asset.get("lead_count") or 0), int(asset["price_cents"] or 0))
+                page.preview_files = product_media.ensure(tools.files, base, f, sample.get("fields", []), sample["rows"],
+                                                          png=cfg.og_images, budget=preview_budget)
+                page.previews = product_media.gallery_names(page.preview_files)
+                page.preview_files = {n: page.preview_files[n] for n in page.previews}  # only what the page shows
+            except Exception as exc:  # noqa: BLE001 - a page without pictures beats no page
+                tools.state.log_error("product_media", f"previews for {niche}: {exc!r}")
         page.popular = kind == "dataset" and niche == popular
         if kind == "dataset":
             from strategies.plans import ANNUAL_KIND, TEAM_KIND, plan_for

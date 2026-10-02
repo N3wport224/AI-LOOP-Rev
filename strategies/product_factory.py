@@ -401,7 +401,7 @@ def publish(tools: Any, slug: str) -> str:
     meta = tools.files.read_json(f"assets/{slug}/{KIND}-v1/listing.json")
     sample = tools.files.read_json(f"assets/{slug}/{KIND}-v1/sample.json")
     listing = Listing(asset_id=asset["id"], hypothesis_id=asset["hypothesis_id"], niche=slug, title=meta["name"],
-                      summary=meta["summary"], description_md=meta.get("description_markdown", ""),
+                      summary=_checkout_text(meta, asset, cfg), description_md=meta.get("description_markdown", ""),
                       price_cents=int(meta["price_cents"]), zip_path=asset["path"], sample_rows=sample.get("rows", []),
                       sample_columns=sample.get("fields", []))
     result = tools.storefront.publish(listing, None)
@@ -411,6 +411,15 @@ def publish(tools: Any, slug: str) -> str:
                        **({"product_ref": result.product_ref} if result.product_ref else {}))
     state._exec("UPDATE factory_products SET status = 'live', published_at = ? WHERE slug = ?", (state.now(), slug))
     return "live"
+
+
+def _checkout_text(meta: dict[str, Any], asset: dict[str, Any], cfg: Any) -> str:
+    """Phase 401: the Stripe checkout's description, from the product's own numbers."""
+    from tools.product_media import checkout_description, facts
+
+    f = facts(meta["name"], meta.get("summary", ""), meta.get("insight"), int(asset.get("lead_count") or 0),
+              int(meta.get("price_cents") or 0))
+    return checkout_description(f, str(asset.get("created_at") or ""), int(cfg.refund_policy_days or 0))
 
 
 def retire_unsold(tools: Any) -> list[str]:
@@ -568,7 +577,16 @@ class ProductFactory(Strategy):
                 why = out.get("why", "")
                 break
             made.append(out["made"]["title"])
+        synced = 0
+        if cfg.product_previews:  # Phase 404: preview images and description on the Stripe checkout
+            from tools.product_media import sync_stripe
+
+            try:
+                synced = sync_stripe(tools)
+            except Exception as exc:  # noqa: BLE001 - never blocks making products
+                state.log_error("product_media", f"Stripe image sync: {exc!r}")
         counts = catalog(state)
         summary = (f"factory: {len(made)} new product(s)" + (f" ({', '.join(made[:3])})" if made else "")
-                   + (f"; {why}" if why and not made else "") + f"; catalog {counts}")
+                   + (f"; {why}" if why and not made else "") + (f"; {synced} checkout(s) got images" if synced else "")
+                   + f"; catalog {counts}")
         return TaskResult(True, summary[:400], {"made": len(made), **{f"catalog_{k}": v for k, v in counts.items()}})

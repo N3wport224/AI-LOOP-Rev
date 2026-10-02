@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 from tools.attribution import FIRST_TOUCH_DAYS, STORAGE_KEY
 from tools.attribution import LANDER_ATTRIBUTION_JS as ATTRIBUTION_JS
+from tools.product_media import gallery_html
 from tools.seo_assets import badge_for, render_badge_svg, render_og_png, render_og_svg
 from tools.site_extras import POPULAR_BADGE, banner_html, faq_html, footer_links, trust_html
 
@@ -102,6 +103,8 @@ class ProductPage:
     ratings_html: str = ""         # verified-buyer ratings, shown from 3 ratings (strategies/buyer_experience.py)
     aggregate_rating: dict[str, Any] | None = None
     files_html: str = ""           # what's in the download
+    previews: list[str] = field(default_factory=list)  # gallery files in the page folder (tools/product_media.py)
+    preview_files: dict[str, bytes] = field(default_factory=dict, repr=False)  # name -> bytes, written by the site build
     popular: bool = False          # "Most popular" badge on the home and pricing pages
 
     @property
@@ -152,7 +155,7 @@ def product_jsonld(page: ProductPage, url: str, brand: str) -> dict[str, Any]:
     }
     if url.startswith("http"):
         data["url"] = url
-        data["image"] = f"{url}og.png"
+        data["image"] = [f"{url}{n}" for n in page.previews] or f"{url}og.png"  # Phase 403
     if page.updated_at:
         data["offers"]["priceValidUntil"] = page.updated_at[:4] + "-12-31"
     if page.aggregate_rating:
@@ -194,6 +197,7 @@ td,th{border-bottom:1px solid #e3e3e3;padding:.45rem;text-align:left;vertical-al
 .muted{color:#666;font-size:.9rem}a{color:inherit}.proof{color:#2e7d32;font-weight:600;font-size:.95rem}.quote{border-left:3px solid #2e7d32;margin:.6rem 0;padding:.2rem .8rem}.cta.alt{background:#2e7d32}
 .lead{border:1px solid #e3e3e3;border-radius:8px;padding:1rem;margin:1.2rem 0;max-width:34rem}.lead label{font-weight:600;display:block;margin-bottom:.4rem}
 .lead input[type=email]{padding:.6rem;border:1px solid #bbb;border-radius:6px;width:100%;max-width:20rem;font-size:1rem}.lead button{padding:.62rem 1rem;border:0;border-radius:6px;background:#2e7d32;color:#fff;font-weight:600;cursor:pointer}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.6rem;margin:1rem 0}.gallery img{width:100%;height:auto;border-radius:8px;border:1px solid #e3e3e3}
 .hero{font-size:1.25rem;font-weight:600;margin:.2rem 0 .6rem}.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}.tag{display:inline-block;background:#fff3e0;color:#8a4b00;border-radius:4px;padding:0 .35rem;font-size:.85rem}
 @media (prefers-color-scheme: dark){body{background:#111;color:#eee}.lede{color:#bbb}td,th,.kpi{border-color:#333}.cta{background:#eee;color:#111}.muted{color:#999}}"""
 
@@ -324,7 +328,9 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
     if page.testimonials:
         proof_html += "".join(f'<blockquote class="quote">“{html.escape(q)}”<br><span class="muted">— Verified buyer</span></blockquote>'
                               for q in page.testimonials)
-    og_image = f"{url}og.png" if url.startswith("http") else "og.png"
+    og_file = next((n for n in page.previews if n.endswith(".png")), "og.png")  # Phase 403: factory pages have no og.png
+    og_image = f"{url}{og_file}" if url.startswith("http") else og_file
+    og_height = 750 if og_file != "og.png" else 630
     canonical = f'<link rel="canonical" href="{html.escape(url)}">' if url.startswith("http") else ""
     feed_href = f"{base_url.rstrip('/')}/{FEED_PATH}" if base_url else f"../{FEED_PATH}"
     feed = f'<link rel="alternate" type="application/rss+xml" title="Tech Radar" href="{html.escape(feed_href)}">'
@@ -338,7 +344,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {feed}
 <meta property="og:type" content="product"><meta property="og:title" content="{title}"><meta property="og:description" content="{desc}">
 {f'<meta property="og:url" content="{html.escape(url)}">' if url.startswith("http") else ""}
-<meta property="og:image" content="{html.escape(og_image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image" content="{html.escape(og_image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="{og_height}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{title}"><meta name="twitter:description" content="{desc}"><meta name="twitter:image" content="{html.escape(og_image)}">
 <meta property="product:price:amount" content="{page.price_cents / 100:.2f}"><meta property="product:price:currency" content="{html.escape(page.currency.upper())}">
 <script type="application/ld+json">
@@ -350,6 +356,7 @@ def render_product_page(page: ProductPage, base_url: str = "", brand: str = "Tec
 {banner_html(page.banner)}
 {headline_html}
 <p class="lede">{html.escape(page.summary)}</p>
+{gallery_html(page.title, page.previews)}
 {page.insight_html}
 {page.ratings_html}
 {proof_html}
@@ -769,6 +776,8 @@ class SiteBuilder:
             out[f"{p.slug}/sample.csv"] = sample_csv(p.sample_columns, p.sample_rows)  # Phase 206
             price = f"${p.price_cents / 100:.2f}"
             out[f"{p.slug}/og.svg"] = render_og_svg(p.title, p.metrics or {}, price)
+            for name, data in p.preview_files.items():  # Phase 403
+                out[f"{p.slug}/{name}"] = data
             png = render_og_png(p.title, p.metrics or {}, price) if cfg.og_images and p.kind != "micro" else None
             if png:
                 out[f"{p.slug}/og.png"] = png
