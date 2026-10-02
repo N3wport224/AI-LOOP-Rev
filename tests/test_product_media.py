@@ -56,6 +56,11 @@ def test_previews_are_drawn_a_few_per_build(kit, state, config, clock, transport
     assert pm.ensure(kit.files, "assets/a/x-v1", f, ["company"], ROWS, png=False, budget=budget)
     assert pm.ensure(kit.files, "assets/b/x-v1", f, ["company"], ROWS, png=False, budget=budget) == {}  # next build
     assert pm.ensure(kit.files, "assets/a/x-v1", f, ["company"], ROWS, png=False, budget=budget)  # already drawn: free
+    kit.files.write_json("assets/a/x-v1/preview.json", {"design": pm.DESIGN - 1})  # drawn with an older design
+    old = pm.ensure(kit.files, "assets/a/x-v1", f, ["company"], ROWS, png=False, budget=[0])
+    assert old  # out of budget: the old pictures stay up meanwhile
+    pm.ensure(kit.files, "assets/a/x-v1", f, ["company"], ROWS, png=False, budget=[1])
+    assert kit.files.read_json("assets/a/x-v1/preview.json") == {"design": pm.DESIGN}
 
 
 def test_stripe_gets_the_images_once_they_are_online(kit, state, config, clock, transport):
@@ -91,3 +96,57 @@ def test_new_checkouts_get_the_written_description(kit, state, clock, transport)
     call = transport.calls_to(f"{STRIPE}/products", "POST")[-1]
     desc = dict(urllib.parse.parse_qsl(call["body"].decode()))["description"]
     assert "public posting" in desc and len(desc) <= 500
+
+
+# ------------------------------------------------------------------ Phases 406-409: made with pictures; the panel
+from tests import test_gui  # noqa: E402
+
+gui = test_gui.gui  # the control-panel fixture
+
+
+def test_a_new_product_has_its_pictures_right_away(kit, state, clock, transport):
+    made = made_product(kit, state, clock, transport)
+    base = f"assets/{made['slug']}/{pf.KIND}-v1"
+    assert all(kit.files.exists(f"{base}/{n}.svg") for n in pm.NAMES)
+    assert b"POSTINGS BY TECHNOLOGY" in kit.files.read_bytes(f"{base}/preview-1.svg")  # what kind of product it is
+
+
+def test_the_panel_lists_every_product_with_pictures_and_stripe_links(gui, kit, state, config, clock, transport):
+    made = made_product(kit, state, clock, transport)
+    if state.get_asset(made["asset_id"])["status"] != "published":
+        pf.publish(kit, made["slug"])
+    asset = state.get_asset(made["asset_id"])
+    gui.env_file.write_text(gui.env_file.read_text() + "AUTOMONETIZE_PAGES_BASE_URL=https://me.github.io/d\n")
+
+    async def scenario(client):
+        csrf = await test_gui.login(client)
+        d = await (await client.get("/api/products/all")).json()
+        p = next(i for i in d["items"] if i["id"] == asset["id"])
+        assert p["status"] == "live" and p["type"] == "Postings by technology" and p["previews"] == [1, 2, 3]
+        assert p["checkout_url"] == asset["checkout_url"] and "public posting" in p["description"]
+        # the panel's own settings hold a test key, so the link opens Stripe's test-mode dashboard
+        assert p["stripe_url"] == f"https://dashboard.stripe.com/test/payment-links/{asset['product_ref']}"
+        assert p["page_url"] == f"https://me.github.io/d/{made['slug']}/" and d["counts"]["live"] >= 1
+        img = await client.get(f"/api/products/preview?id={asset['id']}&n=2")
+        assert img.status == 200 and img.content_type in ("image/png", "image/svg+xml")
+        assert (await client.get(f"/api/products/preview?id={asset['id']}&n=7")).status == 404
+        assert (await client.get("/api/products/preview?id=x&n=1")).status == 404
+        assert (await (await client.get("/api/products/all?q=zzz-nothing")).json())["total"] == 0
+        r = await (await client.post("/api/products/redraw", json={"id": asset["id"]}, headers={"X-CSRF-Token": csrf})).json()
+        assert r["ok"] and "Drew 3" in r["message"]
+        bad = await client.post("/api/products/redraw", json={"id": 999999}, headers={"X-CSRF-Token": csrf})
+        assert bad.status == 400
+        html = await (await client.get("/")).text()
+        assert 'id="gallery"' in html and 'id="gallery-q"' in html
+
+    test_gui.run(gui, scenario)
+
+
+def test_company_level_products_dont_claim_a_posting_per_row():
+    f = pm.facts("AWS Stack Map", "10 companies hiring for AWS.", {"rows": 10, "companies": 10}, 10, 900,
+                 label="Stack maps", postings=pm.per_posting("micro", "stack"))
+    text = pm.checkout_description(f)
+    assert "links to its public posting" not in text and "Built from public job postings" in text
+    cover = pm.previews(f, ["company"], ROWS, png=False)["preview-1.svg"]
+    assert b">rows<" in cover and b">postings<" not in cover and b"STACK MAPS" in cover
+    assert pm.per_posting("micro", "slice") and pm.per_posting("lead_directory") and not pm.per_posting("micro", "top")

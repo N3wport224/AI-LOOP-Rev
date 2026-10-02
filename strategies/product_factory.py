@@ -327,6 +327,16 @@ def write_files(tools: Any, slug: str, version: int, made: dict[str, Any], title
                                                     "freshness": fresh})  # Phase 375
     made["freshness"] = fresh
     tools.files.write_json(f"{base}/sample.json", {"fields": made["preview_fields"], "rows": made["preview"]})
+    if tools.config.product_previews and made.get("preview"):  # Phase 406: previews from the start, not at the next site build
+        from tools import product_media as pm
+
+        try:
+            f = pm.facts(title, made["summary"], made.get("insight"), int(made.get("rows") or 0), int(made["price_cents"]),
+                         label=pm.type_label("micro", str(filters.get("type") or "slice")),
+                         postings=pm.per_posting("micro", str(filters.get("type") or "slice")))
+            pm.ensure(tools.files, base, f, made["preview_fields"], made["preview"], png=tools.config.og_images)
+        except Exception as exc:  # noqa: BLE001 - the product is still good without pictures; the site build retries
+            tools.state.log_error("product_media", f"previews for {slug}: {exc!r}")
     return zip_rel
 
 
@@ -417,8 +427,10 @@ def _checkout_text(meta: dict[str, Any], asset: dict[str, Any], cfg: Any) -> str
     """Phase 401: the Stripe checkout's description, from the product's own numbers."""
     from tools.product_media import checkout_description, facts
 
+    from tools.product_media import per_posting
+
     f = facts(meta["name"], meta.get("summary", ""), meta.get("insight"), int(asset.get("lead_count") or 0),
-              int(meta.get("price_cents") or 0))
+              int(meta.get("price_cents") or 0), postings=per_posting("micro", str((meta.get("filters") or {}).get("type") or "slice")))
     return checkout_description(f, str(asset.get("created_at") or ""), int(cfg.refund_policy_days or 0))
 
 

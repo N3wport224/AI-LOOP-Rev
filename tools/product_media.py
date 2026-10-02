@@ -26,11 +26,13 @@ import io
 from typing import Any
 
 PER_BUILD = 40          # new previews drawn per site build
+DESIGN = 2              # bump when the drawings change: older previews are redrawn, PER_BUILD at a time
 PER_SYNC = 5            # Stripe products updated per cycle
 STRIPE_KEY = "stripe_media"  # kv: {slug: digest of what Stripe has}
 W, H = 1200, 750
 NAMES = ("preview-1", "preview-2", "preview-3")
 BG, INK, MUTED, ACCENT, ROW = "#101418", "#ffffff", "#b8c0c8", "#2e7d32", "#1b2228"
+ACCENT_TEXT = "#7bd389"  # the green, light enough to read as text on the dark background
 FONT = "DejaVu Sans,Verdana,Geneva,sans-serif"
 
 
@@ -42,9 +44,35 @@ def _n(value: Any) -> int:
         return 0
 
 
-def facts(title: str, summary: str, insight: dict[str, Any] | None, rows: int, price_cents: int) -> dict[str, Any]:
+KIND_LABELS = {"lead_directory": "Dataset", "bundle": "All-datasets bundle", "premium": "Premium dataset",
+               "subscription": "Weekly updates", "subscription_annual": "Yearly plan", "team_license": "Team license",
+               "api_subscription": "Developer API", "dossier": "Company dossier", "lifetime": "Lifetime pass",
+               "gift": "Gift card", "custom_request": "Custom dataset", "pay_what_you_want": "Name your price",
+               "sponsorship": "Sponsorship"}
+
+
+def per_posting(kind: str, factory_type: str = "") -> bool:
+    """Whether each row of this product is one job posting (technology slices and datasets)."""
+    return kind == "lead_directory" or (kind == "micro" and (factory_type or "slice") == "slice")
+
+
+def type_label(kind: str, factory_type: str = "") -> str:
+    """What kind of product this is, in words (factory products by their type)."""
+    if kind == "micro":
+        from strategies.catalog_insight import TYPE_NAMES
+        from strategies.product_kinds import KINDS
+
+        t = factory_type or "slice"
+        return TYPE_NAMES.get(t) or (KINDS[t].display if t in KINDS else t.replace("_", " ").capitalize())
+    return KIND_LABELS.get(kind, kind.replace("_", " ").capitalize())
+
+
+def facts(title: str, summary: str, insight: dict[str, Any] | None, rows: int, price_cents: int,
+          label: str = "", postings: bool = True) -> dict[str, Any]:
+    """``postings``: one row per job posting (each links to it). Company-level products (shortlists,
+    stack maps, salary tables) say "rows" instead and don't claim a link per row."""
     data = insight or {}
-    return {"title": title, "summary": summary, "rows": _n(data.get("rows")) or _n(rows),
+    return {"title": title, "summary": summary, "label": label, "unit": "postings" if postings else "rows", "rows": _n(data.get("rows")) or _n(rows),
             "companies": _n(data.get("companies")), "remote_pct": _n(data.get("remote_pct")),
             "top_companies": [(str(c), _n(n)) for c, n in (data.get("top_companies") or [])][:5],
             "top_locations": [(str(p), _n(n)) for p, n in (data.get("top_locations") or [])][:4],
@@ -59,7 +87,8 @@ def checkout_description(f: dict[str, Any], updated: str = "", refund_days: int 
     parts = []
     counted = f["rows"] and (str(f["rows"]) in summary or f"{f['rows']:,}" in summary)
     if f["rows"] and not counted:  # the factory's summaries already start with the count: say it once
-        parts.append(f"{f['rows']:,} current job postings from {f['companies']:,} companies." if f["companies"]
+        noun = "current job postings" if f.get("unit", "postings") == "postings" else "rows"
+        parts.append(f"{f['rows']:,} {noun} from {f['companies']:,} companies." if f["companies"]
                      else f"{f['rows']:,} records.")
     if summary:
         parts.append(summary)
@@ -67,8 +96,10 @@ def checkout_description(f: dict[str, Any], updated: str = "", refund_days: int 
         parts.append("Hiring most: " + ", ".join(c for c, _ in f["top_companies"][:3]) + ".")
     if f["remote_pct"]:
         parts.append(f"{f['remote_pct']}% remote.")
-    parts.append("Every row links to its public posting; a README and a field guide are included." if "CSV" in summary
-                 else "Every row links to its public posting. CSV, Excel, JSON and SQL with a README, emailed instantly.")
+    source = ("Every row links to its public posting" if f.get("unit", "postings") == "postings"
+              else "Built from public job postings")
+    parts.append(f"{source}; a README and a field guide are included." if "CSV" in summary
+                 else f"{source}. CSV, Excel, JSON and SQL with a README, emailed instantly.")
     if updated:
         parts.append(f"Updated {updated[:10]}.")
     if refund_days:
@@ -107,9 +138,11 @@ def _layout(kind: int, f: dict[str, Any], fields: list[str], sample: list[dict[s
     ("rect", x, y, w, h, colour)."""
     ops: list[tuple] = [("rect", 0, 0, W, H, BG), ("rect", 0, 0, 16, H, ACCENT)]
     if kind == 0:
+        if f.get("label"):
+            ops.append(("text", 80, 62, 26, ACCENT_TEXT, f["label"].upper(), True))
         for i, line in enumerate(_wrap(f["title"], 38, 2)):
-            ops.append(("text", 80, 120 + i * 60, 48, INK, line, True))
-        stats = [(f"{f['rows']:,}", "postings")] if f["rows"] else []
+            ops.append(("text", 80, 125 + i * 60, 48, INK, line, True))
+        stats = [(f"{f['rows']:,}", f.get("unit", "postings"))] if f["rows"] else []
         if f["companies"]:
             stats.append((f"{f['companies']:,}", "companies"))
         if f["remote_pct"]:
@@ -118,7 +151,8 @@ def _layout(kind: int, f: dict[str, Any], fields: list[str], sample: list[dict[s
             x = 80 + i * 340
             ops += [("rect", x, 230, 300, 170, ROW), ("text", x + 28, 320, 64, INK, big, True),
                     ("text", x + 28, 372, 28, MUTED, small, False)]
-        ops.append(("text", 80, 500, 30, MUTED, "Every row links to its public job posting", False))
+        ops.append(("text", 80, 500, 30, MUTED, "Every row links to its public job posting" if f.get("unit", "postings") == "postings"
+                    else "Built from current public job postings", False))
         ops.append(("text", 80, 560, 30, MUTED, "CSV · Excel · JSON · SQL · README", False))
         if f["price"]:
             ops += [("rect", 80, 610, 330, 80, ACCENT), ("text", 108, 665, 34, INK, f"{f['price']} · instant", True)]
@@ -214,13 +248,18 @@ def ensure(files: Any, base: str, f: dict[str, Any], fields: list[str], sample: 
     """The product's previews (drawn once, kept next to its files). ``budget`` is a one-item counter
     of how many may still be drawn in this build; products over budget get theirs next build."""
     have = {f"{n}.{ext}" for n in NAMES for ext in ("svg", "png") if files.exists(f"{base}/{n}.{ext}")}
-    if not {f"{n}.svg" for n in NAMES} <= have:
+    marker = f"{base}/preview.json"
+    current = files.exists(marker) and (files.read_json(marker) or {}).get("design") == DESIGN
+    if not ({f"{n}.svg" for n in NAMES} <= have and current):  # missing, or drawn with an older design
         if budget is not None:
             if budget[0] <= 0:
-                return {}
+                return {name: files.read_bytes(f"{base}/{name}") for name in sorted(have)}  # the old ones meanwhile
             budget[0] -= 1
+        for name in have:
+            files.resolve(f"{base}/{name}").unlink(missing_ok=True)
         for name, data in previews(f, fields, sample, png).items():
             files.write_bytes(f"{base}/{name}", data)
+        files.write_json(marker, {"design": DESIGN})
         have = {f"{n}.{ext}" for n in NAMES for ext in ("svg", "png") if files.exists(f"{base}/{n}.{ext}")}
     return {name: files.read_bytes(f"{base}/{name}") for name in sorted(have)}
 
@@ -269,8 +308,9 @@ def sync_stripe(tools: Any, limit: int = PER_SYNC) -> int:
             continue  # the checkout would show broken images until the site is up
         base = _asset_base(a)
         listing = tools.files.read_json(f"{base}/listing.json") if tools.files.exists(f"{base}/listing.json") else {}
+        ftype = str((listing.get("filters") or {}).get("type") or "")
         f = facts(a["title"], listing.get("summary", ""), listing.get("insight"), int(a.get("lead_count") or 0),
-                  int(a.get("price_cents") or 0))
+                  int(a.get("price_cents") or 0), postings=per_posting(a["kind"], ftype))
         desc = checkout_description(f, str(a.get("created_at") or ""), int(cfg.refund_policy_days or 0))
         images = [f"{base_url}/{n}" for n in names]
         digest = hashlib.sha256(("|".join(images) + desc + _png_digest(tools.files, base)).encode()).hexdigest()[:16]

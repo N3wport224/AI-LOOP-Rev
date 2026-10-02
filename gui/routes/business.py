@@ -160,6 +160,152 @@ async def post_make(request: web.Request) -> web.Response:
     return _json({"ok": bool(made), "message": f"Made {made['title']} ({out['status']})" if made else f"Nothing made: {out.get('why')}"})
 
 
+# ------------------------------------------------------------------ Phases 407-409: every product, with its pictures
+PAGE_KINDS = ("lead_directory", "micro")  # the kinds with their own page on the site
+STATUS = {"published": "live"}
+
+
+def _factory_types(state: Any) -> dict[str, str]:
+    import json
+
+    from strategies.product_factory import ensure
+
+    ensure(state)
+    out = {}
+    for r in state._all("SELECT slug, filters FROM factory_products"):
+        try:
+            out[r["slug"]] = str(json.loads(r["filters"] or "{}").get("type") or "slice")
+        except ValueError:
+            out[r["slug"]] = "slice"
+    return out
+
+
+def _latest(state: Any) -> list[dict[str, Any]]:
+    """One row per product: its newest version (assets come newest first)."""
+    seen, out = set(), []
+    for a in state.list_assets():
+        key = (a.get("niche") or f"#{a['id']}", a["kind"])
+        if key not in seen:
+            seen.add(key)
+            out.append(a)
+    return out
+
+
+def product_gallery(gctx: Any, q: str = "", status: str = "", offset: int = 0, limit: int = 48) -> dict[str, Any]:
+    """Phase 407: every product the agent made, newest first, with what a buyer sees."""
+    from strategies.revenue_models import KINDS as OFFERS
+    from tools import product_media as pm
+
+    state, cfg, files = gctx.state, gctx.fresh_config(), _files(gctx)
+    types = _factory_types(state)
+    q = " ".join(str(q or "").lower().split())[:60]
+    live_key = str(cfg.stripe_secret_key or "").startswith(("sk_live_", "rk_live_"))
+    site = cfg.pages_base_url.rstrip("/")
+    rows, counts = [], {"live": 0, "staged": 0, "retired": 0}
+    for a in _latest(state):
+        st = STATUS.get(a.get("status") or "", a.get("status") or "")
+        if st in counts:
+            counts[st] += 1
+        label = pm.type_label(a["kind"], types.get(a.get("niche") or "", ""))
+        if (status and st != status) or (q and q not in f"{a['title']} {a.get('niche') or ''} {label}".lower()):
+            continue
+        rows.append((a, st, label))
+    items = []
+    for a, st, label in rows[offset: offset + limit]:
+        niche = a.get("niche") or ""
+        base = pm._asset_base(a) if niche else ""
+        listing = files.read_json(f"{base}/listing.json") if base and files.exists(f"{base}/listing.json") else {}
+        if listing:
+            ftype = types.get(niche, "")
+            desc = pm.checkout_description(pm.facts(a["title"], listing.get("summary", ""), listing.get("insight"),
+                                                    int(a.get("lead_count") or 0), int(a.get("price_cents") or 0),
+                                                    postings=pm.per_posting(a["kind"], ftype)),
+                                           str(a.get("created_at") or ""), int(cfg.refund_policy_days or 0))
+        else:
+            desc = OFFERS[a["kind"]][3] if a["kind"] in OFFERS else ""
+        ref = str(a.get("product_ref") or "")
+        slug = niche if a["kind"] in PAGE_KINDS else ""
+        items.append({
+            "id": a["id"], "title": a["title"], "type": label, "status": st, "price_cents": int(a.get("price_cents") or 0),
+            "rows": int(a.get("lead_count") or 0), "version": a.get("version"), "created_at": a.get("created_at") or "",
+            "description": desc, "checkout_url": a.get("checkout_url") or "",
+            "stripe_url": f"https://dashboard.stripe.com/{'' if live_key else 'test/'}payment-links/{ref}" if ref.startswith("plink_") else "",
+            "page_url": f"{site}/{slug}/" if site and slug and st == "live" else "",
+            "previews": [n for n in (1, 2, 3) if base and any(files.exists(f"{base}/preview-{n}.{e}") for e in ("png", "svg"))],
+            "can_draw": bool(base and files.exists(f"{base}/sample.json")),
+        })
+    return {"items": items, "total": len(rows), "offset": offset, "limit": limit, "counts": counts}
+
+
+def _files(gctx: Any) -> Any:
+    from tools.file_io import SandboxedFileIO
+
+    return SandboxedFileIO(gctx.fresh_config().data_dir)
+
+
+async def get_gallery(request: web.Request) -> web.Response:
+    try:
+        offset = max(0, int(request.query.get("offset", "0")))
+    except ValueError:
+        offset = 0
+    return _json(await _run(product_gallery, ctx(request), request.query.get("q", ""), request.query.get("status", ""), offset))
+
+
+async def get_preview(request: web.Request) -> web.StreamResponse:
+    """Phase 408: one product's preview image (PNG, else SVG), by asset id and number."""
+    from tools import product_media as pm
+
+    gctx = ctx(request)
+    try:
+        aid, n = int(request.query.get("id", "")), int(request.query.get("n", ""))
+    except ValueError:
+        raise web.HTTPNotFound()
+    asset = gctx.state.get_asset(aid)
+    if not asset or not asset.get("niche") or n not in (1, 2, 3):
+        raise web.HTTPNotFound()
+    files, base = _files(gctx), pm._asset_base(asset)
+    for ext, ctype in (("png", "image/png"), ("svg", "image/svg+xml")):
+        rel = f"{base}/preview-{n}.{ext}"
+        if files.exists(rel):
+            return web.Response(body=await _run(files.read_bytes, rel), content_type=ctype,
+                                headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+    raise web.HTTPNotFound()
+
+
+def redraw(gctx: Any, aid: int) -> str:
+    """Phase 409: draw a product's three previews again (after a rebuild, or to get the newest design)."""
+    from tools import product_media as pm
+
+    state, cfg, files = gctx.state, gctx.fresh_config(), _files(gctx)
+    asset = state.get_asset(aid)
+    if not asset or not asset.get("niche"):
+        raise ValueError("no such product")
+    base = pm._asset_base(asset)
+    if not files.exists(f"{base}/sample.json"):
+        raise ValueError("this product has no sample rows to draw (offers and plans don't)")
+    sample = files.read_json(f"{base}/sample.json")
+    listing = files.read_json(f"{base}/listing.json") if files.exists(f"{base}/listing.json") else {}
+    for n in pm.NAMES:
+        for ext in ("png", "svg"):
+            if files.exists(f"{base}/{n}.{ext}"):
+                files.resolve(f"{base}/{n}.{ext}").unlink()
+    f = pm.facts(asset["title"], listing.get("summary", ""), listing.get("insight"), int(asset.get("lead_count") or 0),
+                 int(asset.get("price_cents") or 0),
+                 label=pm.type_label(asset["kind"], _factory_types(state).get(asset["niche"], "")),
+                 postings=pm.per_posting(asset["kind"], _factory_types(state).get(asset["niche"], "")))
+    drawn = pm.ensure(files, base, f, sample.get("fields", []), sample.get("rows", []), png=cfg.og_images)
+    return f"Drew {len(pm.gallery_names(drawn))} preview(s) for {asset['title']}. The site and checkout pick them up next cycle."
+
+
+async def post_redraw(request: web.Request) -> web.Response:
+    data = await _body(request)
+    try:
+        message = await _run(redraw, ctx(request), int(data.get("id")))
+    except (TypeError, ValueError) as exc:
+        return _json({"ok": False, "message": str(exc)}, 400)
+    return _json({"ok": True, "message": message})
+
+
 # ------------------------------------------------------------------ Phase 201: marketing
 def marketing(gctx: Any) -> dict[str, Any]:
     from strategies import marketing_engine as me
@@ -246,6 +392,8 @@ async def post_affiliate(request: web.Request) -> web.Response:
 def routes() -> list[web.RouteDef]:
     return [web.get("/api/products", get_products), web.get("/api/products.csv", get_products_csv),
             web.get("/api/catalog", get_catalog), web.get("/api/trends", get_trends),
+            web.get("/api/products/all", get_gallery), web.get("/api/products/preview", get_preview),
+            web.post("/api/products/redraw", post_redraw),
             web.post("/api/products/make", post_make), web.post("/api/products/action", post_action),
             web.get("/api/marketing", get_marketing), web.post("/api/marketing/mark", post_mark),
             web.get("/api/money", get_money), web.post("/api/sponsor/approve", post_sponsor),

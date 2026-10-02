@@ -257,10 +257,65 @@
     $("#factory-plan").replaceChildren(...((d.plan && d.plan.lines) || []).map((l) => el("li", { text: l })));
     $("#factory-insights").replaceChildren(...((d.insights && d.insights.lines) || []).map((l) => el("li", { text: l })));
     if (d.pace) $("#factory-summary").textContent += ` Now: ${d.pace}.`;
+    loadGallery();
     loadCatalog();
     $("#products-table tbody").replaceChildren(...(d.leaderboard || []).map((r) => el("tr", {},
       el("td", { text: r.title }), el("td", { text: String(r.orders) }), el("td", { text: money(r.revenue_cents) }),
       el("td", { text: r.never_sold ? "never sold" : r.last_sale }))));
+  }
+
+  // ------------------------------------------------------------------ all products (Phases 407-409)
+  let galleryTimer = null, galleryOffset = 0;
+  const STATUS_BADGE = { live: ["on sale", "ok"], staged: ["waiting for checkout", "warn"], retired: ["retired", ""] };
+
+  function productCard(p) {
+    const img = (n) => `/api/products/preview?id=${p.id}&n=${n}`;
+    const big = p.previews.length
+      ? el("img", { class: "shot", src: img(p.previews[0]), alt: `${p.title}: preview`, loading: "lazy" })
+      : el("div", { class: "noshot", text: p.can_draw ? "No pictures yet" : "No preview for this kind of product" });
+    const thumbs = p.previews.length > 1 ? el("div", { class: "thumbs" }, ...p.previews.map((n, i) => {
+      const t = el("img", { src: img(n), alt: `preview ${n}`, loading: "lazy", "aria-pressed": i === 0 ? "true" : "false" });
+      t.addEventListener("click", () => {
+        big.src = img(n);
+        t.parentNode.querySelectorAll("img").forEach((x) => x.setAttribute("aria-pressed", String(x === t)));
+      });
+      return t;
+    })) : null;
+    const [label, level] = STATUS_BADGE[p.status] || [p.status || "unknown", ""];
+    const link = (href, text, cls) => href ? el("a", { href, text, target: "_blank", rel: "noopener noreferrer", class: cls || "" }) : null;
+    return el("article", { class: "product" }, big, thumbs,
+      el("div", { class: "body" },
+        el("h3", { text: p.title }),
+        el("div", { class: "meta" }, el("span", { class: "badge " + level, text: label }),
+          ` ${p.type} · ${money(p.price_cents)}` + (p.rows ? ` · ${p.rows.toLocaleString()} rows` : "") + ` · ${shortTime(p.created_at).slice(0, 10)}`),
+        p.description ? el("details", {}, el("summary", { text: "What the checkout says" }), el("p", { text: p.description })) : null,
+        el("div", { class: "links" },
+          link(p.checkout_url, "Open checkout ↗", "buy"), link(p.stripe_url, "Stripe dashboard ↗"), link(p.page_url, "Product page ↗"),
+          p.can_draw ? el("button", { "data-redraw": String(p.id), text: p.previews.length ? "Redraw pictures" : "Draw pictures" }) : null)));
+  }
+
+  async function loadGallery(more) {
+    if (!more) galleryOffset = 0;
+    const q = encodeURIComponent($("#gallery-q").value || ""), status = encodeURIComponent($("#gallery-status").value || "");
+    let d;
+    try { d = await api(`/api/products/all?q=${q}&status=${status}&offset=${galleryOffset}`); } catch (e) { return; }
+    if (d._status !== 200) return;
+    const cards = (d.items || []).map(productCard);
+    if (more) $("#gallery").append(...cards); else $("#gallery").replaceChildren(...cards);
+    if (!d.total) $("#gallery").replaceChildren(el("p", { class: "muted", text: "No products match yet. The factory makes one every few minutes once postings arrive." }));
+    galleryOffset += (d.items || []).length;
+    $("#gallery-more").hidden = galleryOffset >= d.total;
+    const c = d.counts || {};
+    $("#gallery-count").textContent = `(${c.live || 0} on sale · ${c.staged || 0} waiting · ${c.retired || 0} retired)`;
+  }
+
+  async function redrawPictures(id) {
+    const msg = $("#gallery-message");
+    msg.textContent = "Drawing…";
+    const r = await api("/api/products/redraw", { method: "POST", body: { id: Number(id) } });
+    msg.textContent = r.message || "";
+    msg.className = "message " + (r.ok ? "ok" : "warn");
+    loadGallery();
   }
 
   // ------------------------------------------------------------------ catalog (Phases 362-363)
@@ -641,6 +696,13 @@
     $("#factory-make").addEventListener("click", makeProduct);
     $("#catalog-q").addEventListener("input", () => { clearTimeout(catalogTimer); catalogTimer = setTimeout(loadCatalog, 250); });
     $("#catalog-status").addEventListener("change", loadCatalog);
+    $("#gallery-q").addEventListener("input", () => { clearTimeout(galleryTimer); galleryTimer = setTimeout(() => loadGallery(), 250); });
+    $("#gallery-status").addEventListener("change", () => loadGallery());
+    $("#gallery-more").addEventListener("click", () => loadGallery(true));
+    $("#gallery").addEventListener("click", (e) => {  // delegated: the cards are re-rendered
+      const b = e.target.closest("[data-redraw]");
+      if (b) redrawPictures(b.dataset.redraw);
+    });
     $("#catalog-table").addEventListener("click", (e) => {  // delegated: the table is re-rendered
       const b = e.target.closest("[data-product]");
       if (b) productAction(b.dataset.product, b.dataset.act);

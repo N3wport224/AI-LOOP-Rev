@@ -173,6 +173,15 @@
 
   <section id="tab-products" class="tab" hidden>
     <div class="card">
+      <h2>All products <span class="muted" id="gallery-count"></span></h2>
+      <p class="muted">Everything the agent has made, newest first, with the pictures and description buyers see. "Open checkout" is the Stripe payment page; "Stripe dashboard" opens the product in your Stripe account.</p>
+      <p><label for="gallery-q">Find</label> <input id="gallery-q" type="search" placeholder="title or type" autocomplete="off">
+        <select id="gallery-status" aria-label="Status"><option value="">all</option><option value="live">on sale</option><option value="staged">waiting</option><option value="retired">retired</option></select>
+        <span class="message" id="gallery-message" role="status"></span></p>
+      <div class="product-grid" id="gallery"></div>
+      <p><button id="gallery-more" hidden>Show more</button></p>
+    </div>
+    <div class="card">
       <h2>Product factory</h2>
       <p class="muted" id="factory-summary"></p>
       <p><button class="primary" id="factory-make">Make a product now</button> <span class="message" id="factory-message" role="status"></span></p>

@@ -2787,7 +2787,7 @@ regression test fails on the old code and passes now.
 * Other `automonetize` commands print a few error messages as Rich markup. Text containing "[/x]"
   could garble that one line; nothing is stored or sent wrongly.
 
-## Product descriptions and preview images (Phases 401-405)
+## Product descriptions and preview images (Phases 401-409)
 
 Every product now has a description written for the checkout and three preview images
 (`tools/product_media.py`).
@@ -2813,6 +2813,21 @@ Every product now has a description written for the checkout and three preview i
   Stripe to load the images from.
 * **Existing products (Phase 405):** they get their previews over the next site builds, 40 per
   build, so a large catalog catches up in a few cycles.
+
+* **From the start (Phase 406):** a new product's pictures are drawn as soon as it's made. The
+  cover names the kind of product ("Postings by technology", "Stack maps", ...). Products listing
+  companies rather than postings count "rows" and say "built from public job postings", without
+  claiming a link per row. When the drawings improve, older pictures are redrawn by themselves, 40
+  per build.
+* **Products tab, every product (Phases 407-409):** the control panel's Products tab opens with
+  every product the agent has made, newest first, filterable by status and searchable. Each card
+  shows:
+  * its three pictures (click a thumbnail to enlarge it);
+  * its type, status, price and size;
+  * "What the checkout says": the description buyers see;
+  * links to **Open checkout** (the Stripe payment page), **Stripe dashboard** (the payment link in
+    your Stripe account, test or live to match your key) and **Product page** (on your public site);
+  * **Redraw pictures**.
 
 Turn it off with `product_previews = false` in `automonetize.toml`.
 

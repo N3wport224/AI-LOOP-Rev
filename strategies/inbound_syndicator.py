@@ -198,7 +198,9 @@ def site_pages(tools) -> list[ProductPage]:
         if cfg.product_previews and kind in ("dataset", "micro") and sample.get("rows"):  # Phases 402-403
             try:
                 f = product_media.facts(page.title, listing.get("summary", ""), listing.get("insight"),
-                                        int(asset.get("lead_count") or 0), int(asset["price_cents"] or 0))
+                                        int(asset.get("lead_count") or 0), int(asset["price_cents"] or 0),
+                                        label=product_media.type_label(asset["kind"], (listing.get("filters") or {}).get("type", "")),
+                                        postings=product_media.per_posting(asset["kind"], (listing.get("filters") or {}).get("type", "")))
                 page.preview_files = product_media.ensure(tools.files, base, f, sample.get("fields", []), sample["rows"],
                                                           png=cfg.og_images, budget=preview_budget)
                 page.previews = product_media.gallery_names(page.preview_files)
